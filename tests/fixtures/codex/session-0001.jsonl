@@ -1,0 +1,6 @@
+{"timestamp":1725000000000,"type":"session_meta","payload":{"id":"session-0001","cwd":"/workspace/demo"}}
+{"timestamp":1725000000100,"type":"user_message","payload":{"text":"[redacted]"}}
+{"timestamp":1725000000200,"type":"tool_started","payload":{"tool_name":"shell"}}
+{"timestamp":1725000000300,"type":"tool_completed","payload":{"success":true,"output":"[redacted]"}}
+{"timestamp":1725000000400,"type":"update_plan","payload":{"plan":[{"step":"[redacted]","status":"completed"},{"step":"[redacted]","status":"in_progress"},{"step":"[redacted]","status":"pending"}]}}
+{"timestamp":1725000000500,"type":"turn_completed","payload":{}}
