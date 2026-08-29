@@ -1,7 +1,8 @@
 # Cookbench Product and Technical Design
 
 Date: 2026-08-29
-Status: Approved design
+Last updated: 2026-08-30
+Status: Approved design, including visual direction
 
 ## 1. Product Definition
 
@@ -80,9 +81,13 @@ The default surface is a floating global bar. It is a dashboard rather than a pr
 - There are no empty capacity slots.
 - The bar never collapses to a single "most important" stove.
 - At higher counts, the layout may reduce burner size or use multiple rows, but it must not hide running stoves.
-- Each burner always displays the source harness in its center.
-- The outer ring communicates reliable progress when available.
-- Flame, motion, shape, and text communicate state without relying on color alone.
+- Each burner always displays the source harness visibly; compact bars may place
+  the label below the burner while detached bars may use a short source token.
+- An incomplete outer ring is reserved for reliable structured progress while
+  Cooking. Arc length never represents Attention, Cooked, Failed, or Offline.
+- Attention, Cooked, Failed, and Disconnected use the same complete-ring geometry.
+  Their ring color changes by state, while center labels and accessible text keep
+  the meaning available without relying on color alone.
 - A small badge distinguishes local and remote hosts.
 
 Hovering a burner shows:
@@ -518,6 +523,16 @@ Wayland behavior and exact host focusing require real-desktop manual verificatio
 10. Cookbench does not copy complete conversations or interfere with harness execution.
 11. SSH disconnects never report completion.
 12. External notifications remain outbound-only and are configurable by state and destination.
+13. Attention, Cooked, Failed, and Disconnected render as complete rings; their
+    arc lengths do not encode status.
+14. Only Cooking with reliable structured progress uses a determinate progress
+    arc; no source data means no fabricated percentage.
+15. Runtime visuals use the approved original Cookbench SVG/CSS system and do
+    not bundle third-party logos or heavy image/animation assets.
+16. The application respects reduced-motion settings and all Stove states retain
+    text or accessible labels in addition to color.
+17. The installed package contains no runtime photos, GIFs, videos, Lottie files,
+    sprite sheets, or bundled web-font family.
 
 ## 20. Existing Project Reuse Strategy
 
@@ -535,11 +550,76 @@ Cookbench should be a clean Tauri/Rust project rather than a fork of a macOS-fir
 | [AgentHUD](https://github.com/neochoon/agenthud) | No license file found during review | Ideas and observed behavior only. Do not copy source code without explicit permission or a license. |
 | [Vibe Kanban](https://github.com/BloopAI/vibe-kanban) | Apache-2.0 | Product and task-model reference only. Its orchestration-first browser product is not an appropriate Cookbench base. |
 
-Assets, mascots, third-party logos, and brand artwork require separate review. A permissive source-code license does not automatically grant trademark rights. Cookbench should use original stove visuals and approved provider marks.
+Assets, mascots, third-party logos, and brand artwork require separate review. A
+permissive source-code license does not automatically grant trademark rights.
+Cookbench uses original stove visuals and neutral provider names/tokens by
+default; any third-party mark requires a future explicit brand review.
 
 Before copying any source, the implementation plan must record the originating file, license, modifications, and required notice. Prefer independently implementing small concepts when direct reuse would import unnecessary architecture.
 
-## 21. Architecture Decision Summary
+## 21. Approved Visual Identity and Asset Budget
+
+The approved direction is **Precision Stove**: a quiet desktop instrument with
+restrained cooking cues. It should feel like a compact operational control rather
+than a restaurant application, game, or decorative dashboard.
+
+### 21.1 Brand Mark
+
+- The original Cookbench mark is an open circular burner that also reads as the
+  letter `C`, with one warm ignition point.
+- The same geometry provides the application mark, monochrome tray/menu mark,
+  and the visual foundation of a Stove.
+- Initial provider identity uses neutral text labels (`Codex`, `Claude`, `Pi`)
+  and compact tokens (`CX`, `CL`, `PI`), not bundled third-party logos.
+- Third-party marks may be considered later only after explicit brand and
+  trademark review.
+
+Approved reference files:
+
+```text
+docs/visual-prototype/index.html
+docs/visual-prototype/README.md
+docs/visual-prototype/assets/cookbench-mark.svg
+docs/visual-prototype/assets/cookbench-tray.svg
+```
+
+### 21.2 Stove Ring Rules
+
+- Cooking with reliable structured progress may show an incomplete progress arc
+  and rotate it to communicate activity.
+- Cooking without structured progress uses an indeterminate activity treatment
+  without a numeric percentage or invented arc value.
+- Attention uses a complete amber ring and may pulse, but does not rotate.
+- Cooked uses a complete green ring and is static after one short finish effect.
+- Failed uses a complete red ring and is static.
+- Disconnected uses a complete gray ring and is static.
+- Static states never use different arc lengths as a status code.
+- Center labels, tooltip text, and accessible names remain present even though
+  the ring itself distinguishes static states by color.
+
+### 21.3 Motion and Character
+
+- Motion must not resize a burner, shift the bar, or run continuously after a
+  terminal state settles.
+- Reduced-motion preferences disable or shorten non-essential effects.
+- The Stove itself supplies the product's character in the first version.
+- No standalone chef, mascot illustration set, or decorative character artwork
+  is included in the MVP. An original `Cook` character can be explored later for
+  documentation or launch material without entering the runtime UI by default.
+
+### 21.4 Runtime Asset Budget
+
+- Two original SVG masters: the brand mark and monochrome tray/menu mark.
+- UI rings, heat, and state motion use CSS and small inline SVG primitives.
+- Use the operating system font stack; do not bundle a web-font family.
+- No runtime photos, illustration packs, GIFs, videos, Lottie files, sprite
+  sheets, canvas textures, or network-fetched visual assets.
+- Platform ICO, ICNS, and PNG icons are generated from the SVG master during the
+  release process rather than maintained as unrelated hand-authored artwork.
+- The current SVG masters are each below 1 KB. Any expansion of the runtime asset
+  budget requires an explicit product decision and package-size measurement.
+
+## 22. Architecture Decision Summary
 
 - Build a new Tauri 2 application with a shared Rust core and React/TypeScript UI.
 - Treat native harness sessions as the source of truth.
@@ -549,3 +629,5 @@ Before copying any source, the implementation plan must record the originating f
 - Support local, zero-install SSH, and optional bridge sources through one event model.
 - Keep IM notifications outbound-only and independently configurable.
 - Reuse tested infrastructure selectively under explicit license tracking rather than forking an unrelated product.
+- Use the approved original Precision Stove identity with an asset-light SVG/CSS
+  implementation and complete rings for every non-Cooking state.

@@ -18,6 +18,8 @@
 - Never use real user prompts or conversation content as committed fixtures.
 - Do not add SQLite or a full conversation index.
 - Do not expose inbound IM listeners or remote agent controls.
+- Treat `docs/visual-prototype/` as the approved visual reference; preserve its
+  complete-ring rules and lightweight asset budget.
 - Commit after every task using the repository Lore commit protocol.
 - Run `cargo fmt`, `cargo clippy`, Rust tests, frontend tests, and builds before each phase checkpoint.
 
@@ -108,6 +110,8 @@ git commit
 - Create: `src/App.tsx`
 - Create: `src/styles/tokens.css`
 - Create: `src/styles/app.css`
+- Create: `src/assets/cookbench-mark.svg`
+- Create: `src/assets/cookbench-tray.svg`
 - Create: `crates/cookbench-core/Cargo.toml`
 - Create: `crates/cookbench-core/src/lib.rs`
 - Create: `crates/cookbench-adapters/Cargo.toml`
@@ -143,7 +147,11 @@ Expected: compilation fails because `PRODUCT_NAME` is undefined.
 
 **Step 3: Implement the minimal core and Tauri shell**
 
-Define `pub const PRODUCT_NAME: &str = "Cookbench";`, configure the workspace members, and scaffold a borderless Tauri window containing a static fake stove.
+Define `pub const PRODUCT_NAME: &str = "Cookbench";`, configure the workspace
+members, and scaffold a borderless Tauri window containing a static fake stove.
+Copy the two approved original vector masters from `docs/visual-prototype/assets/`
+into `src/assets/`; do not introduce raster UI art, a web-font dependency, or an
+animation package.
 
 The initial frontend test in `src/App.test.tsx` should assert that `Cookbench` and a `data-testid="stove"` element render.
 
@@ -673,7 +681,11 @@ Test that:
 - Burner count follows session count.
 - Every burner visibly identifies Codex, Claude Code, or Pi.
 - Determinate progress is used only with structured provenance.
-- Needs Human, Cooked, Failed, and Disconnected are not color-only.
+- Attention, Cooked, Failed, and Disconnected each use a complete ring and never
+  use different arc lengths to encode their state.
+- The complete static rings use state colors, center labels, and accessible names.
+- Only Cooking with structured provenance may use an incomplete determinate arc.
+- Indeterminate Cooking does not display an invented numeric value.
 - High counts wrap or scale without hiding stoves.
 
 **Step 2: Run tests and verify failure**
@@ -684,7 +696,10 @@ pnpm test --run src/components/GlobalBar.test.tsx
 
 **Step 3: Implement the stable layout**
 
-Use fixed burner aspect ratios, bounded responsive tracks, zero negative letter spacing, and no viewport-scaled font sizes. Keep hover content outside burner layout calculations so it cannot shift the bar.
+Use fixed burner aspect ratios, bounded responsive tracks, zero negative letter
+spacing, and no viewport-scaled font sizes. Keep hover content outside burner
+layout calculations so it cannot shift the bar. Derive tokens and ring behavior
+from `docs/visual-prototype/`; use system fonts, CSS motion, and the approved SVGs.
 
 **Step 4: Run tests and screenshot fixtures**
 
@@ -793,7 +808,10 @@ git commit
 
 **Step 1: Write failing feedback tests**
 
-Test one completion effect per Cooked transition, no effect on stale replay, optional sound, reduced-motion behavior, and local notification permission denial.
+Test one completion effect per Cooked transition, no effect on stale replay,
+optional sound, reduced-motion behavior, and local notification permission denial.
+Assert that the completion animation settles on a static complete green ring and
+does not keep rotating.
 
 **Step 2: Run tests and verify failure**
 
@@ -803,7 +821,9 @@ pnpm test --run src/animation src/components/StoveBurner.motion.test.tsx
 
 **Step 3: Implement restrained feedback**
 
-Use a short completion state with no layout shift. Keep sound off or conservative by default and user-configurable.
+Use a short CSS completion state with no layout shift. Keep sound off or
+conservative by default and user-configurable. Do not add GIF, video, Lottie,
+sprite, or decorative raster assets.
 
 **Step 4: Verify manually**
 
@@ -1089,6 +1109,9 @@ Simulate:
 - Detach, reposition, restore, and clear.
 - SSH disconnect without false completion.
 - Filtered outbound notification.
+- Full static rings for Attention, Cooked, Failed, and Disconnected.
+- A determinate arc only for Cooking with structured progress.
+- An indeterminate Cooking fixture with no numeric percentage.
 
 **Step 2: Run tests and verify failure**
 
@@ -1102,7 +1125,9 @@ Fix only behavior required by the approved acceptance criteria. Avoid adding das
 
 **Step 4: Run desktop screenshots at required viewports and scales**
 
-Verify no text overflow, overlap, blank windows, layout shifts, or hidden stoves at supported scales.
+Verify no text overflow, overlap, blank windows, layout shifts, or hidden stoves
+at supported scales. Compare the rendered global bar, detached bars, mark, source
+labels, colors, and state rings with `docs/visual-prototype/index.html`.
 
 **Step 5: Commit**
 
@@ -1138,7 +1163,10 @@ cargo build --workspace
 
 **Step 2: Add packaging smoke tests**
 
-Validate DMG/app bundle, MSI, DEB, and AppImage contents. Confirm the bridge and hook helper match platform architecture and carry expected version metadata.
+Validate DMG/app bundle, MSI, DEB, and AppImage contents. Confirm the bridge and
+hook helper match platform architecture and carry expected version metadata.
+Fail the package audit if runtime photos, GIFs, videos, Lottie files, sprite
+sheets, bundled web fonts, or unreviewed third-party brand artwork appear.
 
 **Step 3: Document signing and permissions**
 
@@ -1163,7 +1191,7 @@ git commit
 
 Before declaring public beta readiness:
 
-1. Compare the finished behavior with all 12 acceptance criteria in the approved design.
+1. Compare the finished behavior with all 17 acceptance criteria in the approved design.
 2. Review every third-party reuse entry and update `THIRD_PARTY_NOTICES.md`.
 3. Inspect the full diff for accidental conversation fixtures, credentials, or generated artifacts.
 4. Run the complete CI-equivalent verification on macOS, Windows, and Ubuntu.
