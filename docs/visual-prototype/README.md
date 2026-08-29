@@ -31,13 +31,15 @@ network calls, canvas textures, or JavaScript frameworks.
 | State | Shape and motion | Color | Meaning |
 | --- | --- | --- | --- |
 | Cooking | Rotating heat tick and breathing center | Heat orange | Agent is actively working |
-| Needs attention | Two-beat pulse | Amber | Human input or correction is needed |
+| Needs attention | Full ring with a two-beat pulse | Amber | Human input or correction is needed |
 | Cooked | Stable full ring and one short finish flare | Green | The latest task finished successfully |
-| Failed | Broken ring | Red | The run ended unsuccessfully |
-| Disconnected | Dashed, static ring | Gray | Source or SSH connection is unavailable |
+| Failed | Static full ring | Red | The run ended unsuccessfully |
+| Disconnected | Static full ring | Gray | Source or SSH connection is unavailable |
 
-Progress arcs appear only when the source exposes structured plan/task data.
-Otherwise, the ring communicates activity without inventing a percentage.
+Progress arcs appear only while Cooking and only when the source exposes
+structured plan/task data. All terminal or attention states use a full ring;
+they never use arc length as a proxy for status. Without structured progress,
+Cooking uses activity motion without inventing a percentage.
 
 ## Source Identity
 

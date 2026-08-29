@@ -262,12 +262,11 @@
 
     [data-state="cooking"] .burner::after { animation: turn 3.2s linear infinite; }
     [data-state="cooking"] .heat-core { animation: breathe 1.8s ease-in-out infinite; }
-    [data-state="attention"] .burner { --state: var(--attention); }
+    [data-state="attention"] .burner { --state: var(--attention); --progress: 100%; }
     [data-state="attention"] .heat-core { animation: alert 1.4s ease-in-out infinite; }
     [data-state="cooked"] .burner { --state: var(--cooked); --progress: 100%; }
-    [data-state="failed"] .burner { --state: var(--failed); --progress: 82%; }
-    [data-state="disconnected"] .burner { --state: var(--disconnected); --progress: 38%; }
-    [data-state="disconnected"] .burner::before { border-style: dashed; }
+    [data-state="failed"] .burner { --state: var(--failed); --progress: 100%; }
+    [data-state="disconnected"] .burner { --state: var(--disconnected); --progress: 100%; }
 
     .source-label {
       max-width: 72px;
@@ -548,8 +547,8 @@
 
     <section class="spec-grid">
       <div class="section-band">
-        <h2>状态是一套形状语言</h2>
-        <p>颜色只是辅助。圆环的连续、断开、虚线与运动节奏，让灰阶和色觉差异环境里仍能辨认状态。</p>
+        <h2>状态是一套完整的炉圈语言</h2>
+        <p>Attention、Cooked、Failed 与 Offline 都使用完整圆环，仅以颜色和中心标签区分。只有具备真实结构化进度的 Cooking 才使用进度弧。</p>
         <div class="status-row">
           <div class="status-swatch" data-state="cooking"><span class="burner"><span class="heat-core">RUN</span></span><span>Cooking</span></div>
           <div class="status-swatch" data-state="attention"><span class="burner"><span class="heat-core">!</span></span><span>Attention</span></div>
