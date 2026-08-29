@@ -14,6 +14,8 @@ tauri-build = { version = "2.2.0", features = [] }
 [dependencies]
 tauri = { version = "2.8.1", features = [] }
 cookbench-core = { path = "../crates/cookbench-core" }
+keyring = "4.1.6"
+reqwest = { version = "0.13.4", default-features = false, features = ["blocking", "rustls", "system-proxy"] }
 serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
