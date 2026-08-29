@@ -19,7 +19,7 @@
 - Do not add SQLite or a full conversation index.
 - Do not expose inbound IM listeners or remote agent controls.
 - Treat `docs/visual-prototype/` as the approved visual reference; preserve its
-  complete-ring rules and lightweight asset budget.
+  bright light-default material, complete-ring rules, and lightweight asset budget.
 - Commit after every task using the repository Lore commit protocol.
 - Run `cargo fmt`, `cargo clippy`, Rust tests, frontend tests, and builds before each phase checkpoint.
 
@@ -700,6 +700,10 @@ Use fixed burner aspect ratios, bounded responsive tracks, zero negative letter
 spacing, and no viewport-scaled font sizes. Keep hover content outside burner
 layout calculations so it cannot shift the bar. Derive tokens and ring behavior
 from `docs/visual-prototype/`; use system fonts, CSS motion, and the approved SVGs.
+The default Bar is a bright translucent functional layer, not a dark control
+surface. Implement platform-aware native blur/backdrop capability with a solid
+high-opacity fallback; do not stack glass surfaces or imitate macOS window chrome
+on Windows and Ubuntu.
 
 **Step 4: Run tests and screenshot fixtures**
 
@@ -1127,7 +1131,10 @@ Fix only behavior required by the approved acceptance criteria. Avoid adding das
 
 Verify no text overflow, overlap, blank windows, layout shifts, or hidden stoves
 at supported scales. Compare the rendered global bar, detached bars, mark, source
-labels, colors, and state rings with `docs/visual-prototype/index.html`.
+labels, bright material, vivid colors, and state rings with
+`docs/visual-prototype/index.html`. Verify light and dark desktop backgrounds,
+reduced transparency, increased contrast, reduced motion, and blur-unavailable
+fallbacks.
 
 **Step 5: Commit**
 

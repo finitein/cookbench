@@ -527,8 +527,9 @@ Wayland behavior and exact host focusing require real-desktop manual verificatio
     arc lengths do not encode status.
 14. Only Cooking with reliable structured progress uses a determinate progress
     arc; no source data means no fabricated percentage.
-15. Runtime visuals use the approved original Cookbench SVG/CSS system and do
-    not bundle third-party logos or heavy image/animation assets.
+15. Runtime visuals use the approved bright, light-default, Apple-inspired
+    Cookbench SVG/CSS material system and do not bundle third-party logos or
+    heavy image/animation assets.
 16. The application respects reduced-motion settings and all Stove states retain
     text or accessible labels in addition to color.
 17. The installed package contains no runtime photos, GIFs, videos, Lottie files,
@@ -559,9 +560,22 @@ Before copying any source, the implementation plan must record the originating f
 
 ## 21. Approved Visual Identity and Asset Budget
 
-The approved direction is **Precision Stove**: a quiet desktop instrument with
-restrained cooking cues. It should feel like a compact operational control rather
-than a restaurant application, game, or decorative dashboard.
+The approved direction is **Bright Precision Stove**: a quiet desktop instrument
+with restrained cooking cues, interpreted through Apple's current bright,
+translucent, fluid design language. It should feel lightweight, vivid, and
+optimistic rather than dark or industrial, while remaining a compact operational
+control rather than a restaurant application, game, or decorative dashboard.
+
+The direction follows three current Apple design principles: establish hierarchy,
+create harmony between content and controls, and maintain platform consistency.
+Liquid-glass-like material is reserved for the floating functional layer — the
+global Bar, detached Bars, transient hover details, and primary controls — rather
+than applied to every content surface. This keeps the visual hierarchy legible and
+avoids decorative glass-on-glass stacking.
+
+Cookbench is Apple-inspired, not an Apple clone. It does not use Apple-owned
+icons, templates, screenshots, or brand assets, and it adapts the same hierarchy
+to native macOS, Windows, and Ubuntu material capabilities.
 
 ### 21.1 Brand Mark
 
@@ -573,6 +587,9 @@ than a restaurant application, game, or decorative dashboard.
   and compact tokens (`CX`, `CL`, `PI`), not bundled third-party logos.
 - Third-party marks may be considered later only after explicit brand and
   trademark review.
+- The primary presentation uses the dark graphite mark and vivid orange ignition
+  point on a light or translucent surface; a monochrome mark remains available
+  for system trays and accessibility modes.
 
 Approved reference files:
 
@@ -607,7 +624,51 @@ docs/visual-prototype/assets/cookbench-tray.svg
   is included in the MVP. An original `Cook` character can be explored later for
   documentation or launch material without entering the runtime UI by default.
 
-### 21.4 Runtime Asset Budget
+### 21.4 Light Material and Color System
+
+- Light mode is the product default. Dark mode may follow the operating system,
+  but it is not the primary brand presentation.
+- The Bar uses a bright regular glass treatment: a translucent white surface,
+  background blur where supported, increased saturation, a bright edge highlight,
+  and a soft neutral shadow. It must remain legible over both light and dark
+  desktop backgrounds.
+- Content/settings surfaces use near-white solid or standard-material backgrounds,
+  not additional glass layers. Avoid nested translucent surfaces.
+- Color is vivid but semantic: orange for Cooking, amber for Attention, green for
+  Cooked, red for Failed, and neutral gray for Disconnected.
+- Harness identity may use small cyan, coral, and violet accents while retaining
+  visible provider names. Accent color never replaces text.
+- Typography uses the platform system font with clear optical hierarchy, generous
+  leading, and no negative letter spacing in the compact runtime UI.
+- Controls respond immediately on press and use short, interruptible, critically
+  damped motion. Decorative looping motion is prohibited.
+- Provide reduced-motion, reduced-transparency, increased-contrast, and
+  solid-background fallbacks.
+
+Reference token direction:
+
+```text
+Canvas              #F4F7FB
+Glass               rgba(255,255,255,0.72)
+Glass strong        rgba(255,255,255,0.88)
+Primary text        #171A1F
+Secondary text      #5F6875
+Cooking             #FF6A2A
+Attention           #FFB000
+Cooked              #30C978
+Failed              #FF453A
+Disconnected        #8E8E93
+```
+
+The exact material adapts by platform:
+
+- macOS: native vibrancy/material support behind the Tauri webview where stable.
+- Windows 11: system backdrop/Mica or Acrylic where available, with the same light
+  hierarchy rather than macOS window-chrome imitation.
+- Ubuntu: compositor blur when dependable; otherwise a high-opacity light surface
+  with the same edge, shadow, color, and spacing tokens.
+
+### 21.5 Runtime Asset Budget
 
 - Two original SVG masters: the brand mark and monochrome tray/menu mark.
 - UI rings, heat, and state motion use CSS and small inline SVG primitives.
@@ -629,5 +690,6 @@ docs/visual-prototype/assets/cookbench-tray.svg
 - Support local, zero-install SSH, and optional bridge sources through one event model.
 - Keep IM notifications outbound-only and independently configurable.
 - Reuse tested infrastructure selectively under explicit license tracking rather than forking an unrelated product.
-- Use the approved original Precision Stove identity with an asset-light SVG/CSS
-  implementation and complete rings for every non-Cooking state.
+- Use the approved original Bright Precision Stove identity with an asset-light,
+  light-default, Apple-inspired material system and complete rings for every
+  non-Cooking state.

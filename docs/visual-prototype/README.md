@@ -5,9 +5,14 @@ It is a review artifact, not the production application.
 
 ## Direction
 
-**Precision stove** combines an instrument-panel feel with restrained cooking
-signals. The interface remains quiet during long sessions and becomes expressive
-only when a stove changes state.
+**Bright Precision Stove** combines restrained cooking signals with the bright,
+translucent, fluid hierarchy of Apple's current design language. The interface
+remains quiet during long sessions and becomes vivid only when a stove changes
+state. Light mode is the primary presentation.
+
+This is an Apple-inspired interpretation, not a copy of Apple UI. It uses no
+Apple-owned templates, icons, screenshots, or brand assets. The same hierarchy is
+translated to native macOS, Windows, and Ubuntu material capabilities.
 
 The brand mark is an open burner ring that also reads as the letter `C`. Its
 single ignition point is the only warm accent in the static mark.
@@ -25,6 +30,30 @@ single ignition point is the only warm accent in the static mark.
 
 The prototype itself has no runtime dependencies, external fonts, images,
 network calls, canvas textures, or JavaScript frameworks.
+
+## Material and Color
+
+- The global and detached Bars are the floating functional layer. They use a
+  translucent white regular-glass treatment with blur, saturation, a bright edge,
+  and a soft neutral shadow.
+- Hover details may use the same functional material, but settings/content areas
+  remain near-white solid surfaces. Do not stack glass panels inside glass panels.
+- Light presentation is the default. A solid high-opacity fallback is mandatory
+  when transparency, compositor blur, or backdrop filters are unavailable.
+- State colors are deliberately vivid: heat orange, attention amber, cooked green,
+  failure red, and disconnected system gray.
+- Source accents are cyan for Codex, coral for Claude, and violet for Pi; visible
+  source names remain authoritative.
+- Motion responds immediately, settles quickly, and avoids decorative looping.
+  Reduced-motion, reduced-transparency, and increased-contrast settings must be
+  respected.
+
+Official design references:
+
+- [Apple HIG: Materials](https://developer.apple.com/design/human-interface-guidelines/materials)
+- [Apple HIG: Color](https://developer.apple.com/design/human-interface-guidelines/color)
+- [WWDC25: Meet Liquid Glass](https://developer.apple.com/videos/play/wwdc2025/219/)
+- [WWDC25: Get to know the new design system](https://developer.apple.com/videos/play/wwdc2025/356/)
 
 ## Status Language
 

@@ -17,7 +17,7 @@ Read these files in order before editing:
 2. `docs/plans/2026-08-29-cookbench-design.md` for the approved product,
    architecture, behavior, security, platform, and acceptance contract.
 3. `docs/visual-prototype/README.md` and
-   `docs/visual-prototype/index.html` for the approved Precision Stove identity,
+   `docs/visual-prototype/index.html` for the approved Bright Precision Stove identity,
    asset budget, and interactive visual reference.
 4. `docs/plans/2026-08-30-cookbench-implementation.md` for the ordered,
    test-driven implementation tasks and exact verification commands.
@@ -67,7 +67,10 @@ visual specification wins. Do not silently reinterpret the product.
 
 ## Non-Negotiable Visual Decisions
 
-- Use the original Precision Stove direction and open-`C` burner mark.
+- Use the original Bright Precision Stove direction and open-`C` burner mark.
+- The primary product presentation is bright, translucent, vivid, and light by
+  default, following the hierarchy and fluidity of Apple's current design language
+  without copying Apple-owned assets or making every platform look like macOS.
 - Runtime UI uses two small SVG masters, CSS/inline-SVG primitives, and system
   fonts. Do not introduce photos, illustration packs, GIFs, videos, Lottie,
   sprites, canvas textures, web fonts, or network-fetched visual assets.
@@ -84,6 +87,14 @@ visual specification wins. Do not silently reinterpret the product.
 - Center labels, visible text, tooltips, and accessible names supplement color.
 - The Stove itself supplies MVP personality. A standalone mascot illustration is
   deferred and must not increase the runtime package by default.
+- Use glass-like material only for the floating functional layer: global Bar,
+  detached Bars, hover details, and primary controls. Content/settings surfaces
+  remain near-white and solid; never stack glass surfaces.
+- Use native macOS material support, Windows system backdrops where available, and
+  Ubuntu compositor blur only when dependable. Every platform requires a bright,
+  high-opacity fallback with equal legibility.
+- Use vivid semantic state colors and small cyan/coral/violet harness accents.
+  Respect reduced motion, reduced transparency, and increased contrast.
 
 ## Delivery Discipline
 
@@ -134,7 +145,7 @@ expansion.
 - 原生 Session 文件是事实来源；不引入 SQLite，不复制完整对话。
 - 一个 Session 对应一个 Stove；全局 Bar 展示全部 Stove，独立 Bar 可同时存在；Cooked 保留到用户手动清除。
 - 仅有可靠结构化进度的 Cooking 可以显示不完整进度弧。Attention、Cooked、Failed、Disconnected 必须是完整圆环。
-- 严格沿用 docs/visual-prototype 的轻量视觉方案：两个小型原创 SVG、CSS/内联 SVG、系统字体；不加入照片、GIF、视频、Lottie、精灵图、字体包或第三方 Logo。
+- 严格沿用 docs/visual-prototype 的明亮、鲜艳、Apple-inspired 轻量视觉方案：默认浅色半透明材质、两个小型原创 SVG、CSS/内联 SVG、系统字体；不加入照片、GIF、视频、Lottie、精灵图、字体包或第三方 Logo，不把 Windows 或 Ubuntu 伪装成 macOS。
 - 首批适配 Codex、Claude Code、Pi，同时保持未来 Harness Adapter 扩展边界。
 - SSH 同时支持零安装只读模式和可选单文件 bridge；bridge 只通过 SSH stdio，不开放端口，不控制 Agent。
 - IM 仅向外发送状态通知，首批 Telegram、Slack、Discord、Lark/Feishu、Generic Webhook；不接收消息或远程控制。
