@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-labelledby="title desc">
+  <title id="title">Cookbench tray mark</title>
+  <desc id="desc">A monochrome open burner ring for system trays and menu bars.</desc>
+  <path d="M17.3 6.7A7.5 7.5 0 1 0 17.3 17.3" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/>
+  <circle cx="18.2" cy="12" r="1.8" fill="currentColor"/>
+</svg>

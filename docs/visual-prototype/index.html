@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cookbench - Lightweight Visual Proposal</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #f3f5f4;
+      --surface: #ffffff;
+      --ink: #151817;
+      --muted: #69716d;
+      --line: #d7dcda;
+      --bar: #171a19;
+      --bar-2: #222624;
+      --bar-line: #343a37;
+      --bar-text: #f3f5f4;
+      --bar-muted: #9ca6a1;
+      --heat: #ff6a2a;
+      --heat-soft: #ffb08c;
+      --attention: #f3b83f;
+      --cooked: #42c98a;
+      --failed: #e35b5b;
+      --disconnected: #8b9690;
+      --codex: #70c7c1;
+      --claude: #f29d67;
+      --pi: #b899ec;
+      --shadow: 0 18px 50px rgb(17 24 20 / 12%);
+      --radius: 8px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      background:
+        linear-gradient(var(--line) 1px, transparent 1px),
+        linear-gradient(90deg, var(--line) 1px, transparent 1px),
+        var(--paper);
+      background-size: 32px 32px;
+      color: var(--ink);
+    }
+
+    button { font: inherit; }
+
+    .page {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 40px 0 64px;
+    }
+
+    .masthead {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: end;
+      gap: 24px;
+      padding-bottom: 28px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .identity {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .identity img { width: 46px; height: 46px; }
+
+    .wordmark { font-size: 26px; font-weight: 720; line-height: 1; }
+    .descriptor { margin-top: 7px; color: var(--muted); font-size: 13px; }
+
+    .asset-note {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .asset-note::before {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--cooked);
+      content: "";
+    }
+
+    .intro {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
+      gap: 56px;
+      align-items: start;
+      padding: 54px 0 48px;
+    }
+
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { max-width: 700px; margin-bottom: 18px; font-size: 48px; line-height: 1.08; font-weight: 760; letter-spacing: 0; }
+    h2 { margin-bottom: 20px; font-size: 19px; line-height: 1.25; letter-spacing: 0; }
+    h3 { margin-bottom: 8px; font-size: 14px; letter-spacing: 0; }
+
+    .lead { max-width: 670px; margin-bottom: 0; color: var(--muted); font-size: 16px; line-height: 1.7; }
+
+    .principles {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      border: 1px solid var(--line);
+      background: rgb(255 255 255 / 70%);
+      border-radius: var(--radius);
+    }
+
+    .principle { min-width: 0; padding: 18px; }
+    .principle + .principle { border-left: 1px solid var(--line); }
+    .principle strong { display: block; margin-bottom: 5px; font-size: 12px; }
+    .principle span { color: var(--muted); font-size: 11px; line-height: 1.55; }
+
+    .stage {
+      position: relative;
+      min-height: 420px;
+      overflow: visible;
+      border: 1px solid #252a28;
+      border-radius: var(--radius);
+      background:
+        radial-gradient(circle at center, rgb(255 255 255 / 5%) 0 1px, transparent 1px),
+        #0f1110;
+      background-size: 18px 18px;
+      box-shadow: var(--shadow);
+    }
+
+    .stage-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 48px;
+      padding: 0 16px;
+      border-bottom: 1px solid #282d2a;
+      color: #a8b0ac;
+      font-size: 11px;
+    }
+
+    .window-dots { display: flex; gap: 6px; }
+    .window-dots i { width: 7px; height: 7px; border-radius: 50%; background: #343936; }
+
+    .stage-body {
+      min-height: 370px;
+      display: grid;
+      place-items: center;
+      padding: 42px 28px 68px;
+    }
+
+    .mode-switch {
+      display: inline-flex;
+      padding: 3px;
+      border: 1px solid #343a37;
+      border-radius: 7px;
+      background: #111412;
+    }
+
+    .mode-switch button {
+      min-width: 72px;
+      min-height: 28px;
+      padding: 0 10px;
+      border: 0;
+      border-radius: 5px;
+      background: transparent;
+      color: #8f9994;
+      cursor: pointer;
+      font-size: 11px;
+    }
+
+    .mode-switch button[aria-selected="true"] { background: #2a302d; color: #fff; }
+
+    .global-bar {
+      display: flex;
+      align-items: center;
+      width: max-content;
+      max-width: 100%;
+      min-height: 104px;
+      padding: 11px 12px;
+      overflow: visible;
+      border: 1px solid var(--bar-line);
+      border-radius: 8px;
+      background: var(--bar);
+      box-shadow: 0 22px 54px rgb(0 0 0 / 35%);
+      scrollbar-width: thin;
+    }
+
+    .brand-button {
+      display: grid;
+      place-items: center;
+      flex: 0 0 52px;
+      width: 52px;
+      height: 72px;
+      margin-right: 5px;
+      border: 0;
+      border-right: 1px solid var(--bar-line);
+      background: transparent;
+      cursor: default;
+    }
+
+    .brand-button img { width: 30px; filter: invert(1) grayscale(1) brightness(2.3); }
+
+    .stoves { display: flex; align-items: stretch; }
+
+    .stove {
+      position: relative;
+      display: grid;
+      grid-template-rows: 54px 18px;
+      justify-items: center;
+      flex: 0 0 82px;
+      width: 82px;
+      padding: 4px 5px 0;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--bar-text);
+      cursor: pointer;
+    }
+
+    .stove:hover, .stove:focus-visible { background: #242826; outline: none; }
+    .stove:focus-visible { box-shadow: inset 0 0 0 1px #727c77; }
+
+    .burner {
+      --state: var(--heat);
+      position: relative;
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+    }
+
+    .burner::before,
+    .burner::after {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      content: "";
+    }
+
+    .burner::before { border: 2px solid #3b423e; }
+
+    .burner::after {
+      background: conic-gradient(var(--state) var(--progress, 68%), transparent 0);
+      -webkit-mask: radial-gradient(circle, transparent 56%, #000 58% 66%, transparent 68%);
+      mask: radial-gradient(circle, transparent 56%, #000 58% 66%, transparent 68%);
+      transform: rotate(-90deg);
+    }
+
+    .heat-core {
+      position: absolute;
+      inset: 10px;
+      display: grid;
+      place-items: center;
+      border: 1px solid color-mix(in srgb, var(--state), #202422 58%);
+      border-radius: 50%;
+      background: color-mix(in srgb, var(--state), #171a19 86%);
+      color: var(--state);
+      font-size: 9px;
+      font-weight: 760;
+    }
+
+    [data-state="cooking"] .burner::after { animation: turn 3.2s linear infinite; }
+    [data-state="cooking"] .heat-core { animation: breathe 1.8s ease-in-out infinite; }
+    [data-state="attention"] .burner { --state: var(--attention); }
+    [data-state="attention"] .heat-core { animation: alert 1.4s ease-in-out infinite; }
+    [data-state="cooked"] .burner { --state: var(--cooked); --progress: 100%; }
+    [data-state="failed"] .burner { --state: var(--failed); --progress: 82%; }
+    [data-state="disconnected"] .burner { --state: var(--disconnected); --progress: 38%; }
+    [data-state="disconnected"] .burner::before { border-style: dashed; }
+
+    .source-label {
+      max-width: 72px;
+      overflow: hidden;
+      color: var(--bar-muted);
+      font-size: 10px;
+      line-height: 18px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .source-label::before {
+      display: inline-block;
+      width: 5px;
+      height: 5px;
+      margin-right: 5px;
+      border-radius: 50%;
+      background: var(--source);
+      vertical-align: 1px;
+      content: "";
+    }
+
+    [data-source="Codex"] { --source: var(--codex); }
+    [data-source="Claude"] { --source: var(--claude); }
+    [data-source="Pi"] { --source: var(--pi); }
+
+    .tooltip {
+      position: absolute;
+      left: 50%;
+      bottom: calc(100% + 16px);
+      z-index: 10;
+      width: 228px;
+      padding: 13px;
+      border: 1px solid #3c4440;
+      border-radius: 7px;
+      background: #202422;
+      box-shadow: 0 18px 38px rgb(0 0 0 / 35%);
+      color: #f3f5f4;
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, 4px);
+      transition: opacity 120ms ease, transform 120ms ease;
+      text-align: left;
+    }
+
+    .stove:hover .tooltip, .stove:focus-visible .tooltip { opacity: 1; transform: translate(-50%, 0); }
+    .tooltip strong { display: block; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+    .tooltip .task { min-height: 36px; margin: 8px 0 12px; color: #b8c0bc; font-size: 11px; line-height: 1.55; }
+    .tooltip dl { display: grid; grid-template-columns: 65px 1fr; gap: 6px 8px; margin: 0; font-size: 10px; }
+    .tooltip dt { color: #77827c; }
+    .tooltip dd { margin: 0; color: #d8ddda; overflow-wrap: anywhere; }
+
+    .bar-tools {
+      display: grid;
+      place-items: center;
+      flex: 0 0 40px;
+      width: 40px;
+      height: 72px;
+      margin-left: 5px;
+      border-left: 1px solid var(--bar-line);
+      color: #89928e;
+      font-size: 18px;
+    }
+
+    .detached-set {
+      display: none;
+      grid-template-columns: repeat(2, minmax(210px, 270px));
+      gap: 18px;
+      align-items: start;
+    }
+
+    .detached-bar {
+      display: grid;
+      grid-template-columns: 54px minmax(0, 1fr) 28px;
+      align-items: center;
+      min-height: 72px;
+      padding: 8px 10px;
+      border: 1px solid var(--bar-line);
+      border-radius: 8px;
+      background: var(--bar);
+      box-shadow: 0 16px 34px rgb(0 0 0 / 30%);
+      color: var(--bar-text);
+    }
+
+    .detached-bar:nth-child(2) { transform: translate(30px, 34px); }
+    .detached-bar .burner { width: 46px; height: 46px; }
+    .detached-copy { min-width: 0; padding: 0 8px; }
+    .detached-copy strong, .detached-copy span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .detached-copy strong { font-size: 12px; }
+    .detached-copy span { margin-top: 5px; color: var(--bar-muted); font-size: 10px; }
+    .detach-source { color: var(--claude); font-size: 9px; font-weight: 750; text-align: center; }
+
+    .stage[data-mode="detached"] .global-bar { display: none; }
+    .stage[data-mode="detached"] .detached-set { display: grid; }
+
+    .spec-grid {
+      display: grid;
+      grid-template-columns: 1.15fr .85fr;
+      gap: 28px;
+      padding-top: 48px;
+    }
+
+    .section-band {
+      padding: 28px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgb(255 255 255 / 84%);
+    }
+
+    .section-band > p { color: var(--muted); font-size: 13px; line-height: 1.65; }
+
+    .status-row {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 22px;
+    }
+
+    .status-swatch {
+      display: grid;
+      place-items: center;
+      min-width: 0;
+      padding: 15px 4px 11px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #f7f8f7;
+    }
+
+    .status-swatch .burner { width: 42px; height: 42px; }
+    .status-swatch .heat-core { inset: 9px; font-size: 8px; }
+    .status-swatch span { margin-top: 9px; color: var(--muted); font-size: 9px; }
+
+    .asset-list { margin: 20px 0 0; padding: 0; list-style: none; }
+    .asset-list li { display: grid; grid-template-columns: 92px 1fr auto; gap: 10px; padding: 11px 0; border-top: 1px solid var(--line); font-size: 11px; }
+    .asset-list span { color: var(--muted); }
+    .asset-list em { color: var(--cooked); font-style: normal; font-weight: 700; }
+
+    .mark-study { display: flex; align-items: center; gap: 24px; margin-top: 23px; }
+    .mark-large { display: grid; place-items: center; width: 116px; height: 116px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+    .mark-large img { width: 72px; height: 72px; }
+    .mark-small { display: flex; align-items: end; gap: 16px; }
+    .mark-small div { display: grid; place-items: center; border: 1px solid #2d322f; background: #171a19; color: #fff; }
+    .mark-small img { filter: invert(1) brightness(3); }
+    .tray-24 { width: 40px; height: 40px; }
+    .tray-24 img { width: 24px; height: 24px; }
+    .tray-16 { width: 32px; height: 32px; }
+    .tray-16 img { width: 16px; height: 16px; }
+
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 24px;
+      padding-top: 34px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    @keyframes turn { to { transform: rotate(270deg); } }
+    @keyframes breathe { 50% { box-shadow: 0 0 14px color-mix(in srgb, var(--heat), transparent 55%); transform: scale(.92); } }
+    @keyframes alert { 40%, 55% { box-shadow: 0 0 0 5px rgb(243 184 63 / 12%); } }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }
+    }
+
+    @media (max-width: 760px) {
+      .page { width: min(100% - 20px, 620px); padding-top: 22px; }
+      .masthead { grid-template-columns: 1fr; align-items: start; }
+      .intro { grid-template-columns: 1fr; gap: 28px; padding-top: 36px; }
+      h1 { font-size: 34px; }
+      .principles { grid-template-columns: 1fr; }
+      .principle + .principle { border-top: 1px solid var(--line); border-left: 0; }
+      .stage-body { place-items: center start; padding-inline: 16px; overflow: hidden; }
+      .global-bar { width: 100%; }
+      .global-bar { overflow-x: auto; overflow-y: hidden; }
+      .detached-set { grid-template-columns: minmax(210px, 1fr); width: 100%; }
+      .detached-bar:nth-child(2) { transform: translate(12px, 0); }
+      .spec-grid { grid-template-columns: 1fr; }
+      .status-row { grid-template-columns: repeat(3, 1fr); }
+      .section-band { padding: 20px; }
+      .footer { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="masthead">
+      <div class="identity">
+        <img src="assets/cookbench-mark.svg" alt="Cookbench">
+        <div>
+          <div class="wordmark">Cookbench</div>
+          <div class="descriptor">Precision stove / lightweight visual proposal 01</div>
+        </div>
+      </div>
+      <div class="asset-note">Zero raster assets in the runtime UI</div>
+    </header>
+
+    <section class="intro">
+      <div>
+        <h1>安静地烹饪，明确地完成。</h1>
+        <p class="lead">用一个开放的炉圈承载品牌，用热量、缺口和节奏传递状态。日常保持克制，只有在需要人类注意或任务完成时才提高存在感。</p>
+      </div>
+      <div class="principles" aria-label="Visual principles">
+        <div class="principle"><strong>One mark</strong><span>品牌、托盘与 Stove 共用同一种圆环语言。</span></div>
+        <div class="principle"><strong>No weight</strong><span>系统字体、SVG 和 CSS 动效，不绑定图片包。</span></div>
+        <div class="principle"><strong>True state</strong><span>有结构化进度才显示弧度，没有就只表达活跃。</span></div>
+      </div>
+    </section>
+
+    <section class="stage" id="stage" data-mode="global" aria-label="Cookbench interface concept">
+      <div class="stage-top">
+        <span>DESKTOP COMPOSITION</span>
+        <div class="mode-switch" role="tablist" aria-label="Display mode">
+          <button type="button" role="tab" aria-selected="true" data-mode-button="global">Global</button>
+          <button type="button" role="tab" aria-selected="false" data-mode-button="detached">Detached</button>
+        </div>
+        <div class="window-dots" aria-hidden="true"><i></i><i></i><i></i></div>
+      </div>
+
+      <div class="stage-body">
+        <div class="global-bar" aria-label="Global Cookbench bar">
+          <div class="brand-button"><img src="assets/cookbench-mark.svg" alt=""></div>
+          <div class="stoves">
+            <button class="stove" type="button" data-state="cooking" data-source="Codex">
+              <span class="burner" style="--progress: 72%"><span class="heat-core">72</span></span>
+              <span class="source-label">Codex</span>
+              <span class="tooltip" role="tooltip">
+                <strong>cookbench-desktop</strong>
+                <span class="task">Implementing the session adapter contract</span>
+                <dl><dt>Status</dt><dd>Cooking</dd><dt>Progress</dt><dd>5 / 7 plan steps</dd><dt>Elapsed</dt><dd>18m 42s</dd><dt>Next</dt><dd>Run adapter tests</dd></dl>
+              </span>
+            </button>
+            <button class="stove" type="button" data-state="attention" data-source="Claude">
+              <span class="burner" style="--progress: 46%"><span class="heat-core">!</span></span>
+              <span class="source-label">Claude</span>
+              <span class="tooltip" role="tooltip">
+                <strong>billing-console</strong>
+                <span class="task">Waiting for a migration choice</span>
+                <dl><dt>Status</dt><dd>Needs attention</dd><dt>Progress</dt><dd>3 / 8 tasks</dd><dt>Elapsed</dt><dd>07m 16s</dd><dt>Next</dt><dd>Return to Claude Code</dd></dl>
+              </span>
+            </button>
+            <button class="stove" type="button" data-state="cooked" data-source="Pi">
+              <span class="burner"><span class="heat-core">OK</span></span>
+              <span class="source-label">Pi</span>
+              <span class="tooltip" role="tooltip">
+                <strong>docs-refresh</strong>
+                <span class="task">API documentation refresh completed</span>
+                <dl><dt>Status</dt><dd>Cooked</dd><dt>Finished</dt><dd>11:42</dd><dt>Result</dt><dd>21 checks passed</dd><dt>Next</dt><dd>Review or clear stove</dd></dl>
+              </span>
+            </button>
+            <button class="stove" type="button" data-state="disconnected" data-source="Codex">
+              <span class="burner"><span class="heat-core">--</span></span>
+              <span class="source-label">Codex</span>
+              <span class="tooltip" role="tooltip">
+                <strong>prod-shell</strong>
+                <span class="task">Remote session is currently unreachable</span>
+                <dl><dt>Status</dt><dd>Disconnected</dd><dt>Host</dt><dd>build-02</dd><dt>Last seen</dt><dd>4m ago</dd><dt>Next</dt><dd>Reconnect SSH</dd></dl>
+              </span>
+            </button>
+          </div>
+          <div class="bar-tools" title="Four retained stoves" aria-label="Four retained stoves">4</div>
+        </div>
+
+        <div class="detached-set" aria-label="Detached Cookbench bars">
+          <div class="detached-bar" data-state="cooking">
+            <span class="burner" style="--progress: 72%"><span class="heat-core">72</span></span>
+            <span class="detached-copy"><strong>cookbench-desktop</strong><span>Implementing adapter contract</span></span>
+            <span class="detach-source">CX</span>
+          </div>
+          <div class="detached-bar" data-state="cooked">
+            <span class="burner"><span class="heat-core">OK</span></span>
+            <span class="detached-copy"><strong>docs-refresh</strong><span>Cooked · ready to review</span></span>
+            <span class="detach-source" style="color: var(--pi)">PI</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="spec-grid">
+      <div class="section-band">
+        <h2>状态是一套形状语言</h2>
+        <p>颜色只是辅助。圆环的连续、断开、虚线与运动节奏，让灰阶和色觉差异环境里仍能辨认状态。</p>
+        <div class="status-row">
+          <div class="status-swatch" data-state="cooking"><span class="burner"><span class="heat-core">RUN</span></span><span>Cooking</span></div>
+          <div class="status-swatch" data-state="attention"><span class="burner"><span class="heat-core">!</span></span><span>Attention</span></div>
+          <div class="status-swatch" data-state="cooked"><span class="burner"><span class="heat-core">OK</span></span><span>Cooked</span></div>
+          <div class="status-swatch" data-state="failed"><span class="burner"><span class="heat-core">×</span></span><span>Failed</span></div>
+          <div class="status-swatch" data-state="disconnected"><span class="burner"><span class="heat-core">--</span></span><span>Offline</span></div>
+        </div>
+      </div>
+
+      <div class="section-band">
+        <h2>一枚标志，三个尺度</h2>
+        <p>开放炉圈同时构成字母 C。彩色点只出现在品牌标志中，系统托盘使用纯单色模板。</p>
+        <div class="mark-study">
+          <div class="mark-large"><img src="assets/cookbench-mark.svg" alt="Full Cookbench mark"></div>
+          <div class="mark-small" aria-label="Tray icon sizes">
+            <div class="tray-24"><img src="assets/cookbench-tray.svg" alt="24 pixel tray mark"></div>
+            <div class="tray-16"><img src="assets/cookbench-tray.svg" alt="16 pixel tray mark"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-band">
+        <h2>严格的资产预算</h2>
+        <p>生产界面不下载资源、不携带字体、不加载图片纹理。平台图标由同一份矢量母版在发布时生成。</p>
+        <ul class="asset-list">
+          <li><strong>Brand mark</strong><span>SVG master</span><em>&lt; 1 KB</em></li>
+          <li><strong>Tray mark</strong><span>Monochrome SVG</span><em>&lt; 1 KB</em></li>
+          <li><strong>UI motion</strong><span>CSS transform</span><em>0 assets</em></li>
+          <li><strong>Typography</strong><span>System stack</span><em>0 fonts</em></li>
+        </ul>
+      </div>
+
+      <div class="section-band">
+        <h2>Cook 只在关键时刻出现</h2>
+        <p>第一阶段不制作独立角色插画。完成反馈直接由炉圈“收火、亮绿、稳定”承担。品牌角色留到需要传播素材时再设计，避免让 MVP 为装饰付出体积和注意力成本。</p>
+        <ul class="asset-list">
+          <li><strong>MVP</strong><span>Burner personality</span><em>Included</em></li>
+          <li><strong>Later</strong><span>Original mascot set</span><em>Deferred</em></li>
+          <li><strong>Never</strong><span>GIF / video / sprites</span><em>Excluded</em></li>
+        </ul>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <span>Cookbench visual proposal 01 · original vector system</span>
+      <span>2 SVG masters · system fonts · CSS motion · no raster runtime assets</span>
+    </footer>
+  </main>
+
+  <script>
+    const stage = document.querySelector("#stage");
+    document.querySelectorAll("[data-mode-button]").forEach((button) => {
+      button.addEventListener("click", () => {
+        stage.dataset.mode = button.dataset.modeButton;
+        document.querySelectorAll("[data-mode-button]").forEach((candidate) => {
+          candidate.setAttribute("aria-selected", String(candidate === button));
+        });
+      });
+    });
+  </script>
+</body>
+</html>

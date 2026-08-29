@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">Cookbench mark</title>
+  <desc id="desc">An open burner ring forming the letter C, with a warm ignition point.</desc>
+  <path d="M48.6 15.4A23.5 23.5 0 1 0 48.6 48.6" fill="none" stroke="#151817" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="50.5" cy="32" r="5.5" fill="#FF6A2A"/>
+</svg>
