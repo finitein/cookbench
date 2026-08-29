@@ -371,6 +371,9 @@ dependencies = [
 name = "cookbench-desktop"
 version = "0.1.0"
 dependencies = [
+ "cookbench-core",
+ "serde",
+ "serde_json",
  "tauri",
  "tauri-build",
 ]

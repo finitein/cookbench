@@ -1,8 +1,15 @@
+pub mod app_state;
+pub mod commands;
+pub mod events;
 pub mod platform;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(app_state::AppState::default())
+        .invoke_handler(tauri::generate_handler![
+            commands::stoves::get_stoves_snapshot
+        ])
         .setup(|app| {
             let overlay = platform::TauriOverlayController::new(app.handle().clone());
             // Wayland can show the window but cannot promise a compositor-level
