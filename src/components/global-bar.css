@@ -1,0 +1,228 @@
+.global-bar {
+  --bar-ink: #171a1f;
+  --bar-muted: #5f6875;
+  --bar-line: rgb(255 255 255 / 88%);
+  --bar-heat: #ff6a2a;
+  --bar-attention: #e68a00;
+  --bar-cooked: #168c50;
+  --bar-failed: #d9342b;
+  --bar-disconnected: #626a73;
+  --bar-codex: #007cab;
+  --bar-claude: #bd4f22;
+  --bar-pi: #8135ae;
+  display: flex;
+  align-items: stretch;
+  width: min(100%, 900px);
+  min-height: 104px;
+  padding: 11px 12px;
+  border: 1px solid var(--bar-line);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 88%);
+  box-shadow: 0 20px 48px rgb(65 88 112 / 20%), inset 0 1px 0 rgb(255 255 255 / 76%);
+  color: var(--bar-ink);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  backdrop-filter: blur(28px) saturate(190%);
+}
+
+@supports (background: color-mix(in srgb, white, transparent)) {
+  .global-bar { background: rgb(255 255 255 / 72%); }
+}
+
+.global-bar__brand {
+  display: grid;
+  width: 52px;
+  min-width: 52px;
+  min-height: 72px;
+  place-items: center;
+  border-right: 1px solid rgb(109 129 148 / 16%);
+}
+
+.global-bar__brand img { width: 30px; height: 30px; }
+
+.global-bar__stoves {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: repeat(auto-fit, minmax(76px, 82px));
+  grid-auto-rows: 74px;
+  align-content: start;
+  gap: 4px;
+  min-width: 0;
+  padding-left: 5px;
+}
+
+.global-bar__item { min-width: 0; }
+
+.stove-burner-wrap {
+  position: relative;
+  width: 82px;
+  height: 74px;
+}
+
+.stove-burner {
+  position: relative;
+  display: grid;
+  grid-template-rows: 54px 18px;
+  width: 82px;
+  height: 74px;
+  padding: 2px 5px 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--bar-ink);
+  cursor: pointer;
+  font: inherit;
+  text-align: center;
+}
+
+.stove-burner:hover,
+.stove-burner:focus-visible {
+  background: rgb(255 255 255 / 76%);
+  box-shadow: 0 4px 14px rgb(65 88 112 / 12%);
+  outline: none;
+}
+
+.stove-burner:focus-visible { box-shadow: inset 0 0 0 2px #316f98, 0 4px 14px rgb(65 88 112 / 12%); }
+
+.stove-burner__ring { display: grid; place-items: center; }
+
+.progress-ring {
+  position: relative;
+  display: grid;
+  width: 54px;
+  height: 54px;
+  place-items: center;
+  color: var(--bar-heat);
+}
+
+.progress-ring svg { width: 54px; height: 54px; transform: rotate(-90deg); }
+.progress-ring__track,
+.progress-ring__value { fill: none; stroke-width: 4; }
+.progress-ring__track { stroke: #c9d3dd; }
+.progress-ring__value {
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-dasharray: var(--ring-progress, 100) 100;
+}
+
+.progress-ring__label {
+  position: absolute;
+  max-width: 42px;
+  overflow: hidden;
+  color: var(--bar-ink);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+  text-align: center;
+  text-overflow: ellipsis;
+}
+
+.progress-ring--indeterminate .progress-ring__value { stroke-dasharray: 24 76; animation: cookbench-ring-turn 1.6s linear infinite; }
+.progress-ring--determinate .progress-ring__value { stroke-dasharray: var(--ring-progress) 100; animation: cookbench-ring-turn 3.2s linear infinite; }
+.progress-ring--needsHuman { color: var(--bar-attention); }
+.progress-ring--needsHuman .progress-ring__value { animation: cookbench-alert 1.4s ease-in-out infinite; }
+.progress-ring--cooked { color: var(--bar-cooked); }
+.progress-ring--failed { color: var(--bar-failed); }
+.progress-ring--disconnected { color: var(--bar-disconnected); }
+.progress-ring--starting,
+.progress-ring--planning { color: var(--bar-heat); }
+
+.stove-burner__identity { display: grid; place-items: center; }
+
+.harness-mark {
+  min-width: 31px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, currentColor 14%, white);
+  color: var(--bar-codex);
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1.2;
+}
+
+.harness-mark--claude { color: var(--bar-claude); }
+.harness-mark--claudeCode { color: var(--bar-claude); }
+.harness-mark--pi { color: var(--bar-pi); }
+
+.host-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  padding: 1px 3px;
+  border: 1px solid #c5d0da;
+  border-radius: 3px;
+  background: #fff;
+  color: #47525d;
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.host-badge--remote { border-color: #6e98b1; color: #195b7c; }
+
+.stove-burner[data-completion="finishing"] .progress-ring__value {
+  animation: cookbench-finish-flare 420ms ease-out 1;
+}
+
+.stove-tooltip {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 7px);
+  left: 50%;
+  display: grid;
+  width: 260px;
+  padding: 12px;
+  border: 1px solid #dbe3eb;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 14px 32px rgb(65 88 112 / 18%);
+  color: var(--bar-ink);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -4px);
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.stove-burner-wrap:hover .stove-tooltip,
+.stove-burner:focus-visible + .stove-tooltip { opacity: 1; transform: translate(-50%, 0); }
+
+.stove-tooltip strong,
+.stove-tooltip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stove-tooltip strong { font-size: 13px; line-height: 1.3; }
+.stove-tooltip > span { margin-top: 2px; color: var(--bar-muted); font-size: 11px; line-height: 1.35; }
+.stove-tooltip dl { display: grid; gap: 5px; margin: 10px 0 0; }
+.stove-tooltip dl div { display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 8px; }
+.stove-tooltip dt,
+.stove-tooltip dd { min-width: 0; margin: 0; font-size: 11px; line-height: 1.35; }
+.stove-tooltip dt { color: var(--bar-muted); }
+.stove-tooltip dd { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@keyframes cookbench-ring-turn { to { transform: rotate(270deg); } }
+@keyframes cookbench-alert { 50% { opacity: 0.55; } }
+@keyframes cookbench-finish-flare { 50% { opacity: 0.45; stroke-width: 6; } }
+
+@media (max-width: 420px) {
+  .global-bar { align-items: start; }
+  .global-bar__brand { width: 38px; min-width: 38px; }
+  .global-bar__brand img { width: 24px; height: 24px; }
+  .global-bar__stoves { grid-template-columns: repeat(auto-fit, minmax(76px, 82px)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-ring--indeterminate .progress-ring__value,
+  .progress-ring--determinate .progress-ring__value,
+  .progress-ring--needsHuman .progress-ring__value,
+  .stove-burner[data-completion="finishing"] .progress-ring__value,
+  .stove-tooltip { animation: none; transition: none; }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .global-bar { background: #fff; backdrop-filter: none; }
+}
+
+@media (prefers-contrast: more) {
+  .global-bar { border-color: #4e5a66; box-shadow: none; }
+  .progress-ring__track { stroke: #4e5a66; }
+  .host-badge,
+  .harness-mark { border: 1px solid currentColor; }
+}

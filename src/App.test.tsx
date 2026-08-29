@@ -3,10 +3,10 @@ import { render, screen } from "@testing-library/react";
 import App from "./App";
 
 describe("App", () => {
-  it("renders the Cookbench shell and a stove", () => {
+  it("renders the global bar without inventing an empty stove", () => {
     render(<App />);
 
-    expect(screen.getByText("Cookbench")).toBeInTheDocument();
-    expect(screen.getByTestId("stove")).toBeInTheDocument();
+    expect(screen.getByLabelText("Cookbench global bar with 0 stoves")).toBeInTheDocument();
+    expect(screen.queryAllByRole("listitem")).toHaveLength(0);
   });
 });
