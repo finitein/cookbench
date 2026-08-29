@@ -1,6 +1,8 @@
 html,
 body,
 #root {
+  box-sizing: border-box;
+  width: 100%;
   min-width: 0;
   min-height: 100%;
   margin: 0;
@@ -12,7 +14,9 @@ body {
 }
 
 .shell {
+  box-sizing: border-box;
   display: grid;
+  width: 100%;
   min-height: 100vh;
   place-items: center;
   padding: 20px;

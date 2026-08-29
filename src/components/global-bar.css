@@ -10,6 +10,7 @@
   --bar-codex: #007cab;
   --bar-claude: #bd4f22;
   --bar-pi: #8135ae;
+  box-sizing: border-box;
   display: flex;
   align-items: stretch;
   width: min(100%, 900px);
@@ -206,6 +207,22 @@
   .global-bar__brand { width: 38px; min-width: 38px; }
   .global-bar__brand img { width: 24px; height: 24px; }
   .global-bar__stoves { grid-template-columns: repeat(auto-fit, minmax(76px, 82px)); }
+  .stove-tooltip { width: min(260px, calc(100vw - 16px)); }
+  .global-bar__item:nth-child(3n + 1) .stove-tooltip {
+    left: 0;
+    transform: translate(0, -4px);
+  }
+  .global-bar__item:nth-child(3n) .stove-tooltip {
+    right: 0;
+    left: auto;
+    transform: translate(0, -4px);
+  }
+  .global-bar__item:nth-child(3n + 1) .stove-burner-wrap:hover .stove-tooltip,
+  .global-bar__item:nth-child(3n + 1) .stove-burner:focus-visible + .stove-tooltip,
+  .global-bar__item:nth-child(3n) .stove-burner-wrap:hover .stove-tooltip,
+  .global-bar__item:nth-child(3n) .stove-burner:focus-visible + .stove-tooltip {
+    transform: translate(0, 0);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
