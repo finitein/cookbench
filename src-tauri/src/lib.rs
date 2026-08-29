@@ -1,6 +1,7 @@
 pub mod app_state;
 pub mod commands;
 pub mod events;
+pub mod locator;
 pub mod platform;
 pub mod window_registry;
 

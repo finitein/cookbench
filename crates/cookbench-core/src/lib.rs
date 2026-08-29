@@ -1,6 +1,7 @@
 pub const PRODUCT_NAME: &str = "Cookbench";
 
 pub mod domain;
+pub mod locator;
 pub mod persistence;
 pub mod state_machine;
 
