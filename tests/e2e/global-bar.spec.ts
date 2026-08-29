@@ -11,6 +11,8 @@ test("global Bar presents sessions from Codex, Claude Code, and Pi together", as
   await expect(bar).toBeVisible();
   await expect(bar.getByTestId("stove")).toHaveCount(3);
   for (const harness of E2E_HARNESSES) {
-    await expect(bar.getByRole("button", { name: new RegExp(harness.label) })).toBeVisible();
+    await expect(
+      bar.locator(`[data-testid="stove"][aria-label^="${harness.label}:"]`),
+    ).toBeVisible();
   }
 });

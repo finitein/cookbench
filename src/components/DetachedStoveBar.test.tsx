@@ -25,6 +25,8 @@ describe("DetachedStoveBar", () => {
     render(<DetachedStoveBar stove={stove} />);
 
     expect(screen.getByRole("region", { name: "Detached Stove bar for Codex" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Detached Stove bar for Codex" }))
+      .toHaveAttribute("data-tauri-drag-region");
     expect(screen.getByRole("button", { name: /Codex:/ })).toBeInTheDocument();
     expect(document.querySelector(".detached-stove-bar__identity")).toHaveTextContent("Codex");
     expect(screen.getByTestId("stove")).toHaveAttribute("data-state", "cooking");

@@ -198,12 +198,45 @@ impl JsonlTailer {
         Ok(records)
     }
 
+    /// Moves the incremental cursor to the current EOF without reading native
+    /// records. Startup uses this after metadata discovery so historical turns
+    /// cannot be mistaken for a newly observed completion.
+    pub fn skip_existing(&mut self) -> Result<(), TailError> {
+        let checked = checked_regular_file(&self.root, &self.path)?;
+        let metadata = fs::metadata(&checked)?;
+        self.identity = FileIdentity::from_metadata(&metadata);
+        self.cursor = metadata.len();
+        self.partial.clear();
+        self.discarding_oversized_line = false;
+        Ok(())
+    }
+
+    /// Starts at a bounded suffix of the native file. If the suffix begins in
+    /// the middle of a JSONL record, bytes are discarded through its newline.
+    /// This reconstructs recent authoritative state without loading an entire
+    /// long-running transcript into memory.
+    pub fn seek_recent_window(&mut self, maximum_bytes: u64) -> Result<(), TailError> {
+        let checked = checked_regular_file(&self.root, &self.path)?;
+        let metadata = fs::metadata(&checked)?;
+        self.identity = FileIdentity::from_metadata(&metadata);
+        self.cursor = metadata.len().saturating_sub(maximum_bytes);
+        self.partial.clear();
+        self.discarding_oversized_line = self.cursor > 0;
+        Ok(())
+    }
+
     pub fn buffered_bytes(&self) -> usize {
         self.partial.len()
     }
 
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    /// Stable byte-position hint used to seed normalized event ordering after
+    /// restart. It reveals no native record content.
+    pub fn cursor(&self) -> u64 {
+        self.cursor
     }
 }
 

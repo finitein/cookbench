@@ -11,7 +11,11 @@ export type DetachedStoveBarProps = {
 /** One movable view of one Stove; it intentionally shares the global burner. */
 export function DetachedStoveBar({ stove, onActivate, onClear }: DetachedStoveBarProps) {
   return (
-    <section className="detached-stove-bar" aria-label={`Detached Stove bar for ${stove.harness.label}`}>
+    <section
+      className="detached-stove-bar"
+      aria-label={`Detached Stove bar for ${stove.harness.label}`}
+      data-tauri-drag-region
+    >
       <div className="detached-stove-bar__identity" aria-hidden="true">
         {stove.harness.label}
       </div>

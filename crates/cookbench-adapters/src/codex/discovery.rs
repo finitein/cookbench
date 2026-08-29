@@ -66,7 +66,9 @@ impl CodexAdapter {
             .collect()
     }
 
-    fn session_from_path(
+    /// Reads bounded structural metadata for one already-selected native path.
+    /// Callers should filter candidates by metadata before invoking this method.
+    pub fn session_from_path(
         &self,
         source: &HostSource,
         path: &Path,
@@ -80,7 +82,7 @@ impl CodexAdapter {
             .map_err(|error| AdapterError::Message(error.to_string()))?;
         let mut session_id = None;
         let mut cwd = None;
-        for sequence in 1..=8 {
+        for sequence in 1..=1 {
             let records = tailer
                 .poll()
                 .map_err(|error| AdapterError::Message(error.to_string()))?;
@@ -176,7 +178,10 @@ impl CodexAdapter {
 /// Resolves Codex's home directory without creating it. `CODEX_HOME` is an
 /// explicit override; otherwise the user's standard `.codex` directory wins.
 pub fn default_codex_home() -> PathBuf {
-    codex_home_from(env::var_os("CODEX_HOME"), env::var_os("HOME"))
+    codex_home_from(
+        env::var_os("CODEX_HOME"),
+        env::var_os("HOME").or_else(|| env::var_os("USERPROFILE")),
+    )
 }
 
 /// Resolves a home path from supplied environment values. Kept separate from

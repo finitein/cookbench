@@ -111,9 +111,10 @@ fn persisted_schema_contains_only_safe_retained_fields() {
     }
 
     let retained = value["retained"][0].as_object().unwrap();
-    assert_eq!(retained.len(), 2);
+    assert_eq!(retained.len(), 3);
     assert!(retained.contains_key("locator"));
     assert!(retained.contains_key("completed_at_ms"));
+    assert!(retained.contains_key("presentation"));
 }
 
 #[test]
@@ -171,6 +172,26 @@ fn unknown_future_fields_are_ignored() {
             .unwrap(),
         PersistedConfig::default()
     );
+}
+
+#[test]
+fn retained_stoves_without_a_presentation_migrate_to_an_empty_safe_default() {
+    let legacy = r#"{
+        "version": 1,
+        "retained": [{
+            "locator": {
+                "host": {"kind":"Local","id":"test-host"},
+                "harness":"Codex",
+                "native_session_id":"opaque-session"
+            },
+            "completed_at_ms": 42
+        }],
+        "clear_cursors": []
+    }"#;
+
+    let state: PersistedState = serde_json::from_str(legacy).unwrap();
+    assert_eq!(state.retained[0].presentation.project_label, "");
+    assert_eq!(state.retained[0].presentation.project_root_display, "");
 }
 
 #[test]

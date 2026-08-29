@@ -39,6 +39,26 @@
 }
 
 .global-bar__brand img { width: 30px; height: 30px; }
+.global-bar__settings {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #5f6875;
+  cursor: pointer;
+  place-items: center;
+}
+.global-bar__settings:hover,
+.global-bar__settings:focus-visible { background: rgb(255 255 255 / 76%); outline: 2px solid #316f98; }
+.global-bar__settings > span { display: grid; width: 13px; gap: 3px; }
+.global-bar__settings i { position: relative; display: block; height: 1px; background: currentColor; }
+.global-bar__settings i::after { position: absolute; top: -2px; width: 5px; height: 5px; border-radius: 50%; background: currentColor; content: ""; }
+.global-bar__settings i:nth-child(1)::after,
+.global-bar__settings i:nth-child(3)::after { left: 2px; }
+.global-bar__settings i:nth-child(2)::after { right: 2px; }
 
 .global-bar__stoves {
   display: grid;
@@ -83,6 +103,54 @@
 }
 
 .stove-burner:focus-visible { box-shadow: inset 0 0 0 2px #316f98, 0 4px 14px rgb(65 88 112 / 12%); }
+
+.stove-burner__control {
+  position: absolute;
+  z-index: 3;
+  top: 1px;
+  display: grid;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid #c5d0da;
+  border-radius: 4px;
+  background: #fff;
+  color: #47525d;
+  cursor: pointer;
+  opacity: 0;
+  place-items: center;
+}
+
+.stove-burner-wrap:hover .stove-burner__control,
+.stove-burner__control:focus-visible { opacity: 1; }
+.stove-burner__control:focus-visible { outline: 2px solid #316f98; outline-offset: 1px; }
+.stove-burner__control--detach { left: 1px; }
+.stove-burner__control--clear { right: 1px; }
+.stove-burner__control span { position: relative; display: block; width: 9px; height: 9px; }
+.stove-burner__control--detach span { border: 1px solid currentColor; border-radius: 1px; }
+.stove-burner__control--detach span::after {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 5px;
+  height: 5px;
+  border-top: 1px solid currentColor;
+  border-right: 1px solid currentColor;
+  background: #fff;
+  content: "";
+}
+.stove-burner__control--clear span::before,
+.stove-burner__control--clear span::after {
+  position: absolute;
+  top: 4px;
+  left: 0;
+  width: 9px;
+  height: 1px;
+  background: currentColor;
+  content: "";
+  transform: rotate(45deg);
+}
+.stove-burner__control--clear span::after { transform: rotate(-45deg); }
 
 .stove-burner__ring { display: grid; place-items: center; }
 
@@ -231,6 +299,7 @@
   .progress-ring--needsHuman .progress-ring__value,
   .stove-burner[data-completion="finishing"] .progress-ring__value,
   .stove-tooltip { animation: none; transition: none; }
+  .stove-burner__control { transition: none; }
 }
 
 @media (prefers-reduced-transparency: reduce) {

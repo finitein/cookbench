@@ -56,7 +56,8 @@ impl PiAdapter {
             .collect()
     }
 
-    fn session_from_file(
+    /// Reads bounded structural metadata for one already-selected native path.
+    pub fn session_from_file(
         &self,
         source: &HostSource,
         path: PathBuf,
@@ -76,6 +77,32 @@ impl PiAdapter {
             parsed.native_session_id,
             project,
             parsed.title,
+            SessionLocator::new(locator_kind, path.to_string_lossy())?,
+        )
+    }
+
+    /// Builds a content-free identity for a metadata-filtered runtime path.
+    /// Lifecycle replay may then inspect only the shared bounded suffix.
+    pub fn session_metadata_from_path(
+        &self,
+        source: &HostSource,
+        path: PathBuf,
+    ) -> Result<NativeSession, AdapterError> {
+        let native_session_id = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .filter(|stem| !stem.is_empty())
+            .ok_or_else(|| AdapterError::Message("Pi session path has no safe identity".into()))?;
+        let locator_kind = match source {
+            HostSource::Local(_) => SessionLocatorKind::LocalPath,
+            HostSource::Ssh(_) => SessionLocatorKind::RemotePath,
+        };
+        NativeSession::new(
+            source.host().clone(),
+            HarnessId::Pi,
+            native_session_id,
+            None,
+            None,
             SessionLocator::new(locator_kind, path.to_string_lossy())?,
         )
     }
@@ -141,6 +168,9 @@ fn default_session_root() -> PathBuf {
     env::var_os("PI_SESSION_DIR")
         .map(PathBuf::from)
         .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".pi/agent/sessions")))
+        .or_else(|| {
+            env::var_os("USERPROFILE").map(|home| PathBuf::from(home).join(".pi/agent/sessions"))
+        })
         .unwrap_or_else(|| PathBuf::from(".pi/agent/sessions"))
 }
 

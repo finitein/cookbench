@@ -19,6 +19,38 @@ pub enum Capability {
     SessionParsing,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConfiguredHarness {
+    Auto,
+    Codex,
+    ClaudeCode,
+    Pi,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ConfiguredRoot {
+    pub harness: ConfiguredHarness,
+    pub path: String,
+}
+
+impl ConfiguredRoot {
+    pub fn new(harness: ConfiguredHarness, path: impl Into<String>) -> Result<Self, ProtocolError> {
+        let root = Self {
+            harness,
+            path: path.into(),
+        };
+        if root.path.is_empty()
+            || !root.path.starts_with('/')
+            || root.path.len() > 4 * 1024
+            || root.path.chars().any(char::is_control)
+        {
+            return Err(ProtocolError::InvalidRoot);
+        }
+        Ok(root)
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct NormalizedEvent {
     /// Opaque deterministic stove identity, never a prompt or transcript.
@@ -26,6 +58,18 @@ pub struct NormalizedEvent {
     pub harness: String,
     pub state: NormalizedState,
     pub sequence: u64,
+    /// Bounded native project metadata, never a transcript or prompt. This is
+    /// absent until a first-party record reports an absolute project path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_root: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub progress: Option<NormalizedProgress>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct NormalizedProgress {
+    pub completed: u32,
+    pub total: u32,
 }
 
 impl NormalizedEvent {
@@ -40,7 +84,22 @@ impl NormalizedEvent {
             harness: harness.into(),
             state: NormalizedState::from_wire(state),
             sequence,
+            project_root: None,
+            progress: None,
         }
+    }
+
+    pub fn with_progress(mut self, completed: u32, total: u32) -> Self {
+        self.progress =
+            (total > 0 && completed <= total).then_some(NormalizedProgress { completed, total });
+        self
+    }
+
+    pub fn with_project_root(mut self, project_root: Option<String>) -> Self {
+        self.project_root = project_root.filter(|path| {
+            path.starts_with('/') && path.len() <= 4 * 1024 && !path.chars().any(char::is_control)
+        });
+        self
     }
 }
 
@@ -74,6 +133,7 @@ impl NormalizedState {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Frame {
     Hello { version: u16 },
+    Configure { roots: Vec<ConfiguredRoot> },
     Capabilities { capabilities: Vec<Capability> },
     Event { event: NormalizedEvent },
     Heartbeat,
@@ -138,6 +198,7 @@ pub enum ProtocolError {
     VersionMismatch { expected: u16, received: u16 },
     UnexpectedMessage,
     HandshakeRequired,
+    InvalidRoot,
     Shutdown,
 }
 
@@ -156,6 +217,7 @@ impl fmt::Display for ProtocolError {
             ),
             Self::UnexpectedMessage => write!(f, "bridge received a disallowed message"),
             Self::HandshakeRequired => write!(f, "bridge hello handshake is required"),
+            Self::InvalidRoot => write!(f, "bridge session root is invalid"),
             Self::Shutdown => write!(f, "bridge is shut down"),
         }
     }

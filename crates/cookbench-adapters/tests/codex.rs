@@ -139,6 +139,16 @@ fn parses_lifecycle_progress_failure_and_ignores_unknown_records() {
         event(r#"{"type":"event_msg","payload":{"type":"task_complete"}}"#),
         EventKind::TurnCompleted
     ));
+    assert!(matches!(
+        event(r#"{"type":"event_msg","payload":{"type":"permission_requested"}}"#),
+        EventKind::PermissionRequested
+    ));
+    assert!(matches!(
+        event(
+            r#"{"type":"response_item","payload":{"type":"function_call","name":"request_user_input","arguments":"[redacted]"}}"#
+        ),
+        EventKind::QuestionAsked
+    ));
 }
 
 #[test]

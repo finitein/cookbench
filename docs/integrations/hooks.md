@@ -5,7 +5,9 @@ latency only: native Codex, Claude Code, and Pi session files remain the
 authoritative source for recovery and structured history.
 
 The helper reads one JSON object from standard input and writes one atomic JSON
-envelope to the existing runtime spool named by `COOKBENCH_HOOK_SPOOL_DIR`.
+envelope to the existing app-private runtime spool. It uses
+`COOKBENCH_HOOK_SPOOL_DIR` when supplied and otherwise resolves Cookbench's
+standard per-user app-data directory on macOS, Windows, or Linux.
 Cookbench creates and owns that directory; the helper never creates it, waits
 for the UI, opens a port, changes a harness configuration, invokes an agent, or
 uses the network.
@@ -43,3 +45,9 @@ never interrupts the host workflow.
 
 Run `cookbench-hook --self-test` to exercise a synthetic envelope write and
 report its elapsed milliseconds. The command creates no persistent state.
+Claude Code passes its native hook JSON over stdin. Codex `notify` passes its
+native JSON as the final command argument. The helper extracts only the native
+session ID and an allowlisted lifecycle name; transcript paths, prompts, tool
+inputs, tool responses, commands, and notification text are discarded before
+the spool write. It prints no JSON and returns no control decision to either
+tool.

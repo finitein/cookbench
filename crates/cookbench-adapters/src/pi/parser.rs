@@ -49,6 +49,28 @@ pub fn parse_session_file(path: &Path) -> Result<ParsedPiSession, AdapterError> 
     Ok(finish(state))
 }
 
+/// Parses one appended Pi record into lifecycle events without retaining its
+/// content. Runtime observers use this rather than reloading a full session.
+pub fn parse_record(line: &str, sequence: u64) -> Vec<StoveEvent> {
+    let mut state = ParseState {
+        native_session_id: String::new(),
+        title: None,
+        project: None,
+        events: Vec::new(),
+        sequence: 0,
+    };
+    parse_line(line, &mut state);
+    state
+        .events
+        .into_iter()
+        .enumerate()
+        .map(|(index, mut event)| {
+            event.metadata.sequence = sequence.saturating_add(index as u64);
+            event
+        })
+        .collect()
+}
+
 #[cfg(test)]
 fn parse_session_text(path: &Path, contents: &str) -> Result<ParsedPiSession, AdapterError> {
     let mut state = initial_state(path);

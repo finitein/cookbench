@@ -1,6 +1,7 @@
 use cookbench_core::locator::{HostApplication, SessionLocator, TerminalKind};
 use cookbench_desktop_lib::locator::{
-    actions_for, jump_with, JumpAction, JumpExecutor, JumpOutcome,
+    actions_for, activate_with, jump_with, JumpAction, JumpExecutor, JumpOutcome,
+    LocatorActivationStatus, LocatorActivationTarget,
 };
 
 #[derive(Default)]
@@ -108,4 +109,32 @@ fn unsafe_tmux_target_is_not_used_for_a_command() {
         actions_for(&locator).as_slice(),
         [JumpAction::ResumeInstructions { .. }]
     ));
+}
+
+#[test]
+fn reports_available_when_a_precise_target_is_focused() {
+    let mut executor = RecordingExecutor::with_outcomes([JumpOutcome::Focused]);
+    let result = activate_with(&locator(), &mut executor);
+
+    assert_eq!(result.target, LocatorActivationTarget::ExactPane);
+    assert_eq!(result.status, LocatorActivationStatus::Focused);
+    assert_eq!(result.resume_session_id, None);
+}
+
+#[test]
+fn reports_visible_resume_after_permission_and_elevation_fallbacks() {
+    let mut executor = RecordingExecutor::with_outcomes([
+        JumpOutcome::PermissionDenied,
+        JumpOutcome::ElevatedTarget,
+        JumpOutcome::Unavailable,
+        JumpOutcome::VisibleFallback,
+    ]);
+    let result = activate_with(&locator(), &mut executor);
+
+    assert_eq!(result.target, LocatorActivationTarget::ResumeInstructions);
+    assert_eq!(result.status, LocatorActivationStatus::VisibleFallback);
+    assert_eq!(
+        result.resume_session_id.as_deref(),
+        Some("opaque-session-id")
+    );
 }

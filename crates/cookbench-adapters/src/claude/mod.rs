@@ -8,7 +8,9 @@ mod hooks;
 mod parser;
 mod tasks;
 
-pub use discovery::{decode_project_path, default_projects_root, encode_project_path};
+pub use discovery::{
+    decode_project_path, default_projects_root, discover_session, encode_project_path,
+};
 pub use hooks::{
     install_hooks, uninstall_hooks, HookBackupIntent, HookMutation, HookMutationError,
 };

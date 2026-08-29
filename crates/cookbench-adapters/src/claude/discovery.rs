@@ -67,14 +67,40 @@ pub fn discover_sessions(
     Ok(sessions)
 }
 
+/// Builds metadata for one already-selected transcript path. Runtime callers
+/// use this after a metadata-only freshness filter so stale history bodies are
+/// never opened merely to decide whether a session is a startup candidate.
+pub fn discover_session(
+    root: &Path,
+    path: &Path,
+    source: &HostSource,
+) -> Result<Option<NativeSession>, AdapterError> {
+    if !matches!(source, HostSource::Local(_)) || !path.starts_with(root) {
+        return Ok(None);
+    }
+    let Some(native_session_id) = path.file_stem().and_then(|name| name.to_str()) else {
+        return Ok(None);
+    };
+    if native_session_id.is_empty() {
+        return Ok(None);
+    }
+    let locator = SessionLocator::new(SessionLocatorKind::LocalPath, path.to_string_lossy())?;
+    NativeSession::new(
+        source.host().clone(),
+        cookbench_core::domain::HarnessId::ClaudeCode,
+        native_session_id,
+        project_from_session_path(root, path, source.host()),
+        title_from_session(path),
+        locator,
+    )
+    .map(Some)
+}
+
 fn title_from_session(path: &Path) -> Option<String> {
     let file = File::open(path).ok()?;
     let mut reader = BufReader::new(file);
-    for index in 0..64 {
-        let Some(line) = read_bounded_line(
-            &mut reader,
-            crate::io::TailLimits::default().max_record_bytes,
-        ) else {
+    for index in 0..32 {
+        let Some(line) = read_bounded_line(&mut reader, 16 * 1024) else {
             break;
         };
         if let Some(parsed) =

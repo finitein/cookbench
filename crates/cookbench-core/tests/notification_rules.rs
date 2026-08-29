@@ -123,4 +123,10 @@ fn queue_coalesces_rapid_transitions_and_expires_retries() {
     assert!(queue.push(item).is_enqueued());
     assert!(queue.record_retry_failure("retry-stove", 11));
     assert!(queue.pop_ready(22).is_none());
+
+    let mut delayed_queue = BoundedQueue::new(2, 5_000, 2);
+    let delayed = QueueItem::new(context(), "delayed".into(), 100);
+    assert!(delayed_queue.requeue_failed(delayed, 100));
+    assert!(delayed_queue.pop_ready(1_099).is_none());
+    assert!(delayed_queue.pop_ready(1_100).is_some());
 }

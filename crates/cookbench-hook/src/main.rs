@@ -17,7 +17,16 @@ const EX_TEMPFAIL: u8 = 75;
 
 fn main() -> ExitCode {
     match env::args().skip(1).collect::<Vec<_>>().as_slice() {
-        [] => run_hook(),
+        [] => run_hook(None, None),
+        [flag, harness]
+            if flag == "--harness"
+                && matches!(harness.as_str(), "codex" | "claude-code" | "claude") =>
+        {
+            run_hook(Some(harness), None)
+        }
+        [flag, harness, payload] if flag == "--harness" && harness == "codex" => {
+            run_hook(Some(harness), Some(payload.as_bytes()))
+        }
         [flag] if flag == "--self-test" => self_test(),
         [flag] if flag == "--version" => {
             println!("cookbench-hook {}", env!("CARGO_PKG_VERSION"));
@@ -27,17 +36,47 @@ fn main() -> ExitCode {
     }
 }
 
-fn run_hook() -> ExitCode {
-    let input = match read_bounded_stdin() {
-        Ok(input) => input,
-        Err(error) => return fail(EX_USAGE, error.diagnostic()),
+/// Accepts native Claude stdin or Codex notify argv JSON, projects it to the
+/// strict metadata-only envelope, and never writes back to either agent.
+fn run_hook(expected_harness: Option<&String>, argument_payload: Option<&[u8]>) -> ExitCode {
+    let stdin_input;
+    let input = if let Some(payload) = argument_payload {
+        if payload.len() > envelope::MAX_INPUT_BYTES {
+            return fail(EX_USAGE, InputError::TooLarge.diagnostic());
+        }
+        payload
+    } else {
+        stdin_input = match read_bounded_stdin() {
+            Ok(input) => input,
+            Err(error) => return fail(EX_USAGE, error.diagnostic()),
+        };
+        stdin_input.as_slice()
     };
-    let envelope = match envelope::parse(&input, now_ms()) {
+    let parsed = if let Some(harness) = expected_harness {
+        envelope::parse_native(input, harness, now_ms())
+            .or_else(|_| envelope::parse(input, now_ms()))
+    } else {
+        envelope::parse(input, now_ms())
+    };
+    let envelope = match parsed {
         Ok(envelope) => envelope,
         Err(error) => return fail(EX_USAGE, error.diagnostic()),
     };
-    let spool = match env::var_os(SPOOL_ENV) {
-        Some(path) if !path.is_empty() => PathBuf::from(path),
+    if let Some(expected) = expected_harness {
+        let expected = match expected.as_str() {
+            "claude" | "claude-code" => "claude_code",
+            value => value,
+        };
+        if envelope.event.harness != expected {
+            return fail(EX_USAGE, "hook harness does not match its invocation");
+        }
+    }
+    let spool = match env::var_os(SPOOL_ENV)
+        .filter(|path| !path.is_empty())
+        .map(PathBuf::from)
+        .or_else(default_spool_dir)
+    {
+        Some(path) => path,
         _ => return fail(EX_UNAVAILABLE, "Cookbench hook spool is unavailable"),
     };
 
@@ -48,6 +87,28 @@ fn run_hook() -> ExitCode {
         }
         Err(spool::SpoolError::Full) => fail(EX_TEMPFAIL, spool::SpoolError::Full.diagnostic()),
         Err(spool::SpoolError::Io) => fail(EX_IOERR, spool::SpoolError::Io.diagnostic()),
+    }
+}
+
+fn default_spool_dir() -> Option<PathBuf> {
+    #[cfg(target_os = "macos")]
+    {
+        env::var_os("HOME").map(|home| {
+            PathBuf::from(home).join("Library/Application Support/app.cookbench.desktop/hook-spool")
+        })
+    }
+    #[cfg(target_os = "windows")]
+    {
+        env::var_os("APPDATA")
+            .map(PathBuf::from)
+            .map(|path| path.join("app.cookbench.desktop/hook-spool"))
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        env::var_os("XDG_DATA_HOME")
+            .map(PathBuf::from)
+            .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share")))
+            .map(|path| path.join("app.cookbench.desktop/hook-spool"))
     }
 }
 

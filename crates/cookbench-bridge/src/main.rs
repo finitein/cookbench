@@ -3,6 +3,7 @@ use std::io::{self, BufReader, BufWriter, Write};
 use cookbench_bridge::{
     protocol::{read_lf_frame, Capability, Frame, ProtocolError},
     server::{BridgeServer, ServerAction},
+    source::NativeSessionSource,
 };
 
 fn main() {
@@ -33,15 +34,34 @@ fn run_stdio() -> Result<(), ProtocolError> {
         Capability::SessionDiscovery,
         Capability::SessionParsing,
     ]);
+    let mut source: Option<NativeSessionSource> = None;
 
     loop {
         let frame = Frame::from_jsonl(&read_lf_frame(&mut input)?)?;
         match server.handle(frame)? {
-            ServerAction::Reply(frame) => write_frame(&mut output, &frame)?,
+            ServerAction::Reply(Frame::Heartbeat) => {
+                if let Some(source) = source.as_mut() {
+                    emit_events(&mut output, &server, source)?;
+                }
+                write_frame(&mut output, &Frame::Heartbeat)?;
+            }
+            ServerAction::Reply(frame) => {
+                write_frame(&mut output, &frame)?;
+            }
             ServerAction::Replies(frames) => {
                 for frame in frames {
                     write_frame(&mut output, &frame)?;
                 }
+                write_frame(&mut output, &Frame::Heartbeat)?;
+            }
+            ServerAction::Configure(roots) => {
+                source = Some(NativeSessionSource::from_configured_roots(roots));
+                emit_events(
+                    &mut output,
+                    &server,
+                    source.as_mut().expect("configured source was just created"),
+                )?;
+                write_frame(&mut output, &Frame::Heartbeat)?;
             }
             ServerAction::Shutdown => {
                 write_frame(&mut output, &Frame::Shutdown)?;
@@ -49,6 +69,17 @@ fn run_stdio() -> Result<(), ProtocolError> {
             }
         }
     }
+}
+
+fn emit_events(
+    output: &mut impl Write,
+    server: &BridgeServer,
+    source: &mut NativeSessionSource,
+) -> Result<(), ProtocolError> {
+    for event in source.poll() {
+        write_frame(output, &server.event(event)?)?;
+    }
+    Ok(())
 }
 
 fn write_frame(output: &mut impl Write, frame: &Frame) -> Result<(), ProtocolError> {

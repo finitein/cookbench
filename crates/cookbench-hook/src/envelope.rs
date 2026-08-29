@@ -132,6 +132,88 @@ pub fn parse(input: &[u8], received_at_ms: u64) -> Result<EventEnvelope, Envelop
     })
 }
 
+/// Converts a native harness hook payload into Cookbench's metadata-only
+/// envelope. Native payloads deliberately contain transcript paths, prompts,
+/// tool inputs, and results; this projection reads only the event name and
+/// native session identity and discards every other field before persistence.
+pub fn parse_native(
+    input: &[u8],
+    harness: &str,
+    received_at_ms: u64,
+) -> Result<EventEnvelope, EnvelopeError> {
+    if input.is_empty() || input.len() > MAX_INPUT_BYTES {
+        return Err(EnvelopeError::Malformed);
+    }
+    let value: serde_json::Value =
+        serde_json::from_slice(input).map_err(|_| EnvelopeError::Malformed)?;
+    let object = value.as_object().ok_or(EnvelopeError::Malformed)?;
+
+    let (harness, session_id, event_type) = match harness {
+        "claude" | "claude-code" => {
+            let session_id = required_string(object, "session_id")?;
+            let hook_event = required_string(object, "hook_event_name")?;
+            let event_type = match hook_event {
+                "SessionStart" => LifecycleEvent::SessionDiscovered,
+                "UserPromptSubmit" => LifecycleEvent::UserPromptSubmitted,
+                "PreToolUse" | "SubagentStart" => LifecycleEvent::ToolStarted,
+                "PostToolUse" | "SubagentStop" => LifecycleEvent::ToolCompleted,
+                "PermissionRequest" => LifecycleEvent::PermissionRequested,
+                "Stop" => LifecycleEvent::TurnCompleted,
+                "SessionEnd" => LifecycleEvent::ProcessExited,
+                "Notification" => match required_string(object, "notification_type")? {
+                    "permission_prompt" => LifecycleEvent::PermissionRequested,
+                    "idle_prompt" | "elicitation_dialog" => LifecycleEvent::QuestionAsked,
+                    _ => return Err(EnvelopeError::InvalidField),
+                },
+                _ => return Err(EnvelopeError::InvalidField),
+            };
+            ("claude_code", session_id, event_type)
+        }
+        "codex" => {
+            let session_id = required_string(object, "thread-id")?;
+            let event_type = match required_string(object, "type")? {
+                "agent-turn-complete" => LifecycleEvent::TurnCompleted,
+                "approval-requested" => LifecycleEvent::PermissionRequested,
+                "user-input-requested" => LifecycleEvent::QuestionAsked,
+                _ => return Err(EnvelopeError::InvalidField),
+            };
+            ("codex", session_id, event_type)
+        }
+        _ => return Err(EnvelopeError::InvalidField),
+    };
+
+    validate_session_id(session_id)?;
+    Ok(EventEnvelope {
+        schema_version: 1,
+        source: "hook",
+        received_at_ms,
+        event: SanitizedEvent {
+            event_type,
+            session_id: session_id.to_owned(),
+            harness,
+            sequence: None,
+            progress: None,
+        },
+    })
+}
+
+fn required_string<'a>(
+    object: &'a serde_json::Map<String, serde_json::Value>,
+    field: &str,
+) -> Result<&'a str, EnvelopeError> {
+    object
+        .get(field)
+        .and_then(serde_json::Value::as_str)
+        .ok_or(EnvelopeError::Malformed)
+}
+
+fn validate_session_id(session_id: &str) -> Result<(), EnvelopeError> {
+    if session_id.is_empty() || session_id.len() > MAX_SESSION_ID_BYTES || !session_id.is_ascii() {
+        return Err(EnvelopeError::InvalidField);
+    }
+    Ok(())
+}
+
 fn contains_sensitive_field(value: &serde_json::Value) -> bool {
     const RESTRICTED: &[&str] = &[
         "prompt",

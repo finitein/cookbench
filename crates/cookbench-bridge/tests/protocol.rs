@@ -2,8 +2,8 @@ use std::io::{BufReader, Cursor};
 
 use cookbench_bridge::{
     protocol::{
-        read_lf_frame, Capability, Frame, NormalizedEvent, ProtocolError, ProtocolVersion,
-        MAX_RECORD_BYTES,
+        read_lf_frame, Capability, ConfiguredHarness, ConfiguredRoot, Frame, NormalizedEvent,
+        ProtocolError, ProtocolVersion, MAX_RECORD_BYTES,
     },
     server::{BridgeServer, ServerAction},
 };
@@ -45,7 +45,8 @@ fn hello_negotiates_read_only_capabilities_and_normalized_events() {
         }
     );
 
-    let event = NormalizedEvent::state("host:codex:opaque-session", "codex", "cooking", 8);
+    let event = NormalizedEvent::state("host:codex:opaque-session", "codex", "planning", 8)
+        .with_progress(2, 5);
     let event_frame = server.event(event.clone()).unwrap();
     assert_eq!(event_frame, Frame::Event { event });
 }
@@ -68,6 +69,34 @@ fn heartbeat_and_shutdown_are_graceful() {
         ServerAction::Shutdown
     );
     assert!(server.is_shutdown());
+}
+
+#[test]
+fn configured_roots_are_bounded_absolute_read_only_inputs() {
+    let root = ConfiguredRoot::new(ConfiguredHarness::Auto, "/custom/sessions").unwrap();
+    let mut server = BridgeServer::new(vec![]);
+    assert!(matches!(
+        server.handle(Frame::Configure {
+            roots: vec![root.clone()]
+        }),
+        Err(ProtocolError::HandshakeRequired)
+    ));
+    server
+        .handle(Frame::Hello {
+            version: ProtocolVersion::CURRENT,
+        })
+        .unwrap();
+    assert_eq!(
+        server
+            .handle(Frame::Configure { roots: vec![root] })
+            .unwrap(),
+        ServerAction::Configure(vec![ConfiguredRoot::new(
+            ConfiguredHarness::Auto,
+            "/custom/sessions"
+        )
+        .unwrap()])
+    );
+    assert!(ConfiguredRoot::new(ConfiguredHarness::Auto, "relative").is_err());
 }
 
 #[test]

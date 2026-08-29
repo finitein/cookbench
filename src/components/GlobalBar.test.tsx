@@ -67,6 +67,24 @@ describe("GlobalBar", () => {
     expect(activated).toBe(stove);
   });
 
+  it("offers independent detach, clear, and settings commands", () => {
+    const stove = makeStove(0, { state: "cooked", retainedCompletion: true });
+    const actions: string[] = [];
+    render(
+      <GlobalBar
+        stoves={[stove]}
+        onDetachStove={() => actions.push("detach")}
+        onClearStove={() => actions.push("clear")}
+        onOpenSettings={() => actions.push("settings")}
+      />,
+    );
+
+    screen.getByRole("button", { name: "Detach Codex Stove" }).click();
+    screen.getByRole("button", { name: "Clear Codex Stove" }).click();
+    screen.getByRole("button", { name: "Open notification settings" }).click();
+    expect(actions).toEqual(["detach", "clear", "settings"]);
+  });
+
   it("plays the completion presentation only for a live transition into Cooked", () => {
     const stove = makeStove(0, { state: "cooking", progress: null });
     const view = render(<GlobalBar stoves={[stove]} />);

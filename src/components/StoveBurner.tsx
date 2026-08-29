@@ -8,12 +8,14 @@ import { StoveTooltip } from "./StoveTooltip";
 export type StoveBurnerProps = {
   stove: StoveWire;
   onActivate?: (stove: StoveWire) => void;
+  onDetach?: (stove: StoveWire) => void;
+  onClear?: (stove: StoveWire) => void;
   previousState?: StoveMotionState;
   isInitialSnapshot?: boolean;
   motionPreferences?: StoveMotionPreferences;
 };
 
-export function StoveBurner({ stove, onActivate, previousState, isInitialSnapshot, motionPreferences }: StoveBurnerProps) {
+export function StoveBurner({ stove, onActivate, onDetach, onClear, previousState, isInitialSnapshot, motionPreferences }: StoveBurnerProps) {
   const tooltipId = `stove-tooltip-${stove.id}`;
   const stateLabel = stoveStateLabel(stove.state);
   const sessionLabel = stove.taskTitle ?? "Current session";
@@ -41,6 +43,28 @@ export function StoveBurner({ stove, onActivate, previousState, isInitialSnapsho
         <HostBadge stove={stove} />
       </button>
       <StoveTooltip stove={stove} id={tooltipId} />
+      {onDetach ? (
+        <button
+          className="stove-burner__control stove-burner__control--detach"
+          type="button"
+          aria-label={`Detach ${stove.harness.label} Stove`}
+          title={`Detach ${stove.harness.label} Stove`}
+          onClick={() => onDetach(stove)}
+        >
+          <span aria-hidden="true" />
+        </button>
+      ) : null}
+      {onClear && stove.retainedCompletion ? (
+        <button
+          className="stove-burner__control stove-burner__control--clear"
+          type="button"
+          aria-label={`Clear ${stove.harness.label} Stove`}
+          title={`Clear ${stove.harness.label} Stove`}
+          onClick={() => onClear(stove)}
+        >
+          <span aria-hidden="true" />
+        </button>
+      ) : null}
     </div>
   );
 }

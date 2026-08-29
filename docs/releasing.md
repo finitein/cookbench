@@ -50,8 +50,10 @@ Secret Service and must be tested only with synthetic sandbox destinations.
 - Pi extension: use `integrations/pi/cookbench.ts` from the original Pi tool.
 - GNOME presentation extension: follow
   `docs/integrations/gnome-extension.md` and verify clean removal.
-- SSH bridge: distribute only the helper built for the package architecture;
-  it has no listener and accepts only the versioned read-only stdio protocol.
+- SSH bridge: distribute the helper built for each supported remote target;
+  the packaged same-target helper is only a convenience. It has no listener
+  and accepts only bounded root configuration plus the versioned read-only
+  stdio observation protocol.
 
 ## Known Manual Gates
 

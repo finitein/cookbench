@@ -84,7 +84,13 @@ export default function CookbenchE2EApp() {
 
   return (
     <main className="shell" aria-label="Cookbench E2E presentation">
-      <GlobalBar stoves={stoves} />
+      <GlobalBar
+        stoves={stoves}
+        onActivateStove={() => undefined}
+        onDetachStove={() => undefined}
+        onClearStove={() => undefined}
+        onOpenSettings={() => undefined}
+      />
       {Object.entries(placements).map(([stoveId, placement]) => {
         const stove = stoves.find((candidate) => candidate.id === stoveId);
         if (!stove) return null;

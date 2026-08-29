@@ -6,6 +6,7 @@ pub struct QueueItem {
     pub message: String,
     pub created_at_ms: u64,
     pub retries: u8,
+    pub ready_at_ms: u64,
 }
 
 impl QueueItem {
@@ -15,6 +16,7 @@ impl QueueItem {
             message,
             created_at_ms,
             retries: 0,
+            ready_at_ms: created_at_ms,
         }
     }
 
@@ -127,6 +129,7 @@ impl BoundedQueue {
             .items
             .iter()
             .enumerate()
+            .filter(|(_, item)| item.ready_at_ms <= now_ms)
             .max_by_key(|(_, item)| (item.priority(), item.created_at_ms))
             .map(|(index, _)| index)?;
         let item = self.items.swap_remove(index);
@@ -151,5 +154,27 @@ impl BoundedQueue {
             return false;
         }
         true
+    }
+
+    /// Requeues a concrete failed delivery without passing through dedupe. The
+    /// retry count and age remain bounded, and queue capacity cannot grow.
+    pub fn requeue_failed(&mut self, mut item: QueueItem, now_ms: u64) -> bool {
+        item.retries = item.retries.saturating_add(1);
+        if item.retries > self.max_retries
+            || now_ms.saturating_sub(item.created_at_ms) > self.max_age_ms
+            || self.items.len() >= self.capacity
+        {
+            return false;
+        }
+        let backoff_ms = 1_000_u64
+            .saturating_mul(1_u64 << item.retries.saturating_sub(1).min(5))
+            .min(30_000);
+        item.ready_at_ms = now_ms.saturating_add(backoff_ms);
+        self.items.push(item);
+        true
+    }
+
+    pub fn next_ready_at_ms(&self) -> Option<u64> {
+        self.items.iter().map(|item| item.ready_at_ms).min()
     }
 }

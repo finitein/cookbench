@@ -1,0 +1,52 @@
+import { invoke } from "@tauri-apps/api/core";
+
+import type { NotificationDestination } from "./NotificationSettings";
+
+export type NotificationEvent =
+  | "sessionAppeared"
+  | "cookingStarted"
+  | "phaseChanged"
+  | "needsHuman"
+  | "progressMilestone"
+  | "cooked"
+  | "failed"
+  | "disconnected"
+  | "connectionRestored"
+  | "stoveCleared";
+
+export type NotificationDestinationWire = {
+  destination: NotificationDestination;
+  enabled: boolean;
+  configured: boolean;
+  recipient: string | null;
+  events: NotificationEvent[];
+  template: string | null;
+};
+
+export type NotificationDestinationInput = {
+  destination: NotificationDestination;
+  enabled: boolean;
+  secret: string | null;
+  recipient: string | null;
+  events: NotificationEvent[];
+  template: string | null;
+};
+
+export function openNotificationSettings(): Promise<void> {
+  return invoke<void>("open_notification_settings");
+}
+
+export function getNotificationSettings(): Promise<NotificationDestinationWire[]> {
+  return invoke<NotificationDestinationWire[]>("get_notification_settings");
+}
+
+export function configureNotificationDestination(
+  input: NotificationDestinationInput,
+): Promise<NotificationDestinationWire[]> {
+  return invoke<NotificationDestinationWire[]>("configure_notification_destination", { input });
+}
+
+/** Calls the desktop's one-way synthetic test command; it never handles replies. */
+export function sendTestNotification(destination: NotificationDestination): Promise<void> {
+  return invoke<void>("send_test_notification", { destination });
+}

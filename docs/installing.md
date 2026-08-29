@@ -33,7 +33,10 @@ Cookbench discovers each harness at its standard session root or a root chosen
 by the user. The hook helper is optional and writes bounded lifecycle envelopes
 to the Cookbench spool only. The bridge is also optional: after explicit remote
 selection, Cookbench uploads one architecture-matched binary, verifies its
-SHA-256 digest, and communicates only through SSH standard input/output.
+SHA-256 digest, sends the selected read-only session roots through the bounded
+stdio protocol, and communicates only through SSH standard input/output. The
+packaged helper matches the local package platform; select a compatible helper
+binary explicitly when the remote platform or architecture differs.
 
 SSH uses the system `ssh` command, the user's existing configuration, and
 `known_hosts`. Cookbench stores no SSH password and opens no listening port.

@@ -2,6 +2,8 @@ use serde_json::{json, Map, Value};
 
 const HOOK_COMMAND: &str = "cookbench-hook --harness claude-code";
 const HOOK_EVENTS: &[&str] = &[
+    "SessionStart",
+    "UserPromptSubmit",
     "PreToolUse",
     "PostToolUse",
     "PermissionRequest",
@@ -9,6 +11,7 @@ const HOOK_EVENTS: &[&str] = &[
     "SubagentStart",
     "SubagentStop",
     "Notification",
+    "SessionEnd",
 ];
 
 /// Filesystem code must create a backup before applying a changed transform.

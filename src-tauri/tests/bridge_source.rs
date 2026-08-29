@@ -1,3 +1,4 @@
+use cookbench_bridge::protocol::NormalizedEvent;
 use cookbench_desktop_lib::remote::bridge::{
     connect_temporary_bridge, BridgeDeploymentSelection, BridgeError, BridgeRemote, BridgeSession,
     Sha256Digest,
@@ -11,6 +12,14 @@ struct FakeSession {
 impl BridgeSession for FakeSession {
     type Error = String;
 
+    fn negotiate(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn poll(&mut self) -> Result<Vec<NormalizedEvent>, String> {
+        Ok(Vec::new())
+    }
+
     fn terminate(&mut self) -> Result<(), String> {
         self.terminated = true;
         Ok(())
@@ -22,6 +31,7 @@ struct FakeRemote {
     uploaded: bool,
     verified: bool,
     started: bool,
+    removed: bool,
     session: FakeSession,
     remote_hash: Sha256Digest,
 }
@@ -41,6 +51,11 @@ impl BridgeRemote for FakeRemote {
     ) -> Result<Sha256Digest, Self::Error> {
         self.verified = true;
         Ok(self.remote_hash)
+    }
+
+    fn remove_temporary(&mut self, _: &BridgeDeploymentSelection) -> Result<(), Self::Error> {
+        self.removed = true;
+        Ok(())
     }
 
     fn start_stdio(&mut self, _: &BridgeDeploymentSelection) -> Result<Self::Session, Self::Error> {
@@ -88,6 +103,7 @@ fn checksum_mismatch_never_starts_a_bridge() {
     assert!(remote.uploaded);
     assert!(remote.verified);
     assert!(!remote.started);
+    assert!(remote.removed);
 }
 
 #[test]
@@ -100,7 +116,18 @@ fn launch_shape_is_fixed_ssh_stdio_without_port_forwarding() {
     assert_eq!(command.program, "ssh");
     assert_eq!(
         command.arguments,
-        vec!["--", "configured-host", "/tmp/cookbench-bridge", "--stdio"]
+        vec![
+            "-o",
+            "ConnectTimeout=10",
+            "-o",
+            "ServerAliveInterval=5",
+            "-o",
+            "ServerAliveCountMax=2",
+            "--",
+            "configured-host",
+            "/tmp/cookbench-bridge",
+            "--stdio"
+        ]
     );
     assert!(!command
         .arguments

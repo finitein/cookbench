@@ -602,6 +602,8 @@ dependencies = [
 name = "cookbench-bridge"
 version = "0.1.0"
 dependencies = [
+ "cookbench-adapters",
+ "cookbench-core",
  "serde",
  "serde_json",
 ]
@@ -618,11 +620,14 @@ dependencies = [
 name = "cookbench-desktop"
 version = "0.1.0"
 dependencies = [
+ "cookbench-adapters",
+ "cookbench-bridge",
  "cookbench-core",
  "keyring",
  "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
 ]

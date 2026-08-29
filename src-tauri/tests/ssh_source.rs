@@ -1,9 +1,19 @@
-use std::{cell::RefCell, collections::VecDeque};
+use std::{
+    cell::RefCell,
+    collections::VecDeque,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
+};
 
-use cookbench_core::remote::{PollInterval, RemoteHost, SessionRoot};
+use cookbench_core::{
+    domain::{EventKind, HarnessId},
+    remote::{PollInterval, RemoteHost, SessionRoot},
+};
 use cookbench_desktop_lib::remote::{
     ssh::{ProbeOutput, SshError, SshInvocation, SshRunner},
-    zero_install::ZeroInstallSshSource,
+    zero_install::{ParsedRemoteSession, RemoteLifecycleParser, ZeroInstallSshSource},
 };
 
 struct FakeSsh {
@@ -45,6 +55,27 @@ fn successful_probe(path: &str) -> Result<ProbeOutput, SshError> {
     })
 }
 
+fn suffix_probe(bytes: &[u8]) -> Result<ProbeOutput, SshError> {
+    Ok(ProbeOutput {
+        status: 0,
+        stdout: bytes.to_vec(),
+        stderr: String::new(),
+    })
+}
+
+struct FixtureParser;
+
+impl RemoteLifecycleParser for FixtureParser {
+    fn parse_suffix(&self, _: &str, suffix: &[u8]) -> Option<ParsedRemoteSession> {
+        (suffix == b"fixture:tool-started\n").then_some(ParsedRemoteSession {
+            harness: HarnessId::Codex,
+            native_session_id: "opaque-session-1".to_owned(),
+            project_root: Some("/synthetic/project".to_owned()),
+            events: vec![EventKind::SessionDiscovered, EventKind::ToolStarted],
+        })
+    }
+}
+
 #[test]
 fn discovery_uses_existing_ssh_config_with_strict_host_key_and_no_password_options() {
     let host = host();
@@ -63,11 +94,21 @@ fn discovery_uses_existing_ssh_config_with_strict_host_key_and_no_password_optio
         .args
         .windows(2)
         .any(|pair| pair[0] == "-o" && pair[1] == "PasswordAuthentication=no"));
+    for option in [
+        "ConnectTimeout=10",
+        "ServerAliveInterval=5",
+        "ServerAliveCountMax=2",
+    ] {
+        assert!(invocation
+            .args
+            .windows(2)
+            .any(|pair| pair == ["-o", option]));
+    }
     assert!(!invocation
         .args
         .iter()
         .any(|arg| arg.contains("UserKnownHostsFile") || arg.contains("StrictHostKeyChecking=no")));
-    assert_eq!(invocation.args[10], "fixture-host");
+    assert_eq!(invocation.args[invocation.args.len() - 2], "fixture-host");
 }
 
 #[test]
@@ -82,7 +123,7 @@ fn custom_roots_are_only_read_with_a_fixed_find_probe() {
 
     assert_eq!(
         remote_probe,
-        "exec find '/custom root/sessions' -type f -name '*.jsonl' -print0"
+        "exec find '/custom root/sessions' -type f -name '*.jsonl' -mtime -7 -print0"
     );
     assert!(!remote_probe.contains("rm "));
     assert!(!remote_probe.contains(">"));
@@ -141,4 +182,146 @@ fn discovery_rejects_a_path_that_only_shares_a_root_prefix() {
 
     assert!(matches!(source.discover(), Err(SshError::UnsafeOutput)));
     assert_eq!(source.poll_interval(), PollInterval::Disconnected);
+}
+
+#[test]
+fn bounded_suffix_observation_normalizes_lifecycle_events_with_remote_identity() {
+    let mut source = ZeroInstallSshSource::new(
+        host(),
+        FakeSsh::new([
+            successful_probe("/srv/cookbench/sessions/run.jsonl"),
+            suffix_probe(b"fixture:tool-started\n"),
+        ]),
+    );
+
+    let poll = source.observe(&FixtureParser);
+    assert!(!poll.disconnected);
+    assert_eq!(poll.events.len(), 2);
+    assert!(matches!(
+        poll.events[0].event.kind,
+        EventKind::SessionDiscovered
+    ));
+    assert!(matches!(poll.events[1].event.kind, EventKind::ToolStarted));
+    assert_eq!(poll.events[0].stove.host, host().identity());
+    assert_eq!(poll.events[0].stove.native_session_id, "opaque-session-1");
+}
+
+#[test]
+fn disconnect_emits_no_completion_and_recovery_restores_before_new_lifecycle_events() {
+    let mut source = ZeroInstallSshSource::new(
+        host(),
+        FakeSsh::new([
+            successful_probe("/srv/cookbench/sessions/run.jsonl"),
+            suffix_probe(b"fixture:tool-started\n"),
+            Err(SshError::Disconnected {
+                detail: "offline".to_owned(),
+            }),
+            successful_probe("/srv/cookbench/sessions/run.jsonl"),
+            suffix_probe(b"fixture:tool-started\n"),
+        ]),
+    );
+
+    let initial = source.observe(&FixtureParser);
+    assert_eq!(initial.events.len(), 2);
+    let lost = source.observe(&FixtureParser);
+    assert!(lost.disconnected);
+    assert!(lost
+        .events
+        .iter()
+        .all(|event| !matches!(event.event.kind, EventKind::TurnCompleted)));
+    assert!(lost
+        .events
+        .iter()
+        .all(|event| matches!(event.event.kind, EventKind::ConnectionLost)));
+
+    let restored = source.observe(&FixtureParser);
+    assert!(restored.restored);
+    assert!(matches!(
+        restored.events[0].event.kind,
+        EventKind::ConnectionRestored
+    ));
+    assert_eq!(
+        restored.events.len(),
+        1,
+        "unchanged native history is not replayed"
+    );
+}
+
+#[test]
+fn unchanged_suffixes_do_not_replay_lifecycle_events() {
+    let mut source = ZeroInstallSshSource::new(
+        host(),
+        FakeSsh::new([
+            successful_probe("/srv/cookbench/sessions/run.jsonl"),
+            suffix_probe(b"fixture:tool-started\n"),
+            successful_probe("/srv/cookbench/sessions/run.jsonl"),
+            suffix_probe(b"fixture:tool-started\n"),
+        ]),
+    );
+
+    assert_eq!(source.observe(&FixtureParser).events.len(), 2);
+    assert!(source.observe(&FixtureParser).events.is_empty());
+}
+
+struct LineParser;
+
+impl RemoteLifecycleParser for LineParser {
+    fn parse_suffix(&self, _: &str, suffix: &[u8]) -> Option<ParsedRemoteSession> {
+        let lines = suffix
+            .split(|byte| *byte == b'\n')
+            .filter(|line| !line.is_empty())
+            .count();
+        (lines > 0).then_some(ParsedRemoteSession {
+            harness: HarnessId::Codex,
+            native_session_id: "opaque-session-1".to_owned(),
+            project_root: None,
+            events: vec![EventKind::ToolStarted; lines],
+        })
+    }
+}
+
+#[test]
+fn appended_suffix_emits_only_new_records_instead_of_replaying_the_window() {
+    let mut source = ZeroInstallSshSource::new(
+        host(),
+        FakeSsh::new([
+            successful_probe("/srv/cookbench/sessions/run.jsonl"),
+            suffix_probe(b"one\n"),
+            successful_probe("/srv/cookbench/sessions/run.jsonl"),
+            suffix_probe(b"one\ntwo\n"),
+        ]),
+    );
+
+    assert_eq!(source.observe(&LineParser).events.len(), 1);
+    assert_eq!(source.observe(&LineParser).events.len(), 1);
+}
+
+#[test]
+fn shared_sequence_counter_stays_monotonic_when_a_source_is_reconfigured() {
+    let counter = Arc::new(AtomicU64::new(100));
+    let mut first = ZeroInstallSshSource::new(
+        host(),
+        FakeSsh::new([
+            successful_probe("/srv/cookbench/sessions/one.jsonl"),
+            suffix_probe(b"fixture:tool-started\n"),
+        ]),
+    )
+    .with_sequence_counter(counter.clone());
+    let first_poll = first.observe(&FixtureParser);
+
+    let mut restarted = ZeroInstallSshSource::new(
+        host(),
+        FakeSsh::new([
+            successful_probe("/srv/cookbench/sessions/two.jsonl"),
+            suffix_probe(b"fixture:tool-started\n"),
+        ]),
+    )
+    .with_sequence_counter(counter.clone());
+    let restarted_poll = restarted.observe(&FixtureParser);
+
+    assert!(
+        restarted_poll.events[0].event.metadata.sequence
+            > first_poll.events.last().unwrap().event.metadata.sequence
+    );
+    assert_eq!(counter.load(Ordering::Acquire), 104);
 }

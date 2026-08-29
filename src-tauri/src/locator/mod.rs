@@ -10,7 +10,10 @@ pub mod tmux;
 pub mod vscode;
 pub mod windows;
 
+use std::process::Command;
+
 use cookbench_core::locator::{HostApplication, SessionLocator, TerminalKind};
+use serde::Serialize;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum JumpAction {
@@ -32,6 +35,7 @@ pub enum JumpAction {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum JumpOutcome {
     Focused,
+    VisibleFallback,
     Unavailable,
     PermissionDenied,
     ElevatedTarget,
@@ -48,6 +52,34 @@ pub struct JumpResult {
     pub outcome: JumpOutcome,
 }
 
+/// The only data sent to the UI after an activation attempt. It never exposes
+/// command arguments, paths, terminal metadata, or a native locator record.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocatorActivationResult {
+    pub target: LocatorActivationTarget,
+    pub status: LocatorActivationStatus,
+    pub resume_session_id: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LocatorActivationTarget {
+    ExactPane,
+    ApplicationWindow,
+    ProjectDirectory,
+    ResumeInstructions,
+    Unavailable,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LocatorActivationStatus {
+    Focused,
+    VisibleFallback,
+    Unavailable,
+}
+
 /// Runs the documented order. A permission boundary or an elevated target is
 /// not a terminal failure: users still receive a lower-precision jump option.
 pub fn jump_with<E: JumpExecutor>(locator: &SessionLocator, executor: &mut E) -> JumpResult {
@@ -61,6 +93,88 @@ pub fn jump_with<E: JumpExecutor>(locator: &SessionLocator, executor: &mut E) ->
     }
 
     unreachable!("a locator always ends with resume instructions")
+}
+
+pub fn activate_with<E: JumpExecutor>(
+    locator: &SessionLocator,
+    executor: &mut E,
+) -> LocatorActivationResult {
+    let JumpResult { action, outcome } = jump_with(locator, executor);
+    let (target, resume_session_id) = match action {
+        JumpAction::ExactPane { .. } => (LocatorActivationTarget::ExactPane, None),
+        JumpAction::ApplicationWindow { .. } => (LocatorActivationTarget::ApplicationWindow, None),
+        JumpAction::ProjectDirectory { .. } => (LocatorActivationTarget::ProjectDirectory, None),
+        JumpAction::ResumeInstructions { native_session_id } => (
+            LocatorActivationTarget::ResumeInstructions,
+            Some(native_session_id),
+        ),
+    };
+    let status = match outcome {
+        JumpOutcome::Focused => LocatorActivationStatus::Focused,
+        JumpOutcome::VisibleFallback => LocatorActivationStatus::VisibleFallback,
+        JumpOutcome::Unavailable
+        | JumpOutcome::PermissionDenied
+        | JumpOutcome::ElevatedTarget
+        | JumpOutcome::Failed => LocatorActivationStatus::Unavailable,
+    };
+    LocatorActivationResult {
+        target,
+        status,
+        resume_session_id,
+    }
+}
+
+/// Executes only Cookbench-owned focus attempts. `Command` receives a program
+/// and argument vector directly, so locator values are never shell source.
+pub struct NativeJumpExecutor;
+
+impl JumpExecutor for NativeJumpExecutor {
+    fn perform(&mut self, action: &JumpAction) -> JumpOutcome {
+        match action {
+            JumpAction::ExactPane { program, args } => run(program, args),
+            JumpAction::ApplicationWindow { application } => activate_application(application),
+            JumpAction::ProjectDirectory { path } => open_project_directory(path),
+            JumpAction::ResumeInstructions { .. } => JumpOutcome::VisibleFallback,
+        }
+    }
+}
+
+fn run(program: &str, args: &[String]) -> JumpOutcome {
+    match Command::new(program).args(args).status() {
+        Ok(status) if status.success() => JumpOutcome::Focused,
+        Ok(_) => JumpOutcome::Unavailable,
+        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+            JumpOutcome::PermissionDenied
+        }
+        Err(_) => JumpOutcome::Unavailable,
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn activate_application(application: &str) -> JumpOutcome {
+    run("open", &["-a".to_owned(), application.to_owned()])
+}
+
+#[cfg(not(target_os = "macos"))]
+fn activate_application(_application: &str) -> JumpOutcome {
+    // Windows elevation and Linux compositor focus policies cannot be inferred
+    // safely without platform APIs. Continue to the next documented fallback.
+    JumpOutcome::Unavailable
+}
+
+#[cfg(target_os = "macos")]
+fn open_project_directory(path: &str) -> JumpOutcome {
+    run("open", &[path.to_owned()])
+}
+
+#[cfg(target_os = "windows")]
+fn open_project_directory(path: &str) -> JumpOutcome {
+    run("explorer.exe", &[path.to_owned()])
+}
+
+#[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+fn open_project_directory(path: &str) -> JumpOutcome {
+    run("xdg-open", &[path.to_owned()])
 }
 
 /// The truthful fallback sequence for a locator. Unsupported terminal and IDE

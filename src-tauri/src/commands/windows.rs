@@ -10,7 +10,10 @@ use cookbench_core::persistence::{
     DetachedStoveLayout, MonitorIdentity, MonitorWorkArea, WindowPosition,
 };
 
-use tauri::{AppHandle, Manager, PhysicalPosition, Runtime, WebviewUrl, WebviewWindowBuilder};
+use serde::Serialize;
+use tauri::{
+    AppHandle, Manager, PhysicalPosition, Runtime, State, WebviewUrl, WebviewWindowBuilder,
+};
 
 use crate::window_registry::{DetachOutcome, DetachedWindowHost, RegistryError, WindowRegistry};
 
@@ -57,6 +60,45 @@ where
             .map_err(WindowCommandError::Registry)
     }
 
+    pub fn detach_stove_key(
+        &self,
+        stove_key: impl Into<String>,
+    ) -> Result<DetachOutcome, WindowCommandError> {
+        let stove_key = stove_key.into();
+        let monitors = self
+            .monitors
+            .monitors()
+            .map_err(|error| WindowCommandError::Monitors(error.to_string()))?;
+        let monitor = monitors
+            .iter()
+            .find(|monitor| monitor.primary)
+            .or_else(|| monitors.first())
+            .ok_or(WindowCommandError::Registry(RegistryError::NoMonitors))?;
+        let layout = DetachedStoveLayout::from_absolute(
+            stove_key,
+            monitor,
+            WindowPosition {
+                x: monitor.x.saturating_add(24),
+                y: monitor.y.saturating_add(24),
+            },
+            cookbench_core::persistence::WindowSize {
+                width: 164,
+                height: 104,
+            },
+        );
+        let mut registry = self
+            .registry
+            .lock()
+            .map_err(|_| WindowCommandError::Poisoned)?;
+        let mut windows = self
+            .windows
+            .lock()
+            .map_err(|_| WindowCommandError::Poisoned)?;
+        registry
+            .detach(&mut *windows, layout, &monitors)
+            .map_err(WindowCommandError::Registry)
+    }
+
     pub fn restore(&self, layouts: Vec<DetachedStoveLayout>) -> Result<(), WindowCommandError> {
         let monitors = self
             .monitors
@@ -87,6 +129,29 @@ where
             .lock()
             .map_err(|_| WindowCommandError::Poisoned)?;
         Ok(registry.update_position(stove_key, monitor, position))
+    }
+
+    pub fn record_absolute_position(
+        &self,
+        stove_key: &str,
+        position: WindowPosition,
+    ) -> Result<bool, WindowCommandError> {
+        let monitors = self
+            .monitors
+            .monitors()
+            .map_err(|error| WindowCommandError::Monitors(error.to_string()))?;
+        let monitor = monitors
+            .iter()
+            .find(|monitor| {
+                position.x >= monitor.x
+                    && position.y >= monitor.y
+                    && position.x < monitor.x.saturating_add_unsigned(monitor.width)
+                    && position.y < monitor.y.saturating_add_unsigned(monitor.height)
+            })
+            .or_else(|| monitors.iter().find(|monitor| monitor.primary))
+            .or_else(|| monitors.first())
+            .ok_or(WindowCommandError::Registry(RegistryError::NoMonitors))?;
+        self.moved(stove_key, monitor, position)
     }
 
     /// Clearing a Cookbench Stove closes only its matching detached UI window.
@@ -173,7 +238,15 @@ impl<R: Runtime> DetachedWindowHost for TauriDetachedWindowHost<R> {
         )
         .build()?;
         window.set_position(PhysicalPosition::new(position.x, position.y))?;
-        window.show()
+        window.show()?;
+        // Detached bars are the same floating Cookbench surface as the global
+        // bar: macOS gets all-workspaces, Windows gets topmost, and Wayland
+        // remains an honest best-effort presentation.
+        match crate::platform::apply_platform_overlay(&window) {
+            Ok(()) | Err(crate::platform::OverlayError::BestEffortWayland) => Ok(()),
+            Err(crate::platform::OverlayError::Tauri(error)) => Err(error),
+            Err(_) => Ok(()),
+        }
     }
 
     fn present(&mut self, label: &str) -> Result<(), Self::Error> {
@@ -237,3 +310,104 @@ impl<R: Runtime> MonitorProvider for TauriMonitorProvider<R> {
 
 pub type TauriWindowCommandService<R = tauri::Wry> =
     WindowCommandService<TauriDetachedWindowHost<R>, TauriMonitorProvider<R>>;
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DetachedWindowResponse {
+    pub stove_id: String,
+    pub label: String,
+}
+
+#[tauri::command]
+pub fn detach_stove(
+    stove_id: String,
+    app_state: State<'_, crate::app_state::AppState>,
+    windows: State<'_, TauriWindowCommandService>,
+) -> Result<DetachedWindowResponse, String> {
+    if !app_state
+        .stoves
+        .snapshot()
+        .stoves
+        .iter()
+        .any(|stove| stove.id == stove_id)
+    {
+        return Err("Cookbench does not have that Stove".to_owned());
+    }
+    let record = match windows
+        .detach_stove_key(stove_id.clone())
+        .map_err(|error| error.to_string())?
+    {
+        DetachOutcome::Created(record) | DetachOutcome::PresentedExisting(record) => record,
+    };
+    persist_layouts(&app_state, &windows)?;
+    Ok(DetachedWindowResponse {
+        stove_id,
+        label: record.label,
+    })
+}
+
+#[tauri::command]
+pub fn clear_detached_stove(
+    stove_id: String,
+    app: AppHandle,
+    app_state: State<'_, crate::app_state::AppState>,
+    windows: State<'_, TauriWindowCommandService>,
+) -> Result<bool, String> {
+    let identity = app_state
+        .stoves
+        .core_stove(&stove_id)
+        .map(|stove| stove.identity);
+    app_state
+        .clear_cooked_and_emit(&app, &stove_id)
+        .map_err(|error| error.to_string())?;
+    if let (Some(identity), Some(remote)) = (
+        identity,
+        app.try_state::<crate::remote::runtime::RemoteRuntimeState>(),
+    ) {
+        remote.forget(identity);
+    }
+    let closed = windows
+        .clear_stove(&stove_id)
+        .map_err(|error| error.to_string())?;
+    persist_layouts(&app_state, &windows)?;
+    Ok(closed)
+}
+
+#[tauri::command]
+pub fn record_detached_stove_position(
+    stove_id: String,
+    x: i32,
+    y: i32,
+    app_state: State<'_, crate::app_state::AppState>,
+    windows: State<'_, TauriWindowCommandService>,
+) -> Result<bool, String> {
+    if !app_state
+        .stoves
+        .snapshot()
+        .stoves
+        .iter()
+        .any(|stove| stove.id == stove_id)
+    {
+        return Err("Cookbench does not have that Stove".to_owned());
+    }
+    let updated = windows
+        .record_absolute_position(&stove_id, WindowPosition { x, y })
+        .map_err(|error| error.to_string())?;
+    if updated {
+        persist_layouts(&app_state, &windows)?;
+    }
+    Ok(updated)
+}
+
+pub(super) fn persist_layouts(
+    app_state: &crate::app_state::AppState,
+    windows: &TauriWindowCommandService,
+) -> Result<(), String> {
+    let layouts = windows
+        .persisted_layouts()
+        .map_err(|error| error.to_string())?;
+    app_state.update_persisted_config(|config| {
+        config.layout.detached_layouts = layouts;
+        config.layout.detached_stoves.clear();
+    })
+}

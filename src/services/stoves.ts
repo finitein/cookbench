@@ -14,6 +14,10 @@ export const tauriStoveTransport: StoveTransport = {
   listen: (handler) => listen<StoveChange>(STOVE_CHANGED_EVENT, (event) => handler(event.payload)),
 };
 
+export function clearCookedStove(stoveId: string): Promise<void> {
+  return invoke<void>("clear_cooked_stove", { stoveId });
+}
+
 /** Maintains a local revisioned view. A revision gap never gets guessed. */
 export class StoveSync {
   private revision = 0;

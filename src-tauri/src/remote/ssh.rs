@@ -1,6 +1,11 @@
 //! System OpenSSH invocation with a deliberately tiny, read-only command set.
 
-use std::{io, process::Command};
+use std::{
+    io::{self, Read},
+    process::{Command, Stdio},
+    thread,
+    time::{Duration, Instant},
+};
 
 use cookbench_core::remote::{RemoteHost, SessionRoot};
 
@@ -15,9 +20,23 @@ impl SshInvocation {
     /// alias; no `-F`, identity file, password, or host-key override is passed.
     pub fn discover(host: &RemoteHost, root: &SessionRoot) -> Self {
         let remote_command = format!(
-            "exec find {} -type f -name '*.jsonl' -print0",
+            "exec find {} -type f -name '*.jsonl' -mtime -7 -print0",
             shell_quote(root.as_str())
         );
+        Self::readonly(host, remote_command)
+    }
+
+    /// Reads a bounded suffix after discovery has already validated the path.
+    /// The fixed `tail` command keeps remote data access read-only.
+    pub fn read_suffix(host: &RemoteHost, path: &str) -> Result<Self, SshError> {
+        validate_remote_path(path)?;
+        Ok(Self::readonly(
+            host,
+            format!("exec tail -c 65536 {}", shell_quote(path)),
+        ))
+    }
+
+    fn readonly(host: &RemoteHost, remote_command: String) -> Self {
         Self {
             program: "ssh",
             args: vec![
@@ -31,6 +50,10 @@ impl SshInvocation {
                 "StrictHostKeyChecking=yes".into(),
                 "-o".into(),
                 "ConnectTimeout=10".into(),
+                "-o".into(),
+                "ServerAliveInterval=5".into(),
+                "-o".into(),
+                "ServerAliveCountMax=2".into(),
                 host.alias().to_owned(),
                 remote_command,
             ],
@@ -50,6 +73,7 @@ pub enum SshError {
     Launch(io::Error),
     Disconnected { detail: String },
     UnsafeOutput,
+    Timeout,
 }
 
 impl std::fmt::Display for SshError {
@@ -58,6 +82,7 @@ impl std::fmt::Display for SshError {
             Self::Launch(error) => write!(formatter, "could not start system ssh: {error}"),
             Self::Disconnected { detail } => write!(formatter, "SSH source unavailable: {detail}"),
             Self::UnsafeOutput => formatter.write_str("SSH discovery returned unsafe output"),
+            Self::Timeout => formatter.write_str("SSH source exceeded its liveness deadline"),
         }
     }
 }
@@ -74,16 +99,34 @@ pub struct SystemSshRunner;
 
 impl SshRunner for SystemSshRunner {
     fn run(&self, invocation: &SshInvocation) -> Result<ProbeOutput, SshError> {
-        let output = Command::new(invocation.program)
+        let mut child = Command::new(invocation.program)
             .args(&invocation.args)
-            .output()
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
             .map_err(SshError::Launch)?;
+        let stdout = child.stdout.take().ok_or(SshError::UnsafeOutput)?;
+        let stderr = child.stderr.take().ok_or(SshError::UnsafeOutput)?;
+        let stdout_reader = thread::spawn(move || read_bounded(stdout, 512 * 1024));
+        let stderr_reader = thread::spawn(move || read_bounded(stderr, 64 * 1024));
+        let status = wait_with_deadline(&mut child, Duration::from_secs(15))?;
+        let (stdout, stdout_overflow) = stdout_reader
+            .join()
+            .map_err(|_| SshError::UnsafeOutput)?
+            .map_err(SshError::Launch)?;
+        let (stderr, stderr_overflow) = stderr_reader
+            .join()
+            .map_err(|_| SshError::UnsafeOutput)?
+            .map_err(SshError::Launch)?;
+        if stdout_overflow || stderr_overflow {
+            return Err(SshError::UnsafeOutput);
+        }
         let result = ProbeOutput {
-            status: output.status.code().unwrap_or(-1),
-            stdout: output.stdout,
-            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+            status: status.code().unwrap_or(-1),
+            stdout,
+            stderr: String::from_utf8_lossy(&stderr).into_owned(),
         };
-        if output.status.success() {
+        if status.success() {
             Ok(result)
         } else {
             Err(SshError::Disconnected {
@@ -91,6 +134,40 @@ impl SshRunner for SystemSshRunner {
             })
         }
     }
+}
+
+fn wait_with_deadline(
+    child: &mut std::process::Child,
+    timeout: Duration,
+) -> Result<std::process::ExitStatus, SshError> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if let Some(status) = child.try_wait().map_err(SshError::Launch)? {
+            return Ok(status);
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(SshError::Timeout);
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+}
+
+fn read_bounded(mut reader: impl Read, maximum: usize) -> Result<(Vec<u8>, bool), io::Error> {
+    let mut retained = Vec::with_capacity(maximum.min(8 * 1024));
+    let mut overflow = false;
+    let mut buffer = [0_u8; 8 * 1024];
+    loop {
+        let read = reader.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        let remaining = maximum.saturating_sub(retained.len());
+        retained.extend_from_slice(&buffer[..read.min(remaining)]);
+        overflow |= read > remaining;
+    }
+    Ok((retained, overflow))
 }
 
 pub fn session_paths(output: &ProbeOutput, root: &SessionRoot) -> Result<Vec<String>, SshError> {
@@ -118,6 +195,44 @@ pub fn session_paths(output: &ProbeOutput, root: &SessionRoot) -> Result<Vec<Str
         .collect()
 }
 
+pub fn suffix_bytes(output: &ProbeOutput) -> Result<&[u8], SshError> {
+    if output.status != 0 || output.stdout.len() > 65_536 {
+        return Err(SshError::UnsafeOutput);
+    }
+    Ok(&output.stdout)
+}
+
+fn validate_remote_path(path: &str) -> Result<(), SshError> {
+    if path.is_empty()
+        || !path.starts_with('/')
+        || path.len() > 4 * 1024
+        || path.chars().any(char::is_control)
+    {
+        return Err(SshError::UnsafeOutput);
+    }
+    Ok(())
+}
+
 fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use std::{process::Command, time::Duration};
+
+    use super::{wait_with_deadline, SshError};
+
+    #[test]
+    fn stalled_child_is_terminated_at_the_local_deadline() {
+        let mut child = Command::new("sh")
+            .args(["-c", "sleep 2"])
+            .spawn()
+            .expect("synthetic stalled child should start");
+        assert!(matches!(
+            wait_with_deadline(&mut child, Duration::from_millis(50)),
+            Err(SshError::Timeout)
+        ));
+        assert!(child.try_wait().unwrap().is_some());
+    }
 }

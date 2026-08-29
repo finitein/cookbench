@@ -9,4 +9,4 @@ mod parser;
 
 pub use discovery::PiAdapter;
 pub use extension::{ExtensionEnvelope, ExtensionEvent};
-pub use parser::{parse_session_file, ParsedPiSession};
+pub use parser::{parse_record, parse_session_file, ParsedPiSession};

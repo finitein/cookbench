@@ -29,8 +29,8 @@ absent from `dist`.
 | 2 | Codex, Claude Code, Pi create stoves from their original tools | Sanitized fixture E2E plus manual original-tool sessions | Three-harness E2E passes; manual original-tool sessions pending |
 | 3 | Every burner names its harness | `global-bar.spec.ts` plus screen-reader check | E2E and component accessible-name checks pass; manual screen reader pending |
 | 4 | Global Bar contains all active and uncleared stoves | `global-bar.spec.ts` with three sources and retained Cooked fixture | E2E passes |
-| 5 | Hover/focus exposes safe project, task, state, activity, progress | Desktop screenshot and keyboard-focus check | Component keyboard coverage passes; manual desktop hover screenshot pending |
-| 6 | Needs Human and Cooked use authoritative transitions | State-machine and lifecycle evidence | Existing unit coverage; full E2E pending |
+| 5 | Hover/focus exposes safe project, task, state, activity, progress | Desktop screenshot and keyboard-focus check | Production summary projection, tooltip, and keyboard component tests pass; manual native hover screenshot pending |
+| 6 | Needs Human and Cooked use authoritative transitions | State-machine and lifecycle evidence | Reducer, native Hook projection, cross-source ordering, and lifecycle E2E pass; live original-tool observation pending |
 | 7 | Click returns to original surface or honest fallback | Locator tests and manual host checks | Automated fallback coverage; host checks pending |
 | 8 | Cooked persists until explicit clear | `stove-lifecycle.spec.ts` restart and clear flow | E2E passes |
 | 9 | Global and detached Bars coexist | `detached-bars.spec.ts` plus multi-window screenshot | Placement/restore/clear E2E passes; native multi-window screenshot pending |
@@ -75,7 +75,10 @@ asset additions. Verify blur-unavailable fallback is solid and legible.
   than treating them as failures or full-overlay success.
 - SSH: test zero-install read-only discovery and optional bridge separately;
   disconnect must remain Disconnected, no Cooked notification may be emitted,
-  bridge must use SSH stdio only and open no port.
+  bridge must use SSH stdio only and open no port. Automated checks cover
+  configured-root transport, project metadata projection, checksum enforcement,
+  fixed OpenSSH liveness deadlines, and local stalled-child termination; an
+  isolated live host remains pending.
 - Notifications: use synthetic sandbox destinations for Telegram, Slack,
   Discord, Lark/Feishu, and Generic Webhook. Confirm no inbound listener,
   polling, response processing, or remote agent control is present.

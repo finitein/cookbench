@@ -9,6 +9,10 @@ use super::Versioned;
 pub struct RetainedStove {
     pub locator: StoveIdentity,
     pub completed_at_ms: u64,
+    /// Display-only metadata required to reconstruct a retained Stove before
+    /// its native session is rediscovered. It never contains task text.
+    #[serde(default)]
+    pub presentation: RetainedStovePresentation,
 }
 
 impl RetainedStove {
@@ -16,8 +20,54 @@ impl RetainedStove {
         Self {
             locator,
             completed_at_ms,
+            presentation: RetainedStovePresentation::default(),
         }
     }
+
+    pub fn with_presentation(
+        locator: StoveIdentity,
+        completed_at_ms: u64,
+        presentation: RetainedStovePresentation,
+    ) -> Self {
+        Self {
+            locator,
+            completed_at_ms,
+            presentation,
+        }
+    }
+}
+
+/// Deliberately minimal retained rendering data. Titles, activities, prompts,
+/// commands, tool output, and native session text are not persisted.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct RetainedStovePresentation {
+    #[serde(default)]
+    pub project_label: String,
+    #[serde(default)]
+    pub project_root_display: String,
+}
+
+impl RetainedStovePresentation {
+    pub const MAX_TEXT_BYTES: usize = 512;
+
+    pub fn new(project_label: impl Into<String>, project_root_display: impl Into<String>) -> Self {
+        Self {
+            project_label: sanitize_display_text(project_label.into()),
+            project_root_display: sanitize_display_text(project_root_display.into()),
+        }
+    }
+}
+
+fn sanitize_display_text(mut value: String) -> String {
+    value.retain(|character| !character.is_control());
+    if value.len() > RetainedStovePresentation::MAX_TEXT_BYTES {
+        let mut boundary = RetainedStovePresentation::MAX_TEXT_BYTES;
+        while !value.is_char_boundary(boundary) {
+            boundary -= 1;
+        }
+        value.truncate(boundary);
+    }
+    value
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

@@ -56,6 +56,14 @@ pub fn parse_record(
             update_plan_progress(payload)
                 .map(|(completed, total)| EventKind::PlanUpdated { completed, total })
         }
+        ("response_item", Some("function_call"))
+            if matches!(
+                payload.get("name").and_then(Value::as_str),
+                Some("request_user_input" | "ask_user_question")
+            ) =>
+        {
+            Some(EventKind::QuestionAsked)
+        }
         ("response_item", Some("function_call")) => Some(EventKind::ToolStarted),
         ("response_item", Some("function_call_output")) => Some(EventKind::ToolCompleted {
             succeeded: !payload
@@ -63,6 +71,12 @@ pub fn parse_record(
                 .is_some_and(|success| success == false),
         }),
         ("event_msg", Some("task_complete")) => Some(EventKind::TurnCompleted),
+        ("event_msg", Some("question" | "input_required" | "request_user_input")) => {
+            Some(EventKind::QuestionAsked)
+        }
+        ("event_msg", Some("permission_request" | "permission_requested")) => {
+            Some(EventKind::PermissionRequested)
+        }
         ("event_msg", Some("turn_failed" | "session_failed")) => Some(EventKind::SessionFailed),
         ("session_meta" | "session_started", _) => Some(EventKind::SessionDiscovered),
         ("user_message" | "user_prompt", _) => Some(EventKind::UserPromptSubmitted),
@@ -75,6 +89,8 @@ pub fn parse_record(
         ("update_plan", _) => plan_progress(payload)
             .map(|(completed, total)| EventKind::PlanUpdated { completed, total }),
         ("turn_completed" | "task_complete", _) => Some(EventKind::TurnCompleted),
+        ("question" | "input_required", _) => Some(EventKind::QuestionAsked),
+        ("permission_request" | "permission_requested", _) => Some(EventKind::PermissionRequested),
         ("turn_failed" | "error", _) => Some(EventKind::SessionFailed),
         _ => None,
     };

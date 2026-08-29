@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::domain::HarnessId;
+use crate::notifications::NotificationEventKind;
 
 use super::DetachedStoveLayout;
 use super::Versioned;
@@ -51,6 +52,41 @@ pub struct CredentialReference {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct NotificationDestinationConfig {
+    pub id: String,
+    pub provider: String,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub recipient: Option<String>,
+    #[serde(default)]
+    pub events: Vec<NotificationEventKind>,
+    #[serde(default)]
+    pub template: Option<String>,
+    pub credential: CredentialReference,
+}
+
+/// A read-only OpenSSH source. Authentication remains entirely in the user's
+/// existing SSH configuration and known_hosts files.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct RemoteSourceConfig {
+    pub id: String,
+    pub alias: String,
+    #[serde(default)]
+    pub session_roots: Vec<String>,
+    #[serde(default)]
+    pub enabled: bool,
+    /// Uses the explicitly selected, checksum-verified SSH stdio bridge rather
+    /// than zero-install polling. The bridge is never enabled implicitly.
+    #[serde(default)]
+    pub bridge_enabled: bool,
+    /// Optional path to a user-selected bridge binary for a different remote
+    /// platform. When absent, the packaged same-platform sidecar is used.
+    #[serde(default)]
+    pub bridge_binary_path: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PersistedConfig {
     pub version: u32,
     #[serde(default)]
@@ -61,6 +97,10 @@ pub struct PersistedConfig {
     pub preferences: UserPreferences,
     #[serde(default)]
     pub credential_references: Vec<CredentialReference>,
+    #[serde(default)]
+    pub notification_destinations: Vec<NotificationDestinationConfig>,
+    #[serde(default)]
+    pub remote_sources: Vec<RemoteSourceConfig>,
 }
 
 impl PersistedConfig {
@@ -75,6 +115,8 @@ impl Default for PersistedConfig {
             enabled_harnesses: Vec::new(),
             preferences: UserPreferences::default(),
             credential_references: Vec::new(),
+            notification_destinations: Vec::new(),
+            remote_sources: Vec::new(),
         }
     }
 }

@@ -19,8 +19,13 @@ fn unique_temp_dir(name: &str) -> PathBuf {
 }
 
 fn run_hook(spool: Option<&Path>, input: &[u8]) -> std::process::Output {
+    run_hook_with_args(spool, input, &[])
+}
+
+fn run_hook_with_args(spool: Option<&Path>, input: &[u8], args: &[&str]) -> std::process::Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_cookbench-hook"));
     command
+        .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -38,6 +43,75 @@ fn run_hook(spool: Option<&Path>, input: &[u8]) -> std::process::Output {
         .write_all(input)
         .expect("test input should be written");
     child.wait_with_output().expect("hook binary should exit")
+}
+
+fn only_envelope(spool: &Path) -> serde_json::Value {
+    let path = fs::read_dir(spool)
+        .expect("spool should be readable")
+        .next()
+        .expect("one envelope should exist")
+        .expect("envelope entry should be readable")
+        .path();
+    serde_json::from_slice(&fs::read(path).expect("envelope should be readable"))
+        .expect("envelope should be valid JSON")
+}
+
+#[test]
+fn accepts_generated_codex_and_claude_helper_argv() {
+    let codex_spool = unique_temp_dir("codex-argv");
+    let codex_payload = r#"{"type":"agent-turn-complete","thread-id":"thread-42","turn-id":"turn-7","last-assistant-message":"synthetic content that must be discarded"}"#;
+    let codex = run_hook_with_args(
+        Some(&codex_spool),
+        &[],
+        &["--harness", "codex", codex_payload],
+    );
+    assert!(codex.status.success());
+    let codex_envelope = only_envelope(&codex_spool);
+    assert_eq!(codex_envelope["event"]["event_type"], "turn_completed");
+    assert_eq!(codex_envelope["event"]["session_id"], "thread-42");
+    assert!(!codex_envelope.to_string().contains("synthetic content"));
+    fs::remove_dir_all(codex_spool).expect("temp directory should be removed");
+
+    let claude_spool = unique_temp_dir("claude-argv");
+    let claude = run_hook_with_args(
+        Some(&claude_spool),
+        br#"{"session_id":"session-claude","transcript_path":"/synthetic/transcript.jsonl","cwd":"/synthetic/project","hook_event_name":"PermissionRequest","tool_name":"Bash","tool_input":{"command":"synthetic command that must be discarded"}}"#,
+        &["--harness", "claude-code"],
+    );
+    assert!(claude.status.success());
+    let claude_envelope = only_envelope(&claude_spool);
+    assert_eq!(
+        claude_envelope["event"]["event_type"],
+        "permission_requested"
+    );
+    assert_eq!(claude_envelope["event"]["session_id"], "session-claude");
+    let serialized = claude_envelope.to_string();
+    assert!(!serialized.contains("synthetic command"));
+    assert!(!serialized.contains("transcript"));
+    fs::remove_dir_all(claude_spool).expect("temp directory should be removed");
+}
+
+#[test]
+fn maps_claude_notification_types_without_retaining_messages() {
+    for (notification_type, expected_event) in [
+        ("permission_prompt", "permission_requested"),
+        ("idle_prompt", "question_asked"),
+    ] {
+        let spool = unique_temp_dir(notification_type);
+        let input = format!(
+            r#"{{"session_id":"session-claude","hook_event_name":"Notification","notification_type":"{notification_type}","message":"private synthetic message"}}"#
+        );
+        let output = run_hook_with_args(
+            Some(&spool),
+            input.as_bytes(),
+            &["--harness", "claude-code"],
+        );
+        assert!(output.status.success());
+        let envelope = only_envelope(&spool);
+        assert_eq!(envelope["event"]["event_type"], expected_event);
+        assert!(!envelope.to_string().contains("private synthetic message"));
+        fs::remove_dir_all(spool).expect("temp directory should be removed");
+    }
 }
 
 fn valid_event() -> &'static [u8] {
