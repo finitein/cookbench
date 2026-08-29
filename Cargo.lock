@@ -349,6 +349,8 @@ dependencies = [
  "async-trait",
  "cookbench-core",
  "notify",
+ "serde",
+ "serde_json",
  "tokio",
  "tokio-util",
 ]
@@ -376,6 +378,10 @@ dependencies = [
 [[package]]
 name = "cookbench-hook"
 version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "cookie"
