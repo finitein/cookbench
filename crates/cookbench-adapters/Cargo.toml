@@ -3,3 +3,12 @@ name = "cookbench-adapters"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+
+[dependencies]
+async-trait = "0.1"
+cookbench-core = { path = "../cookbench-core" }
+tokio = { version = "1", features = ["sync"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt"] }
