@@ -6,6 +6,7 @@
 mod adapter;
 mod capabilities;
 mod fixture;
+pub mod io;
 mod registry;
 
 pub use adapter::{
