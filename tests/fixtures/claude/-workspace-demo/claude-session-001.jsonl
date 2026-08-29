@@ -1,0 +1,8 @@
+{"type":"user","timestamp":100,"session_name":"Synthetic Claude task"}
+{"type":"assistant","timestamp":110,"message":{"content":[{"type":"tool_use"}]},"todos":[{"status":"completed"},{"status":"in_progress"},{"status":"pending"}]}
+{"type":"system","subtype":"permission_request","timestamp":120}
+{"type":"system","subtype":"ask_user_question","timestamp":130}
+{"type":"tool_result","timestamp":140,"is_error":false}
+{"type":"system","subtype":"subagent_started","timestamp":150}
+{"type":"system","subtype":"subagent_completed","timestamp":160}
+{"type":"system","subtype":"stop","timestamp":170}

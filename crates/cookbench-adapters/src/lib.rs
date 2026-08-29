@@ -5,6 +5,7 @@
 
 mod adapter;
 mod capabilities;
+pub mod claude;
 pub mod codex;
 mod fixture;
 pub mod io;
