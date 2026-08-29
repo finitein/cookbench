@@ -2,6 +2,7 @@ pub mod app_state;
 pub mod commands;
 pub mod events;
 pub mod platform;
+pub mod window_registry;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {

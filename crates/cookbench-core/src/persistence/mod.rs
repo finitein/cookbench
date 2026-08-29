@@ -5,8 +5,13 @@
 
 mod atomic_file;
 mod config;
+mod layout;
 mod state;
 
 pub use atomic_file::{AtomicJsonFile, PersistenceError, Versioned};
 pub use config::{BarLayout, CredentialReference, PersistedConfig, UserPreferences};
+pub use layout::{
+    DetachedStoveLayout, MonitorIdentity, MonitorWorkArea, RelativePosition,
+    RestoredDetachedStoveLayout, WindowPosition, WindowSize,
+};
 pub use state::{ClearCursor, PersistedState, RetainedStove};

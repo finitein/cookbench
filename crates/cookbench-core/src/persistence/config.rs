@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::HarnessId;
 
+use super::DetachedStoveLayout;
 use super::Versioned;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -10,6 +11,8 @@ pub struct BarLayout {
     pub global_bar_visible: bool,
     #[serde(default)]
     pub detached_stoves: Vec<String>,
+    #[serde(default)]
+    pub detached_layouts: Vec<DetachedStoveLayout>,
 }
 
 impl Default for BarLayout {
@@ -17,6 +20,7 @@ impl Default for BarLayout {
         Self {
             global_bar_visible: true,
             detached_stoves: Vec::new(),
+            detached_layouts: Vec::new(),
         }
     }
 }

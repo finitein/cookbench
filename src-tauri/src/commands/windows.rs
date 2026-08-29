@@ -1,0 +1,239 @@
+//! Application commands for Cookbench-owned detached Stove bars.
+//!
+//! The service is deliberately parameterized over window and monitor adapters.
+//! This keeps lifecycle rules testable without a desktop runtime and ensures the
+//! command layer cannot reach into an agent, terminal, or session file.
+
+use std::{fmt, sync::Mutex};
+
+use cookbench_core::persistence::{
+    DetachedStoveLayout, MonitorIdentity, MonitorWorkArea, WindowPosition,
+};
+
+use tauri::{AppHandle, Manager, PhysicalPosition, Runtime, WebviewUrl, WebviewWindowBuilder};
+
+use crate::window_registry::{DetachOutcome, DetachedWindowHost, RegistryError, WindowRegistry};
+
+pub trait MonitorProvider {
+    type Error: fmt::Display;
+
+    fn monitors(&self) -> Result<Vec<MonitorWorkArea>, Self::Error>;
+}
+
+pub struct WindowCommandService<H, M> {
+    registry: Mutex<WindowRegistry>,
+    windows: Mutex<H>,
+    monitors: M,
+}
+
+impl<H, M> WindowCommandService<H, M>
+where
+    H: DetachedWindowHost,
+    M: MonitorProvider,
+{
+    pub fn new(registry: WindowRegistry, windows: H, monitors: M) -> Self {
+        Self {
+            registry: Mutex::new(registry),
+            windows: Mutex::new(windows),
+            monitors,
+        }
+    }
+
+    pub fn detach(&self, layout: DetachedStoveLayout) -> Result<DetachOutcome, WindowCommandError> {
+        let monitors = self
+            .monitors
+            .monitors()
+            .map_err(|error| WindowCommandError::Monitors(error.to_string()))?;
+        let mut registry = self
+            .registry
+            .lock()
+            .map_err(|_| WindowCommandError::Poisoned)?;
+        let mut windows = self
+            .windows
+            .lock()
+            .map_err(|_| WindowCommandError::Poisoned)?;
+        registry
+            .detach(&mut *windows, layout, &monitors)
+            .map_err(WindowCommandError::Registry)
+    }
+
+    pub fn restore(&self, layouts: Vec<DetachedStoveLayout>) -> Result<(), WindowCommandError> {
+        let monitors = self
+            .monitors
+            .monitors()
+            .map_err(|error| WindowCommandError::Monitors(error.to_string()))?;
+        let mut registry = self
+            .registry
+            .lock()
+            .map_err(|_| WindowCommandError::Poisoned)?;
+        let mut windows = self
+            .windows
+            .lock()
+            .map_err(|_| WindowCommandError::Poisoned)?;
+        registry
+            .restore_all(&mut *windows, layouts, &monitors)
+            .map_err(WindowCommandError::Registry)?;
+        Ok(())
+    }
+
+    pub fn moved(
+        &self,
+        stove_key: &str,
+        monitor: &MonitorWorkArea,
+        position: WindowPosition,
+    ) -> Result<bool, WindowCommandError> {
+        let mut registry = self
+            .registry
+            .lock()
+            .map_err(|_| WindowCommandError::Poisoned)?;
+        Ok(registry.update_position(stove_key, monitor, position))
+    }
+
+    /// Clearing a Cookbench Stove closes only its matching detached UI window.
+    /// It neither deletes nor alters the harness-native session.
+    pub fn clear_stove(&self, stove_key: &str) -> Result<bool, WindowCommandError> {
+        let mut registry = self
+            .registry
+            .lock()
+            .map_err(|_| WindowCommandError::Poisoned)?;
+        let mut windows = self
+            .windows
+            .lock()
+            .map_err(|_| WindowCommandError::Poisoned)?;
+        registry
+            .clear_stove(&mut *windows, stove_key)
+            .map_err(WindowCommandError::Registry)
+    }
+
+    pub fn persisted_layouts(&self) -> Result<Vec<DetachedStoveLayout>, WindowCommandError> {
+        let registry = self
+            .registry
+            .lock()
+            .map_err(|_| WindowCommandError::Poisoned)?;
+        Ok(registry.layouts())
+    }
+}
+
+#[derive(Debug)]
+pub enum WindowCommandError {
+    Monitors(String),
+    Registry(RegistryError),
+    Poisoned,
+}
+
+impl fmt::Display for WindowCommandError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Monitors(error) => write!(f, "could not enumerate monitors: {error}"),
+            Self::Registry(error) => error.fmt(f),
+            Self::Poisoned => write!(f, "window state is unavailable after a previous failure"),
+        }
+    }
+}
+
+impl std::error::Error for WindowCommandError {}
+
+/// Tauri adapter for the pure registry. Window labels and titles deliberately
+/// exclude project names, prompts, and session content.
+pub struct TauriDetachedWindowHost<R: Runtime = tauri::Wry> {
+    app: AppHandle<R>,
+}
+
+impl<R: Runtime> TauriDetachedWindowHost<R> {
+    pub fn new(app: AppHandle<R>) -> Self {
+        Self { app }
+    }
+}
+
+impl<R: Runtime> DetachedWindowHost for TauriDetachedWindowHost<R> {
+    type Error = tauri::Error;
+
+    fn create(
+        &mut self,
+        record: &crate::window_registry::DetachedWindowRecord,
+        position: WindowPosition,
+    ) -> Result<(), Self::Error> {
+        if let Some(window) = self.app.get_webview_window(&record.label) {
+            window.show()?;
+            return Ok(());
+        }
+
+        let window = WebviewWindowBuilder::new(
+            &self.app,
+            &record.label,
+            WebviewUrl::App("index.html".into()),
+        )
+        .title("Cookbench Stove")
+        .decorations(false)
+        .resizable(false)
+        .skip_taskbar(true)
+        .inner_size(
+            record.layout.size.width as f64,
+            record.layout.size.height as f64,
+        )
+        .build()?;
+        window.set_position(PhysicalPosition::new(position.x, position.y))?;
+        window.show()
+    }
+
+    fn present(&mut self, label: &str) -> Result<(), Self::Error> {
+        if let Some(window) = self.app.get_webview_window(label) {
+            window.show()?;
+            // Focus is convenience only. The detached view never targets the
+            // source harness, terminal, IDE, or SSH connection.
+            let _ = window.set_focus();
+        }
+        Ok(())
+    }
+
+    fn close(&mut self, label: &str) -> Result<(), Self::Error> {
+        if let Some(window) = self.app.get_webview_window(label) {
+            window.close()?;
+        }
+        Ok(())
+    }
+}
+
+pub struct TauriMonitorProvider<R: Runtime = tauri::Wry> {
+    app: AppHandle<R>,
+}
+
+impl<R: Runtime> TauriMonitorProvider<R> {
+    pub fn new(app: AppHandle<R>) -> Self {
+        Self { app }
+    }
+}
+
+impl<R: Runtime> MonitorProvider for TauriMonitorProvider<R> {
+    type Error = tauri::Error;
+
+    fn monitors(&self) -> Result<Vec<MonitorWorkArea>, Self::Error> {
+        let primary_name = self
+            .app
+            .primary_monitor()?
+            .and_then(|monitor| monitor.name().cloned());
+        self.app
+            .available_monitors()?
+            .into_iter()
+            .enumerate()
+            .map(|(index, monitor)| {
+                let name = monitor.name().cloned();
+                // Tauri exposes a display name, but not a cross-platform UUID.
+                // A missing name intentionally falls back after topology changes.
+                let id = name.clone().unwrap_or_else(|| format!("monitor-{index}"));
+                let area = monitor.work_area();
+                Ok(MonitorWorkArea {
+                    primary: name == primary_name,
+                    identity: MonitorIdentity { id, name },
+                    x: area.position.x,
+                    y: area.position.y,
+                    width: area.size.width,
+                    height: area.size.height,
+                })
+            })
+            .collect()
+    }
+}
+
+pub type TauriWindowCommandService<R = tauri::Wry> =
+    WindowCommandService<TauriDetachedWindowHost<R>, TauriMonitorProvider<R>>;
