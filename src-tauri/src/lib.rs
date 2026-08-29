@@ -4,6 +4,7 @@ pub mod events;
 pub mod locator;
 pub mod notifications;
 pub mod platform;
+pub mod remote;
 pub mod secrets;
 pub mod window_registry;
 
