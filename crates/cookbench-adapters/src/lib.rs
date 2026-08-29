@@ -9,6 +9,7 @@ pub mod claude;
 pub mod codex;
 mod fixture;
 pub mod io;
+pub mod pi;
 mod registry;
 
 pub use adapter::{

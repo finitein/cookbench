@@ -1,0 +1,7 @@
+{"type":"session","sessionId":"pi-synthetic-001","sessionName":"Synthetic Pi task","cwd":"/synthetic/pi-project","timestampMs":100}
+{"type":"prompt","timestampMs":101}
+{"type":"tool_call","tool":"synthetic-tool","timestampMs":102}
+{"type":"tool_result","success":true,"timestampMs":103}
+{"type":"custom","entries":[{"status":"completed"},{"status":"pending"}],"timestampMs":104}
+{"type":"turn_completed","status":"normal","timestampMs":105}
+{"type":"future_v99","payload":{"ignored":true},"timestampMs":106}
