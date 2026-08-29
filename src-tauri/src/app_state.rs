@@ -198,7 +198,9 @@ impl AppState {
             summary,
             event,
         )?;
-        crate::events::emit_stove_change(app, change).map_err(AppStateError::Emit)
+        crate::events::emit_stove_change(app, change).map_err(AppStateError::Emit)?;
+        crate::platform::publish_optional_gnome_snapshot(&self.stoves.snapshot());
+        Ok(())
     }
 }
 

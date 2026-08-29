@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "revision": 7,
+  "stoves": [
+    {
+      "harness": "Codex",
+      "project": "cookbench",
+      "state": "cooking",
+      "progress": {"completed": 1, "total": 3},
+      "retainedCompletion": false
+    },
+    {
+      "harness": "Claude Code",
+      "project": "docs",
+      "state": "needsHuman",
+      "progress": null,
+      "retainedCompletion": false
+    },
+    {
+      "harness": "Pi",
+      "project": "cli",
+      "state": "cooked",
+      "progress": null,
+      "retainedCompletion": true
+    }
+  ]
+}

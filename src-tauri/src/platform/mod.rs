@@ -4,6 +4,7 @@
 //! a coding harness window.
 
 mod capabilities;
+pub mod gnome_bridge;
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "macos")]
@@ -17,6 +18,26 @@ pub use capabilities::{
     OverlaySupport,
 };
 pub use overlay::{OverlayController, OverlayError, TauriOverlayController};
+
+use crate::app_state::StoveSnapshot;
+
+pub fn publish_optional_gnome_snapshot(snapshot: &StoveSnapshot) {
+    #[cfg(target_os = "linux")]
+    if let Some(runtime_dir) = std::env::var_os("XDG_RUNTIME_DIR") {
+        let payload = gnome_bridge::GnomePresentationSnapshot::from(snapshot);
+        let _ = gnome_bridge::write_presentation_file(std::path::Path::new(&runtime_dir), &payload);
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    let _ = snapshot;
+}
+
+pub fn clear_optional_gnome_snapshot() {
+    #[cfg(target_os = "linux")]
+    if let Some(runtime_dir) = std::env::var_os("XDG_RUNTIME_DIR") {
+        let _ = gnome_bridge::remove_presentation_file(std::path::Path::new(&runtime_dir));
+    }
+}
 
 use tauri::{Runtime, WebviewWindow};
 

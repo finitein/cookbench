@@ -1,0 +1,7 @@
+{
+  "uuid": "cookbench@cookbench.app",
+  "name": "Cookbench Presentation",
+  "description": "Optional presentation-only Cookbench stove summary bar.",
+  "shell-version": ["42", "43", "44", "45", "46"],
+  "version": 1
+}

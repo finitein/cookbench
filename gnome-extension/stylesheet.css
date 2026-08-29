@@ -1,0 +1,40 @@
+.cookbench-stove-list {
+  spacing: 6px;
+}
+
+.cookbench-stove {
+  border-radius: 4px;
+  padding: 3px 7px;
+  font-weight: 600;
+}
+
+.cookbench-state-starting,
+.cookbench-state-planning {
+  background-color: #1769aa;
+  color: #ffffff;
+}
+
+.cookbench-state-cooking {
+  background-color: #ff6a2a;
+  color: #171a1f;
+}
+
+.cookbench-state-needsHuman {
+  background-color: #ffb000;
+  color: #171a1f;
+}
+
+.cookbench-state-cooked {
+  background-color: #30c978;
+  color: #171a1f;
+}
+
+.cookbench-state-failed {
+  background-color: #ff453a;
+  color: #ffffff;
+}
+
+.cookbench-state-disconnected {
+  background-color: #8e8e93;
+  color: #ffffff;
+}
