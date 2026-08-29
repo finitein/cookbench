@@ -19,6 +19,10 @@ fn main() -> ExitCode {
     match env::args().skip(1).collect::<Vec<_>>().as_slice() {
         [] => run_hook(),
         [flag] if flag == "--self-test" => self_test(),
+        [flag] if flag == "--version" => {
+            println!("cookbench-hook {}", env!("CARGO_PKG_VERSION"));
+            ExitCode::SUCCESS
+        }
         _ => fail(EX_USAGE, "unsupported hook helper argument"),
     }
 }

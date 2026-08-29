@@ -2,11 +2,11 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Cookbench",
   "version": "0.1.0",
-  "identifier": "com.cookbench.app",
+  "identifier": "app.cookbench.desktop",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm build",
+    "beforeBuildCommand": "pnpm build && pnpm prepare:sidecars",
     "frontendDist": "../dist"
   },
   "app": {
@@ -24,11 +24,15 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost; script-src 'self'"
     }
   },
   "bundle": {
-    "active": false,
-    "icon": []
+    "active": true,
+    "targets": "all",
+    "category": "DeveloperTool",
+    "shortDescription": "Lightweight status stoves for local and SSH coding agents.",
+    "longDescription": "Cookbench observes native Codex, Claude Code, and Pi sessions and presents their state without hosting or controlling the agents.",
+    "icon": ["icons/icon.png"]
   }
 }

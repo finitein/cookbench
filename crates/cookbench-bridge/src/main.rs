@@ -6,6 +6,15 @@ use cookbench_bridge::{
 };
 
 fn main() {
+    let arguments = std::env::args().skip(1).collect::<Vec<_>>();
+    if arguments == ["--version"] {
+        println!("cookbench-bridge {}", env!("CARGO_PKG_VERSION"));
+        return;
+    }
+    if arguments != ["--stdio"] {
+        eprintln!("cookbench-bridge: expected --stdio");
+        std::process::exit(64);
+    }
     if let Err(error) = run_stdio() {
         eprintln!("Cookbench bridge stopped: {error}");
         std::process::exit(1);

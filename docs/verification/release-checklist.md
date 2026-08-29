@@ -25,7 +25,7 @@ absent from `dist`.
 
 | # | Requirement | Evidence required | Current status |
 | --- | --- | --- | --- |
-| 1 | Graphical macOS, Windows, Ubuntu installation | Package smoke run on each platform | Pending Windows and Ubuntu hardware/VM; macOS packaging run required |
+| 1 | Graphical macOS, Windows, Ubuntu installation | Package smoke run on each platform | macOS arm64 app/DMG build and package smoke pass; Windows, Ubuntu, and macOS Intel pending |
 | 2 | Codex, Claude Code, Pi create stoves from their original tools | Sanitized fixture E2E plus manual original-tool sessions | Three-harness E2E passes; manual original-tool sessions pending |
 | 3 | Every burner names its harness | `global-bar.spec.ts` plus screen-reader check | E2E and component accessible-name checks pass; manual screen reader pending |
 | 4 | Global Bar contains all active and uncleared stoves | `global-bar.spec.ts` with three sources and retained Cooked fixture | E2E passes |
@@ -34,14 +34,14 @@ absent from `dist`.
 | 7 | Click returns to original surface or honest fallback | Locator tests and manual host checks | Automated fallback coverage; host checks pending |
 | 8 | Cooked persists until explicit clear | `stove-lifecycle.spec.ts` restart and clear flow | E2E passes |
 | 9 | Global and detached Bars coexist | `detached-bars.spec.ts` plus multi-window screenshot | Placement/restore/clear E2E passes; native multi-window screenshot pending |
-| 10 | No transcript copy or harness control | Redaction tests, source audit, manual process inspection | Pending full release audit |
+| 10 | No transcript copy or harness control | Redaction tests, source audit, manual process inspection | Redaction and fixture/source audits pass; live original-tool process inspection pending |
 | 11 | SSH disconnect never becomes Cooked | `notifications.spec.ts` and isolated SSH run | E2E passes; isolated live remote pending |
 | 12 | Outbound-only notifications filter by destination/state | `notifications.spec.ts`, mock endpoint audit, no listener/polling assertion | Mock sender and filtered E2E pass; live sandboxes pending |
 | 13 | Attention, Cooked, Failed, Disconnected use complete rings | `stove-lifecycle.spec.ts`; screenshots | Component and E2E coverage pass; four browser screenshots recorded |
 | 14 | Only structured Cooking has a determinate arc | `stove-lifecycle.spec.ts` with structured and empty progress fixtures | Component and E2E coverage pass |
-| 15 | Approved light-default SVG/CSS material, no third-party logos/heavy media | Asset inventory and screenshot comparison with visual prototype | Four browser screenshots recorded; package audit pending |
+| 15 | Approved light-default SVG/CSS material, no third-party logos/heavy media | Asset inventory and screenshot comparison with visual prototype | Four browser screenshots recorded; exact two-SVG master comparison and macOS package audit pass |
 | 16 | Reduced motion and accessible state labels | Emulated media-feature screenshots and keyboard/screen-reader check | Reduced-motion E2E and component labels pass; OS/screen-reader check pending |
-| 17 | No photos, GIFs, video, Lottie, sprites, or bundled web fonts | Package artifact inventory | Pending package build |
+| 17 | No photos, GIFs, video, Lottie, sprites, or bundled web fonts | Package artifact inventory | macOS arm64 app/DMG package inventory passes; Windows and Ubuntu artifacts pending |
 
 ## Visual Matrix
 
@@ -79,6 +79,14 @@ asset additions. Verify blur-unavailable fallback is solid and legible.
 - Notifications: use synthetic sandbox destinations for Telegram, Slack,
   Discord, Lark/Feishu, and Generic Webhook. Confirm no inbound listener,
   polling, response processing, or remote agent control is present.
+
+## Performance Evidence
+
+The current macOS arm64 release process sampled at 92,944 KiB RSS and 0.0% CPU
+after eight seconds, then 92,448 KiB and 0.0% after thirteen seconds. The hook
+bounded spool self-test completed in 8 ms. See
+`docs/verification/performance-macos.md` for method, structural scale checks,
+and the native end-to-end latency gaps that remain open.
 
 ## Release Sign-Off
 
