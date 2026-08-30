@@ -22,7 +22,7 @@ optional presentation-only GNOME extension is installed.
 | Tauri compile and workspace tests | Passed: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, and `cargo build --workspace` | macOS development machine, 2026-08-30 |
 | Native Ubuntu ARM64 compile and workspace tests | Passed: Rust fmt, strict Clippy, full workspace tests, 79 Vitest tests, TypeScript lint, and production frontend build | Ubuntu 24.04.4 GNOME X11 host, 2026-08-30 |
 | Native Ubuntu packages | ARM64 DEB and AppImage built with executable bridge/hook sidecars; both package forms launched a Cookbench window | Ubuntu 24.04.4 GNOME X11 host, 2026-08-30 |
-| Native Ubuntu Codex/Pi discovery | Passed: a clean debug launch against the logged-in user's native roots populated the Bar from bounded metadata-first discovery; sessions between one and three days old remained visible under the 14-day startup window | Ubuntu 24.04.4 GNOME X11 host, 2026-08-30 |
+| Native Ubuntu bounded discovery | A clean debug launch previously populated Codex and Pi Stoves from the logged-in user's native roots. The current two-day startup cutoff has automated runtime coverage; a native rerun of that narrower policy remains pending. | Ubuntu 24.04.4 GNOME X11 host, 2026-08-30 |
 
 Automated tests prove the platform contract and compile the Tauri-backed window
 operations. The native Ubuntu run additionally proves the tested X11 compositor

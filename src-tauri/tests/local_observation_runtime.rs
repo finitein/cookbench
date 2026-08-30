@@ -70,13 +70,13 @@ fn append(path: &PathBuf, content: &str) {
 }
 
 #[test]
-fn default_discovery_window_keeps_long_running_sessions_visible() {
+fn default_discovery_window_is_bounded_to_two_days() {
     let now = SystemTime::now();
     let config = LocalObservationConfig::from_environment(HostIdentity::local("synthetic-host"));
     let age = now.duration_since(config.startup_min_modified).unwrap();
 
-    assert!(age >= Duration::from_secs(13 * 24 * 60 * 60));
-    assert!(age <= Duration::from_secs(15 * 24 * 60 * 60));
+    assert!(age >= Duration::from_secs(47 * 60 * 60));
+    assert!(age <= Duration::from_secs(49 * 60 * 60));
 }
 
 #[test]

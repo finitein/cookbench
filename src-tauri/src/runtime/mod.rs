@@ -32,6 +32,7 @@ use serde::Serialize;
 
 const MAX_PRESENTATION_TEXT_BYTES: usize = 160;
 const MIN_EPOCH_TIMESTAMP_MS: u64 = 1_000_000_000_000;
+const STARTUP_DISCOVERY_AGE: Duration = Duration::from_secs(2 * 24 * 60 * 60);
 
 /// A bounded, content-free projection for hover and notification surfaces.
 /// Values are derived from structured session metadata and normalized event
@@ -116,7 +117,7 @@ impl LocalObservationConfig {
             claude_root: claude.projects_root().to_owned(),
             pi_roots: pi.roots().to_vec(),
             startup_min_modified: SystemTime::now()
-                .checked_sub(Duration::from_secs(14 * 24 * 60 * 60))
+                .checked_sub(STARTUP_DISCOVERY_AGE)
                 .unwrap_or(SystemTime::UNIX_EPOCH),
             startup_candidate_limit: 64,
         }
