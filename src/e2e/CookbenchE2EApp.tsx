@@ -92,7 +92,9 @@ export default function CookbenchE2EApp() {
     <main className="shell" aria-label="Cookbench E2E presentation">
       <GlobalBar
         stoves={stoves}
-        onActivateStove={() => undefined}
+        onActivateStove={(stove) => {
+          setActiveAlertStoveId((current) => current === stove.id ? null : current);
+        }}
         onDetachStove={() => undefined}
         onClearStove={() => undefined}
         onOpenSettings={() => undefined}

@@ -108,6 +108,9 @@ test("a local alert emphasizes only its named Stove without changing layout", as
   await expect(bar.locator(`[data-stove-id="${second.id}"]`)).toHaveClass(/stove-burner-wrap--alert/);
   await expect(bar.locator(`[data-stove-id="${first.id}"]`)).not.toHaveClass(/stove-burner-wrap--alert/);
   await expect(bar).toHaveJSProperty("clientHeight", originalHeight);
+
+  await bar.locator(`[data-stove-id="${second.id}"]`).getByTestId("stove").click();
+  await expect(bar.locator(`[data-stove-id="${second.id}"]`)).not.toHaveClass(/stove-burner-wrap--alert/);
 });
 
 test("reduced motion keeps local alert emphasis static", async ({ page }) => {

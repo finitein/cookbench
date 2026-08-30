@@ -19,10 +19,11 @@ export default function App() {
   const { stoves } = useStoves();
   const detached = useDetachedWindowStove(stoves);
   const displaySettings = useDisplaySettings();
-  const activeAlertStoveId = useLocalAlert();
+  const { activeStoveId: activeAlertStoveId, dismiss: dismissLocalAlert } = useLocalAlert();
   useGlobalBarWindow();
   const [activation, setActivation] = useState<LocatorActivationResult | null>(null);
   const activate = (stove: StoveWire) => {
+    dismissLocalAlert(stove.id);
     void activateStove(stove.id)
       .then(setActivation)
       .catch(() => setActivation({ target: "unavailable", status: "unavailable", resumeSessionId: null }));

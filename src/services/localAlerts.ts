@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export const LOCAL_ALERT_EVENT = "cookbench://local-alert";
 export const LOCAL_ALERT_TEST_STOVE_ID = "__cookbench_test__";
@@ -11,6 +11,11 @@ export type LocalAlertPayload = {
   event: string;
 };
 
+export type LocalAlertState = {
+  activeStoveId: string | null;
+  dismiss: (stoveId: string) => void;
+};
+
 export function isLocalAlertPayload(value: unknown): value is LocalAlertPayload {
   if (!value || typeof value !== "object") return false;
   const payload = value as Record<string, unknown>;
@@ -19,22 +24,33 @@ export function isLocalAlertPayload(value: unknown): value is LocalAlertPayload 
     && typeof payload.event === "string";
 }
 
-/** Makes the matching Stove briefly conspicuous without changing its state. */
-export function useLocalAlert(): string | null {
+/** Keeps completion alerts visible until acknowledged; other alerts stay brief. */
+export function useLocalAlert(): LocalAlertState {
   const [activeStoveId, setActiveStoveId] = useState<string | null>(null);
+  const clearTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const dismiss = useCallback((stoveId: string) => {
+    setActiveStoveId((current) => {
+      if (current !== stoveId) return current;
+      if (clearTimer.current) clearTimeout(clearTimer.current);
+      clearTimer.current = undefined;
+      return null;
+    });
+  }, []);
 
   useEffect(() => {
     let disposed = false;
-    let clearTimer: ReturnType<typeof setTimeout> | undefined;
     let unlisten: (() => void) | undefined;
 
     void listen<LocalAlertPayload>(LOCAL_ALERT_EVENT, ({ payload }) => {
       if (disposed || !isLocalAlertPayload(payload)) return;
-      if (clearTimer) clearTimeout(clearTimer);
+      if (clearTimer.current) clearTimeout(clearTimer.current);
       setActiveStoveId(payload.stoveId);
-      clearTimer = setTimeout(() => {
-        if (!disposed) setActiveStoveId(null);
-      }, LOCAL_ALERT_DURATION_MS);
+      clearTimer.current = payload.event === "cooked"
+        ? undefined
+        : setTimeout(() => {
+          if (!disposed) setActiveStoveId(null);
+        }, LOCAL_ALERT_DURATION_MS);
     }).then((stop) => {
       if (disposed) stop();
       else unlisten = stop;
@@ -44,10 +60,10 @@ export function useLocalAlert(): string | null {
 
     return () => {
       disposed = true;
-      if (clearTimer) clearTimeout(clearTimer);
+      if (clearTimer.current) clearTimeout(clearTimer.current);
       unlisten?.();
     };
   }, []);
 
-  return activeStoveId;
+  return { activeStoveId, dismiss };
 }

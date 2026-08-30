@@ -49,7 +49,7 @@
 .global-bar--alert .global-bar__brand {
   border-radius: 5px;
   box-shadow: inset 0 0 0 2px var(--bar-attention);
-  animation: cookbench-local-alert 300ms ease-in-out 4;
+  animation: cookbench-local-alert 300ms ease-in-out infinite;
 }
 
 .global-bar--empty {
@@ -204,7 +204,7 @@
 .stove-burner-wrap--alert .stove-burner {
   background: #fff6e9;
   box-shadow: inset 0 0 0 2px var(--bar-attention), 0 3px 12px rgb(230 138 0 / 24%);
-  animation: cookbench-local-alert 300ms ease-in-out 4;
+  animation: cookbench-local-alert 300ms ease-in-out infinite;
 }
 
 .stove-burner {

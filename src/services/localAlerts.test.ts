@@ -18,7 +18,7 @@ describe("local alerts", () => {
     expect(isLocalAlertPayload({ stoveId: 1, project: "sample", event: "cooked" })).toBe(false);
   });
 
-  it("shows the received Stove for a bounded interval and releases the native listener", async () => {
+  it("keeps a completed Stove flashing until the matching Stove is dismissed", async () => {
     vi.useFakeTimers();
     let handler: ((value: { payload: { stoveId: string; project: string; event: string } }) => void) | undefined;
     const stop = vi.fn();
@@ -31,13 +31,39 @@ describe("local alerts", () => {
     const view = renderHook(() => useLocalAlert());
     await act(async () => undefined);
     act(() => handler?.({ payload: { stoveId: "stove-1", project: "sample", event: "cooked" } }));
-    expect(view.result.current).toBe("stove-1");
+    expect(view.result.current.activeStoveId).toBe("stove-1");
 
-    act(() => vi.advanceTimersByTime(LOCAL_ALERT_DURATION_MS));
-    expect(view.result.current).toBeNull();
+    act(() => vi.advanceTimersByTime(LOCAL_ALERT_DURATION_MS * 10));
+    expect(view.result.current.activeStoveId).toBe("stove-1");
+
+    act(() => view.result.current.dismiss("another-stove"));
+    expect(view.result.current.activeStoveId).toBe("stove-1");
+
+    act(() => view.result.current.dismiss("stove-1"));
+    expect(view.result.current.activeStoveId).toBeNull();
 
     view.unmount();
     expect(stop).toHaveBeenCalledOnce();
+    vi.useRealTimers();
+  });
+
+  it("keeps non-completion alerts bounded", async () => {
+    vi.useFakeTimers();
+    let handler: ((value: { payload: { stoveId: string; project: string; event: string } }) => void) | undefined;
+    listen.mockImplementation(async (_event, next) => {
+      handler = next;
+      return () => undefined;
+    });
+
+    const view = renderHook(() => useLocalAlert());
+    await act(async () => undefined);
+    act(() => handler?.({ payload: { stoveId: "stove-2", project: "sample", event: "failed" } }));
+    expect(view.result.current.activeStoveId).toBe("stove-2");
+
+    act(() => vi.advanceTimersByTime(LOCAL_ALERT_DURATION_MS));
+    expect(view.result.current.activeStoveId).toBeNull();
+
+    view.unmount();
     vi.useRealTimers();
   });
 });
