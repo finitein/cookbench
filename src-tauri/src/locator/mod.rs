@@ -152,7 +152,12 @@ fn run(program: &str, args: &[String]) -> JumpOutcome {
 
 #[cfg(target_os = "macos")]
 fn activate_application(application: &str) -> JumpOutcome {
-    run("open", &["-a".to_owned(), application.to_owned()])
+    let flag = if application.contains('.') {
+        "-b"
+    } else {
+        "-a"
+    };
+    run("open", &[flag.to_owned(), application.to_owned()])
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -214,6 +219,7 @@ pub fn actions_for(locator: &SessionLocator) -> Vec<JumpAction> {
 
 fn application_for(application: Option<&HostApplication>) -> Option<&'static str> {
     match application {
+        Some(HostApplication::CodexDesktop) => Some(macos::CODEX_DESKTOP_BUNDLE_ID),
         Some(HostApplication::MacosTerminal) => Some(macos::TERMINAL_APP),
         Some(HostApplication::ITerm2) => Some(macos::ITERM_APP),
         Some(HostApplication::WindowsTerminal) => Some(windows::WINDOWS_TERMINAL_APP),

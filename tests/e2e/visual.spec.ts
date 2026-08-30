@@ -9,7 +9,7 @@ const scenarios = [
   { name: "narrow", width: 390, height: 844, dark: false, reducedMotion: false },
 ] as const;
 
-test("empty Bar stays compact and retains the Cookbench mark", async ({ page }) => {
+test("empty Bar fills the user-sized white surface and retains the Cookbench mark", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto("/");
   const driver = await e2eDriver(page);
@@ -20,7 +20,7 @@ test("empty Bar stays compact and retains the Cookbench mark", async ({ page }) 
   await expect(page.getByRole("img", { name: "Cookbench" })).toBeVisible();
   const bounds = await bar.boundingBox();
   expect(bounds).not.toBeNull();
-  expect(bounds!.width).toBeLessThanOrEqual(100);
+  expect(bounds!.width).toBeGreaterThanOrEqual(1_200);
   expect(bounds!.height).toBeLessThanOrEqual(100);
 
   if (process.env.COOKBENCH_CAPTURE_EVIDENCE === "1") {

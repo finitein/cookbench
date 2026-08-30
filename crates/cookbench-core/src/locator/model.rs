@@ -5,6 +5,9 @@ use serde::{Deserialize, Serialize};
 /// arbitrary command execution.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum HostApplication {
+    /// Codex Desktop can be focused at application level only. Cookbench does
+    /// not claim an exact task deep link without a supported public contract.
+    CodexDesktop,
     MacosTerminal,
     ITerm2,
     WindowsTerminal,

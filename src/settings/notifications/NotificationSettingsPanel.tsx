@@ -11,6 +11,7 @@ import {
 import "./notification-settings.css";
 import { RemoteSourcesPanel } from "../remote/RemoteSourcesPanel";
 import { DisplaySettingsPanel } from "../display/DisplaySettingsPanel";
+import { SourcesStatusPanel } from "../sources/SourcesStatusPanel";
 
 const LABELS: Record<NotificationDestination, string> = {
   telegram: "Telegram",
@@ -184,6 +185,7 @@ export function NotificationSettingsPanel() {
           </div>
           <output role="status" aria-live="polite">{status}</output>
         </section>
+        <SourcesStatusPanel />
         <RemoteSourcesPanel />
       </div>
     </main>

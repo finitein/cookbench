@@ -22,6 +22,14 @@ body {
   padding: 12px;
 }
 
+.shell--global-bar {
+  height: 100vh;
+  padding: 0;
+  overflow: hidden;
+  background: transparent;
+  place-items: stretch;
+}
+
 .bar {
   display: flex;
   width: min(640px, 100%);

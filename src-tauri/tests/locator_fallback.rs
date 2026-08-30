@@ -49,6 +49,27 @@ fn orders_exact_pane_then_application_then_project_then_resume() {
 }
 
 #[test]
+fn codex_desktop_focus_precedes_project_directory_fallback() {
+    let locator = SessionLocator {
+        host_application: Some(HostApplication::CodexDesktop),
+        working_directory: Some("/workspace/cookbench".to_owned()),
+        native_session_id: "opaque-codex-session".to_owned(),
+        ..SessionLocator::default()
+    };
+
+    assert!(matches!(
+        actions_for(&locator).as_slice(),
+        [
+            JumpAction::ApplicationWindow {
+                application: "com.openai.codex"
+            },
+            JumpAction::ProjectDirectory { .. },
+            JumpAction::ResumeInstructions { .. },
+        ]
+    ));
+}
+
+#[test]
 fn permission_denial_continues_to_project_directory() {
     let mut executor = RecordingExecutor::with_outcomes([
         JumpOutcome::PermissionDenied,

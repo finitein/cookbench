@@ -12,5 +12,7 @@ pub use discovery::{
     codex_home_from, correlate_processes, default_codex_home, CodexAdapter, CodexProcess,
 };
 pub use hook::{inspect_notify_hook, NotifyHookPlan};
-pub use parser::{parse_record, sanitize_fixture_record, CodexRecord};
+pub use parser::{
+    parse_record, sanitize_fixture_record, CodexRecord, CodexSessionMetadata, CodexThreadSource,
+};
 pub use progress::plan_progress;

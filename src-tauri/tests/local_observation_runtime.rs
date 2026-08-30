@@ -22,6 +22,7 @@ impl ObservationSink for Sink {
         identity: StoveIdentity,
         project: ProjectIdentity,
         _: String,
+        _: Option<cookbench_core::locator::HostApplication>,
         _: Option<String>,
         _: ObservationSummary,
         _: ObservationOrigin,
@@ -84,6 +85,19 @@ fn reconstructs_three_native_harnesses_then_observes_appended_lifecycle_records(
     let mut runtime = LocalObservationRuntime::new(config, sink.clone());
     runtime.bootstrap();
     assert_eq!(runtime.session_count(), 3);
+    let statuses = runtime.source_status();
+    assert_eq!(statuses.sources.len(), 3);
+    assert!(statuses
+        .sources
+        .iter()
+        .all(|source| source.discovered_sessions == 1));
+    assert!(statuses
+        .sources
+        .iter()
+        .all(|source| source.parser_errors == 0));
+    let status_json = serde_json::to_string(&statuses).unwrap();
+    assert!(!status_json.contains("turn_completed"));
+    assert!(!status_json.contains("user_prompt"));
     let initial = sink.0.lock().unwrap();
     assert_eq!(initial.len(), 9);
     assert_eq!(
@@ -123,6 +137,103 @@ fn reconstructs_three_native_harnesses_then_observes_appended_lifecycle_records(
     assert!(!wire_debug.contains("transcript"));
     assert!(!wire_debug.contains("command"));
     drop(observed);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn runtime_does_not_register_codex_subagent_session_files() {
+    let root = temp_root();
+    let codex_root = root.join("codex");
+    let root_session = codex_root.join("root.jsonl");
+    let subagent_session = codex_root.join("subagent.jsonl");
+    write(
+        &root_session,
+        &format!(
+            "{}\n",
+            r#"{"type":"session_meta","payload":{"id":"root-session","cwd":"/synthetic/root","thread_source":"user"}}"#
+        ),
+    );
+    write(
+        &subagent_session,
+        &format!(
+            "{}\n",
+            r#"{"type":"session_meta","payload":{"id":"child-session","cwd":"/synthetic/root","thread_source":"subagent"}}"#
+        ),
+    );
+
+    let sink = Arc::new(Sink::default());
+    let config = LocalObservationConfig {
+        host: HostIdentity::local("synthetic-host"),
+        codex_root,
+        claude_root: root.join("claude"),
+        pi_roots: vec![root.join("pi")],
+        startup_min_modified: SystemTime::UNIX_EPOCH,
+        startup_candidate_limit: 16,
+    };
+    let mut runtime = LocalObservationRuntime::new(config, sink.clone());
+    runtime.bootstrap();
+
+    assert_eq!(runtime.session_count(), 1);
+    let events = sink.0.lock().unwrap();
+    assert!(events
+        .iter()
+        .all(|(identity, _, _)| { identity.native_session_id == "root-session" }));
+    drop(events);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn newer_subagents_do_not_consume_the_root_session_candidate_limit() {
+    let root = temp_root();
+    let codex_root = root.join("codex");
+    let root_session = codex_root.join("root.jsonl");
+    write(
+        &root_session,
+        r#"{"type":"session_meta","payload":{"id":"root-session","cwd":"/synthetic/root","thread_source":"user"}}
+"#,
+    );
+    let base_time = UNIX_EPOCH + Duration::from_secs(10);
+    File::options()
+        .write(true)
+        .open(&root_session)
+        .unwrap()
+        .set_times(FileTimes::new().set_modified(base_time))
+        .unwrap();
+    for index in 0..12 {
+        let path = codex_root.join(format!("subagent-{index}.jsonl"));
+        write(
+            &path,
+            &format!(
+                "{{\"type\":\"session_meta\",\"payload\":{{\"id\":\"child-{index}\",\"cwd\":\"/synthetic/root\",\"thread_source\":\"subagent\"}}}}\n"
+            ),
+        );
+        File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(base_time + Duration::from_secs(index + 1)))
+            .unwrap();
+    }
+
+    let sink = Arc::new(Sink::default());
+    let config = LocalObservationConfig {
+        host: HostIdentity::local("synthetic-host"),
+        codex_root,
+        claude_root: root.join("claude"),
+        pi_roots: vec![root.join("pi")],
+        startup_min_modified: SystemTime::UNIX_EPOCH,
+        startup_candidate_limit: 2,
+    };
+    let mut runtime = LocalObservationRuntime::new(config, sink.clone());
+    runtime.bootstrap();
+
+    assert_eq!(runtime.session_count(), 1);
+    assert!(sink
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .all(|(identity, _, _)| identity.native_session_id == "root-session"));
     fs::remove_dir_all(root).unwrap();
 }
 

@@ -1,7 +1,10 @@
 use std::{fmt, sync::Arc};
 
 use async_trait::async_trait;
-use cookbench_core::domain::{HarnessId, HostIdentity, ProjectIdentity, StoveEvent, StoveIdentity};
+use cookbench_core::{
+    domain::{HarnessId, HostIdentity, ProjectIdentity, StoveEvent, StoveIdentity},
+    locator::HostApplication,
+};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
@@ -70,6 +73,9 @@ pub struct NativeSession {
     pub project: Option<ProjectIdentity>,
     pub title: Option<String>,
     pub locator: SessionLocator,
+    /// Application-level focus metadata observed from a trusted harness field.
+    /// It is optional because a session file often cannot identify its host.
+    pub host_application: Option<HostApplication>,
 }
 
 impl NativeSession {
@@ -105,7 +111,13 @@ impl NativeSession {
             project,
             title,
             locator,
+            host_application: None,
         })
+    }
+
+    pub fn with_host_application(mut self, host_application: HostApplication) -> Self {
+        self.host_application = Some(host_application);
+        self
     }
 }
 

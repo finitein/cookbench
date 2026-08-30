@@ -12,23 +12,23 @@
   --bar-pi: #8135ae;
   box-sizing: border-box;
   position: relative;
-  display: flex;
-  align-items: stretch;
-  width: fit-content;
-  max-width: calc(100vw - 24px);
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: start;
+  width: 100%;
+  max-width: none;
   min-height: 104px;
   padding: 11px 12px;
   border: 1px solid var(--bar-line);
   border-radius: 8px;
-  background: rgb(255 255 255 / 88%);
-  box-shadow: 0 20px 48px rgb(65 88 112 / 20%), inset 0 1px 0 rgb(255 255 255 / 76%);
+  background: #fff;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 76%);
   color: var(--bar-ink);
   font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  backdrop-filter: blur(28px) saturate(190%);
 }
 
 @supports (background: color-mix(in srgb, white, transparent)) {
-  .global-bar { background: rgb(255 255 255 / 72%); }
+  .global-bar { background: #fff; }
 }
 
 .global-bar__brand {
@@ -39,7 +39,10 @@
   min-height: 72px;
   place-items: center;
   border-right: 1px solid rgb(109 129 148 / 16%);
+  cursor: grab;
 }
+
+.global-bar__brand:active { cursor: grabbing; }
 
 .global-bar--empty {
   min-height: 72px;
@@ -81,66 +84,108 @@
 .global-bar__settings i:nth-child(3)::after { left: 2px; }
 .global-bar__settings i:nth-child(2)::after { right: 2px; }
 
-.global-bar__stoves {
-  display: flex;
-  flex: 0 1 auto;
-  align-items: stretch;
-  gap: 4px;
-  width: min(var(--stove-grid-width), calc(100vw - 94px), 900px);
+.global-bar__benches {
+  display: grid;
+  gap: 6px;
+  width: 100%;
   min-width: 0;
-  max-width: 100%;
   padding-left: 5px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
 }
 
-.global-bar__stoves::-webkit-scrollbar { display: none; }
+.global-bar__bench {
+  display: grid;
+  min-width: 0;
+}
 
-.global-bar--empty .global-bar__stoves { display: none; }
+.global-bar__benches[data-layout="grouped"] .global-bar__bench {
+  grid-template-columns: 56px minmax(0, 1fr);
+  align-items: start;
+  gap: 4px;
+}
+
+.global-bar__bench-heading {
+  align-self: start;
+  min-width: 0;
+  margin: 5px 0 0;
+  overflow: hidden;
+  color: var(--bar-muted);
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.global-bar__bench[data-harness="codex"] .global-bar__bench-heading { color: var(--bar-codex); }
+.global-bar__bench[data-harness="claudeCode"] .global-bar__bench-heading { color: var(--bar-claude); }
+.global-bar__bench[data-harness="pi"] .global-bar__bench-heading { color: var(--bar-pi); }
+
+.global-bar__stoves {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 82px);
+  grid-auto-flow: row;
+  align-items: start;
+  justify-content: start;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  overflow: visible;
+}
+
+.global-bar--empty .global-bar__benches { display: none; }
 
 /* The native webview cannot paint outside its window. Grow only while a detail
    card is requested so the card remains a real, reachable hover/focus surface. */
 .global-bar--tooltip-open {
   min-width: 292px;
   min-height: 330px;
-  border-color: transparent;
-  background: transparent;
-  box-shadow: none;
-  backdrop-filter: none;
-}
-
-.global-bar--tooltip-open::before {
-  position: absolute;
-  z-index: 0;
-  top: 0;
-  right: 0;
-  left: 0;
-  height: 102px;
-  border: 1px solid var(--bar-line);
-  border-radius: 8px;
-  background: rgb(255 255 255 / 88%);
-  box-shadow: 0 20px 48px rgb(65 88 112 / 20%), inset 0 1px 0 rgb(255 255 255 / 76%);
-  content: "";
+  background: #fff;
 }
 
 .global-bar--tooltip-open .global-bar__brand,
 .global-bar--tooltip-open .global-bar__stoves { position: relative; z-index: 1; }
 
-:root[data-cookbench-native="true"] .global-bar { max-width: none; }
-:root[data-cookbench-native="true"] .global-bar__stoves { width: var(--stove-grid-width); }
-
-:root[data-cookbench-native="true"][data-cookbench-bar-size="compact"] .global-bar,
-:root[data-cookbench-native="true"][data-cookbench-bar-size="standard"] .global-bar,
-:root[data-cookbench-native="true"][data-cookbench-bar-size="wide"] .global-bar {
-  width: min(var(--cookbench-bar-width), 900px);
-}
-:root[data-cookbench-native="true"][data-cookbench-bar-size="compact"] .global-bar { --cookbench-bar-width: 360px; }
-:root[data-cookbench-native="true"][data-cookbench-bar-size="standard"] .global-bar { --cookbench-bar-width: 640px; }
-:root[data-cookbench-native="true"][data-cookbench-bar-size="wide"] .global-bar { --cookbench-bar-width: 900px; }
-:root[data-cookbench-native="true"][data-cookbench-bar-size] .global-bar__stoves { flex: 1 1 auto; width: auto; }
+:root[data-cookbench-native="true"] .global-bar { min-height: 100%; }
 
 .global-bar__item { flex: 0 0 82px; min-width: 0; }
+
+.global-bar__resize-handle {
+  position: absolute;
+  z-index: 30;
+  background: rgb(49 111 152 / 12%);
+  opacity: 0;
+  transition: opacity 100ms ease;
+}
+
+.global-bar:hover > .global-bar__resize-handle { opacity: 1; }
+.global-bar__resize-handle[data-resize-direction="North"],
+.global-bar__resize-handle[data-resize-direction="South"] {
+  right: 12px;
+  left: 12px;
+  height: 5px;
+  cursor: ns-resize;
+}
+.global-bar__resize-handle[data-resize-direction="North"] { top: 0; }
+.global-bar__resize-handle[data-resize-direction="South"] { bottom: 0; }
+.global-bar__resize-handle[data-resize-direction="East"],
+.global-bar__resize-handle[data-resize-direction="West"] {
+  top: 12px;
+  bottom: 12px;
+  width: 5px;
+  cursor: ew-resize;
+}
+.global-bar__resize-handle[data-resize-direction="East"] { right: 0; }
+.global-bar__resize-handle[data-resize-direction="West"] { left: 0; }
+.global-bar__resize-handle[data-resize-direction="NorthEast"],
+.global-bar__resize-handle[data-resize-direction="NorthWest"],
+.global-bar__resize-handle[data-resize-direction="SouthEast"],
+.global-bar__resize-handle[data-resize-direction="SouthWest"] {
+  width: 12px;
+  height: 12px;
+}
+.global-bar__resize-handle[data-resize-direction="NorthEast"] { top: 0; right: 0; cursor: nesw-resize; }
+.global-bar__resize-handle[data-resize-direction="NorthWest"] { top: 0; left: 0; cursor: nwse-resize; }
+.global-bar__resize-handle[data-resize-direction="SouthEast"] { right: 0; bottom: 0; cursor: nwse-resize; }
+.global-bar__resize-handle[data-resize-direction="SouthWest"] { bottom: 0; left: 0; cursor: nesw-resize; }
 
 .stove-burner-wrap {
   position: relative;
@@ -379,7 +424,9 @@
 .global-bar__tooltip {
   z-index: 2;
   top: 92px;
-  left: 16px;
+  left: 8px;
+  box-sizing: border-box;
+  width: min(260px, calc(100% - 16px));
   padding: 8px;
   opacity: 1;
   transform: none;

@@ -5,6 +5,9 @@
   "windows": ["main", "settings", "stove-*"],
   "permissions": [
     "core:event:default",
-    "core:window:allow-start-dragging"
+    "core:window:allow-outer-size",
+    "core:window:allow-scale-factor",
+    "core:window:allow-start-dragging",
+    "core:window:allow-start-resize-dragging"
   ]
 }

@@ -1,10 +1,10 @@
-use serde::{Deserialize, Serialize};
+use serde::{de, Deserialize, Deserializer, Serialize};
 
 use crate::domain::HarnessId;
 use crate::notifications::NotificationEventKind;
 
 use super::Versioned;
-use super::{DetachedStoveLayout, MonitorIdentity, RelativePosition};
+use super::{DetachedStoveLayout, MonitorIdentity, RelativePosition, WindowSize};
 
 /// The global Bar's screen-relative anchor. Detached Bars retain their own
 /// monitor-relative positions independently of this preference.
@@ -18,18 +18,6 @@ pub enum GlobalBarPlacement {
     BottomLeft,
     BottomCenter,
     BottomRight,
-}
-
-/// A bounded width choice for the Global Bar. Presets keep the floating
-/// surface readable and prevent a transparent native window from growing into
-/// an accidental desktop-sized hit target.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum GlobalBarSize {
-    Compact,
-    #[default]
-    Standard,
-    Wide,
 }
 
 /// The last user-dragged global Bar position, relative to a monitor work area.
@@ -47,14 +35,46 @@ pub struct BarLayout {
     pub global_bar_visible: bool,
     #[serde(default)]
     pub global_bar_placement: GlobalBarPlacement,
-    #[serde(default)]
-    pub global_bar_size: GlobalBarSize,
+    /// The last deliberate native window size. It is unset until the user
+    /// resizes the Bar, keeping legacy installs on their platform default.
+    #[serde(
+        default,
+        deserialize_with = "deserialize_global_bar_size",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub global_bar_size: Option<WindowSize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub global_bar_position: Option<GlobalBarPosition>,
     #[serde(default)]
     pub detached_stoves: Vec<String>,
     #[serde(default)]
     pub detached_layouts: Vec<DetachedStoveLayout>,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum PersistedGlobalBarSize {
+    Freeform(WindowSize),
+    LegacyPreset(String),
+}
+
+fn deserialize_global_bar_size<'de, D>(deserializer: D) -> Result<Option<WindowSize>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let size = match Option::<PersistedGlobalBarSize>::deserialize(deserializer)? {
+        Some(PersistedGlobalBarSize::Freeform(size)) => Some(size),
+        Some(PersistedGlobalBarSize::LegacyPreset(preset))
+            if matches!(preset.as_str(), "compact" | "standard" | "wide") =>
+        {
+            None
+        }
+        Some(PersistedGlobalBarSize::LegacyPreset(_)) => {
+            return Err(de::Error::custom("unknown legacy global Bar size preset"));
+        }
+        None => None,
+    };
+    Ok(size)
 }
 
 const fn default_true() -> bool {
@@ -66,7 +86,7 @@ impl Default for BarLayout {
         Self {
             global_bar_visible: true,
             global_bar_placement: GlobalBarPlacement::default(),
-            global_bar_size: GlobalBarSize::default(),
+            global_bar_size: None,
             global_bar_position: None,
             detached_stoves: Vec::new(),
             detached_layouts: Vec::new(),

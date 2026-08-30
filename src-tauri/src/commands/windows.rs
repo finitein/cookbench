@@ -7,7 +7,7 @@
 use std::{fmt, sync::Mutex};
 
 use cookbench_core::persistence::{
-    DetachedStoveLayout, MonitorIdentity, MonitorWorkArea, WindowPosition,
+    DetachedStoveLayout, MonitorIdentity, MonitorWorkArea, WindowPosition, WindowSize,
 };
 
 use serde::Serialize;
@@ -399,26 +399,76 @@ pub fn close_detached_bar(
     Ok(closed)
 }
 
-/// Resizes only Cookbench's transparent main window to its measured bar. This
-/// prevents an invisible hit target from swallowing desktop clicks. Position is
-/// deliberately untouched so a manual drag remains authoritative.
+/// Records a completed user resize. It never sets the window size, which keeps
+/// native edge and corner drags authoritative.
 #[tauri::command]
-pub fn resize_global_bar(
-    app: AppHandle,
+pub fn record_global_bar_size(
     width: f64,
     height: f64,
     state: State<'_, crate::app_state::AppState>,
 ) -> Result<(), String> {
-    let width = width.ceil().clamp(120.0, 1024.0);
-    let height = height.ceil().clamp(80.0, 720.0);
+    let size = normalized_global_bar_size(width, height)?;
+    state.update_persisted_config(|config| config.layout.global_bar_size = Some(size))
+}
+
+/// Raises the native lower bound as wrapped Stove content grows. Width stays
+/// freely resizable above a small usable floor; only an undersized current
+/// height is expanded so no Stove is clipped and no scrollbar is required.
+#[tauri::command]
+pub fn set_global_bar_minimum_size(
+    app: AppHandle,
+    width: f64,
+    height: f64,
+    preferred_height: Option<f64>,
+) -> Result<(), String> {
+    let minimum = normalized_global_bar_size(width, height)?;
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| "Cookbench global Bar window is unavailable".to_owned())?;
     window
-        .set_size(LogicalSize::new(width, height))
+        .set_min_size(Some(LogicalSize::new(
+            f64::from(minimum.width),
+            f64::from(minimum.height),
+        )))
         .map_err(|error| error.to_string())?;
-    let _ = state;
+    let scale = window.scale_factor().map_err(|error| error.to_string())?;
+    let current = window.outer_size().map_err(|error| error.to_string())?;
+    let minimum_height = (f64::from(minimum.height) * scale).ceil() as u32;
+    let minimum_width = (f64::from(minimum.width) * scale).ceil() as u32;
+    let preferred_height = preferred_height
+        .filter(|height| height.is_finite())
+        .map(|height| height.ceil().max(f64::from(minimum.height)));
+    let target_height = preferred_height
+        .map(|height| (height * scale).ceil() as u32)
+        .unwrap_or(minimum_height);
+    if current.height < minimum_height
+        || preferred_height.is_some_and(|_| current.height.abs_diff(target_height) > 1)
+    {
+        window
+            .set_size(LogicalSize::new(
+                f64::from(current.width.max(minimum_width)) / scale,
+                f64::from(target_height) / scale,
+            ))
+            .map_err(|error| error.to_string())?;
+    }
     Ok(())
+}
+
+fn normalized_global_bar_size(width: f64, height: f64) -> Result<WindowSize, String> {
+    fn normalize(value: f64, minimum: u32) -> Result<u32, String> {
+        if !value.is_finite() {
+            return Err("Cookbench global Bar dimensions must be finite".to_owned());
+        }
+        Ok(value
+            .ceil()
+            .max(f64::from(minimum))
+            .min(f64::from(u32::MAX)) as u32)
+    }
+
+    Ok(WindowSize {
+        width: normalize(width, 280)?,
+        height: normalize(height, 80)?,
+    })
 }
 
 #[tauri::command]

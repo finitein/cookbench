@@ -12,7 +12,13 @@ fn desktop_capability_allows_live_events_and_global_bar_dragging() {
         .as_array()
         .expect("capability permissions array");
 
-    for required in ["core:event:default", "core:window:allow-start-dragging"] {
+    for required in [
+        "core:event:default",
+        "core:window:allow-outer-size",
+        "core:window:allow-scale-factor",
+        "core:window:allow-start-dragging",
+        "core:window:allow-start-resize-dragging",
+    ] {
         assert!(
             permissions.iter().any(|permission| permission == required),
             "desktop capability must include {required}"

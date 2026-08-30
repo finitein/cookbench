@@ -1,37 +1,48 @@
 import { useEffect } from "react";
-import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import {
   attachGlobalBarDragHandle,
-  applyGlobalBarWidth,
-  globalBarWindowSize,
+  attachGlobalBarResizeHandle,
   prepareNativeGlobalBarDocument,
+  intrinsicGlobalBarMinimumHeight,
   recordGlobalBarPosition,
-  resizeGlobalBarWindow,
+  recordGlobalBarSize,
+  setGlobalBarMinimumSize,
 } from "../services/globalBarWindow";
 import { createPositionPersistence } from "../services/detachedStoves";
-import { getDisplaySettings, type GlobalBarSize } from "../settings/display/service";
 
-/** Makes only the brand strip draggable and trims transparent window hit area. */
+/** Makes the white surface draggable and keeps native resize user-authored. */
 export function useGlobalBarWindow() {
   useEffect(() => {
     prepareNativeGlobalBarDocument();
-    void getDisplaySettings().then((settings) => applyGlobalBarWidth(settings.globalBarSize)).catch(() => {
-      // The browser fixture has no native command surface. Its natural width remains useful.
-    });
     const bar = document.querySelector<HTMLElement>(".global-bar");
-    const handle = document.querySelector<HTMLElement>(".global-bar__brand");
-    if (!bar || !handle) return;
-    const detach = attachGlobalBarDragHandle(handle);
+    if (!bar) return;
+    const detach = attachGlobalBarDragHandle(bar);
+    let suppressResizeUntil = 0;
+    let preferredHeight: number | undefined;
+    let lastKnownWidth: number | undefined;
+    const resizeHandles = [
+      "North", "South", "East", "West", "NorthEast", "NorthWest", "SouthEast", "SouthWest",
+    ] as const;
+    const resizeCleanups = resizeHandles.map((direction) => {
+      const resizeHandle = document.createElement("div");
+      resizeHandle.className = "global-bar__resize-handle";
+      bar.append(resizeHandle);
+      const detachResize = attachGlobalBarResizeHandle(resizeHandle, direction);
+      return () => {
+        detachResize();
+        resizeHandle.remove();
+      };
+    });
     const positionPersistence = createPositionPersistence(({ x, y }) => {
       void recordGlobalBarPosition(x, y);
     });
     let disposed = false;
     let stopMoving: (() => void) | undefined;
-    let stopSizeChange: (() => void) | undefined;
+    let stopResizing: (() => void) | undefined;
     try {
-      void getCurrentWebviewWindow().onMoved(({ payload }) => {
+      void getCurrentWindow().onMoved(({ payload }) => {
         positionPersistence.schedule(payload);
       }).then((unlisten) => {
         if (disposed) unlisten();
@@ -40,35 +51,73 @@ export function useGlobalBarWindow() {
     } catch {
       // Browser fixtures do not expose a native window; production Tauri does.
     }
+    let resizeTimer: ReturnType<typeof setTimeout> | undefined;
+    const persistNativeSize = () => {
+      if (resizeTimer) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        void Promise.all([getCurrentWindow().outerSize(), getCurrentWindow().scaleFactor()])
+          .then(([{ width, height }, scaleFactor]) => {
+            const size = { width: width / scaleFactor, height: height / scaleFactor };
+            const programmaticHeightOnly = Date.now() < suppressResizeUntil
+              && lastKnownWidth != null
+              && Math.abs(lastKnownWidth - size.width) < 1;
+            lastKnownWidth = size.width;
+            if (programmaticHeightOnly) return;
+            preferredHeight = size.height;
+            return recordGlobalBarSize(size);
+          })
+          .catch(() => {
+            // Browser fixtures do not expose a native window.
+          });
+      }, 180);
+    };
     try {
-      void listen<GlobalBarSize>("global-bar-size-changed", ({ payload }) => {
-        applyGlobalBarWidth(payload);
-      }).then((unlisten) => {
+      void getCurrentWindow().onResized(persistNativeSize).then((unlisten) => {
         if (disposed) unlisten();
-        else stopSizeChange = unlisten;
+        else stopResizing = unlisten;
       });
     } catch {
-      // Browser fixtures do not expose native events.
+      // Browser fixtures do not expose a native window.
     }
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const resize = () => {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => {
-        const { width, height } = bar.getBoundingClientRect();
-        void resizeGlobalBarWindow(globalBarWindowSize({ width, height }));
+    let minimumTimer: ReturnType<typeof setTimeout> | undefined;
+    const updateMinimum = () => {
+      if (minimumTimer) clearTimeout(minimumTimer);
+      minimumTimer = setTimeout(() => {
+        const height = intrinsicGlobalBarMinimumHeight(bar);
+        suppressResizeUntil = Date.now() + 500;
+        void setGlobalBarMinimumSize({ width: 280, height }, preferredHeight)
+          .catch(() => {
+            // Browser fixtures do not expose a native command surface.
+          });
       }, 60);
     };
-    const observer = new ResizeObserver(resize);
-    observer.observe(bar);
-    resize();
+    const observer = new ResizeObserver(updateMinimum);
+    const brand = bar.querySelector<HTMLElement>(".global-bar__brand");
+    const benches = bar.querySelector<HTMLElement>(".global-bar__benches");
+    if (brand) observer.observe(brand);
+    if (benches) observer.observe(benches);
+    const mutations = new MutationObserver(updateMinimum);
+    mutations.observe(bar, { childList: true, subtree: true });
+    void Promise.all([getCurrentWindow().outerSize(), getCurrentWindow().scaleFactor()])
+      .then(([size, scaleFactor]) => {
+        preferredHeight = size.height / scaleFactor;
+        lastKnownWidth = size.width / scaleFactor;
+      })
+      .catch(() => {
+        // Browser fixtures do not expose a native window.
+      })
+      .finally(updateMinimum);
     return () => {
       disposed = true;
-      if (timer) clearTimeout(timer);
+      if (resizeTimer) clearTimeout(resizeTimer);
+      if (minimumTimer) clearTimeout(minimumTimer);
       positionPersistence.flush();
       stopMoving?.();
-      stopSizeChange?.();
+      stopResizing?.();
       observer.disconnect();
+      mutations.disconnect();
       detach();
+      resizeCleanups.forEach((cleanup) => cleanup());
     };
   }, []);
 }

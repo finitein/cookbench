@@ -10,7 +10,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc,
+        Arc, RwLock,
     },
     thread,
     time::{Duration, Instant, SystemTime},
@@ -23,9 +23,12 @@ use cookbench_adapters::{
     pi::{self, PiAdapter},
     HostSource, NativeSession,
 };
+use cookbench_core::diagnostics::redact_source_path;
 use cookbench_core::domain::{
     EventKind, EventMetadata, EventSource, HostIdentity, ProjectIdentity, StoveEvent, StoveIdentity,
 };
+use cookbench_core::locator::HostApplication;
+use serde::Serialize;
 
 const MAX_PRESENTATION_TEXT_BYTES: usize = 160;
 const MIN_EPOCH_TIMESTAMP_MS: u64 = 1_000_000_000_000;
@@ -127,6 +130,7 @@ pub trait ObservationSink: Send + Sync + 'static {
         identity: StoveIdentity,
         project: ProjectIdentity,
         locator: String,
+        host_application: Option<HostApplication>,
         title: Option<String>,
         summary: ObservationSummary,
         origin: ObservationOrigin,
@@ -147,9 +151,129 @@ enum ParserKind {
     Pi,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LocalSourceHarness {
+    Codex,
+    ClaudeCode,
+    Pi,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LocalSourceHealth {
+    Healthy,
+    Degraded,
+    Unavailable,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalSourceStatus {
+    pub harness: LocalSourceHarness,
+    pub label: &'static str,
+    pub health: LocalSourceHealth,
+    pub root_display: String,
+    pub discovered_sessions: usize,
+    pub parser_errors: u64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalSourceStatusResponse {
+    pub sources: Vec<LocalSourceStatus>,
+}
+
+#[derive(Clone, Default)]
+pub struct LocalSourceStatusState(Arc<RwLock<Vec<LocalSourceStatus>>>);
+
+impl LocalSourceStatusState {
+    pub fn configure(&self, config: &LocalObservationConfig) {
+        let home = std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .unwrap_or_default();
+        let status = [ParserKind::Codex, ParserKind::Claude, ParserKind::Pi]
+            .into_iter()
+            .map(|kind| {
+                let source_roots = roots_for_kind(kind, config);
+                let available = source_roots.iter().any(|root| root.is_dir());
+                let display = source_roots
+                    .first()
+                    .and_then(|root| redact_source_path(&root.to_string_lossy(), &home))
+                    .unwrap_or_else(|| "Hidden source".to_owned());
+                LocalSourceStatus {
+                    harness: harness_for(kind),
+                    label: label_for(kind),
+                    health: if available {
+                        LocalSourceHealth::Healthy
+                    } else {
+                        LocalSourceHealth::Unavailable
+                    },
+                    root_display: display,
+                    discovered_sessions: 0,
+                    parser_errors: 0,
+                }
+            })
+            .collect();
+        *self.0.write().expect("local source status lock poisoned") = status;
+    }
+
+    fn update(
+        &self,
+        kind: ParserKind,
+        available: bool,
+        discovered_sessions: usize,
+        parser_errors: u64,
+    ) {
+        let mut sources = self.0.write().expect("local source status lock poisoned");
+        let Some(source) = sources
+            .iter_mut()
+            .find(|source| source.harness == harness_for(kind))
+        else {
+            return;
+        };
+        source.discovered_sessions = discovered_sessions;
+        source.parser_errors = parser_errors;
+        source.health = if !available {
+            LocalSourceHealth::Unavailable
+        } else if source.parser_errors == 0 {
+            LocalSourceHealth::Healthy
+        } else {
+            LocalSourceHealth::Degraded
+        };
+    }
+
+    pub fn snapshot(&self) -> LocalSourceStatusResponse {
+        LocalSourceStatusResponse {
+            sources: self
+                .0
+                .read()
+                .expect("local source status lock poisoned")
+                .clone(),
+        }
+    }
+}
+
+const fn harness_for(kind: ParserKind) -> LocalSourceHarness {
+    match kind {
+        ParserKind::Codex => LocalSourceHarness::Codex,
+        ParserKind::Claude => LocalSourceHarness::ClaudeCode,
+        ParserKind::Pi => LocalSourceHarness::Pi,
+    }
+}
+
+const fn label_for(kind: ParserKind) -> &'static str {
+    match kind {
+        ParserKind::Codex => "Codex",
+        ParserKind::Claude => "Claude Code",
+        ParserKind::Pi => "Pi",
+    }
+}
+
 struct WatchedSession {
     identity: StoveIdentity,
     project: ProjectIdentity,
+    host_application: Option<HostApplication>,
     title: Option<String>,
     parser: ParserKind,
     tailer: JsonlTailer,
@@ -171,16 +295,28 @@ pub struct LocalObservationRuntime<S: ObservationSink> {
     watches: Vec<(ParserKind, PathBuf, DirectoryWatch)>,
     sessions: BTreeMap<PathBuf, WatchedSession>,
     last_rescan: Instant,
+    status: LocalSourceStatusState,
 }
 
 impl<S: ObservationSink> LocalObservationRuntime<S> {
     pub fn new(config: LocalObservationConfig, sink: Arc<S>) -> Self {
+        let status = LocalSourceStatusState::default();
+        status.configure(&config);
+        Self::new_with_status(config, sink, status)
+    }
+
+    pub fn new_with_status(
+        config: LocalObservationConfig,
+        sink: Arc<S>,
+        status: LocalSourceStatusState,
+    ) -> Self {
         let mut runtime = Self {
             config,
             sink,
             watches: Vec::new(),
             sessions: BTreeMap::new(),
             last_rescan: Instant::now(),
+            status,
         };
         runtime.ensure_watches();
         runtime
@@ -256,6 +392,7 @@ impl<S: ObservationSink> LocalObservationRuntime<S> {
                     session.identity.clone(),
                     session.project.clone(),
                     session.tailer.path().to_string_lossy().into_owned(),
+                    session.host_application.clone(),
                     session.title.clone(),
                     ObservationSummary::from_event(
                         session.title.as_deref(),
@@ -282,6 +419,10 @@ impl<S: ObservationSink> LocalObservationRuntime<S> {
         self.sessions.len()
     }
 
+    pub fn source_status(&self) -> LocalSourceStatusResponse {
+        self.status.snapshot()
+    }
+
     fn refresh_all(&mut self) {
         for kind in [ParserKind::Codex, ParserKind::Claude, ParserKind::Pi] {
             self.refresh_kind(kind);
@@ -306,9 +447,20 @@ impl<S: ObservationSink> LocalObservationRuntime<S> {
     }
 
     fn refresh_kind(&mut self, kind: ParserKind) {
-        for session in discover(kind, &self.config) {
+        let (sessions, parser_errors) = discover(kind, &self.config);
+        for session in sessions {
             self.register_session(kind, session);
         }
+        let discovered = self
+            .sessions
+            .values()
+            .filter(|session| session.parser == kind)
+            .count();
+        let available = roots_for_kind(kind, &self.config)
+            .iter()
+            .any(|root| root.is_dir());
+        self.status
+            .update(kind, available, discovered, parser_errors);
     }
 
     fn register_path(&mut self, kind: ParserKind, path: &Path) {
@@ -350,6 +502,7 @@ impl<S: ObservationSink> LocalObservationRuntime<S> {
             identity.clone(),
             project.clone(),
             session.locator.value.clone(),
+            session.host_application.clone(),
             session.title.clone(),
             ObservationSummary::from_event(
                 session.title.as_deref(),
@@ -364,6 +517,7 @@ impl<S: ObservationSink> LocalObservationRuntime<S> {
             WatchedSession {
                 identity,
                 project,
+                host_application: session.host_application,
                 title: session.title,
                 parser: kind,
                 tailer,
@@ -395,11 +549,15 @@ impl Drop for RuntimeHandle {
     }
 }
 
-pub fn start<S: ObservationSink>(config: LocalObservationConfig, sink: Arc<S>) -> RuntimeHandle {
+pub fn start<S: ObservationSink>(
+    config: LocalObservationConfig,
+    sink: Arc<S>,
+    status: LocalSourceStatusState,
+) -> RuntimeHandle {
     let cancelled = Arc::new(AtomicBool::new(false));
     let stop = cancelled.clone();
     let join = thread::spawn(move || {
-        let mut runtime = LocalObservationRuntime::new(config, sink);
+        let mut runtime = LocalObservationRuntime::new_with_status(config, sink, status);
         runtime.bootstrap();
         while !stop.load(Ordering::Acquire) {
             runtime.tick();
@@ -437,7 +595,7 @@ fn root_for(kind: ParserKind, config: &LocalObservationConfig, path: &Path) -> P
             .unwrap_or_else(|| path.parent().unwrap_or(Path::new(".")).to_owned()),
     }
 }
-fn discover(kind: ParserKind, config: &LocalObservationConfig) -> Vec<NativeSession> {
+fn discover(kind: ParserKind, config: &LocalObservationConfig) -> (Vec<NativeSession>, u64) {
     let source = HostSource::local(config.host.clone());
     let mut scanned = 0;
     let mut paths = Vec::new();
@@ -458,12 +616,31 @@ fn discover(kind: ParserKind, config: &LocalObservationConfig) -> Vec<NativeSess
             .cmp(&modified_at_path(left))
             .then_with(|| left.cmp(right))
     });
-    paths.truncate(config.startup_candidate_limit);
+    // A busy root can contain many short-lived helper sessions. Inspect a
+    // bounded superset before applying the visible-session cap so newer Codex
+    // subagents cannot starve an older user-owned root session.
+    let prefilter_limit = config
+        .startup_candidate_limit
+        .saturating_mul(8)
+        .max(config.startup_candidate_limit)
+        .min(512);
+    paths.truncate(prefilter_limit);
 
-    paths
+    let mut parser_errors = 0;
+    let sessions = paths
         .into_iter()
-        .filter_map(|path| session_from_path_with_source(kind, config, &source, &path))
-        .collect()
+        .filter_map(|path| {
+            match session_from_path_with_source_result(kind, config, &source, &path) {
+                Ok(session) => session,
+                Err(()) => {
+                    parser_errors += 1;
+                    None
+                }
+            }
+        })
+        .take(config.startup_candidate_limit)
+        .collect();
+    (sessions, parser_errors)
 }
 
 fn session_from_path(
@@ -480,22 +657,32 @@ fn session_from_path_with_source(
     source: &HostSource,
     path: &Path,
 ) -> Option<NativeSession> {
+    session_from_path_with_source_result(kind, config, source, path)
+        .ok()
+        .flatten()
+}
+
+fn session_from_path_with_source_result(
+    kind: ParserKind,
+    config: &LocalObservationConfig,
+    source: &HostSource,
+    path: &Path,
+) -> Result<Option<NativeSession>, ()> {
     match kind {
         ParserKind::Codex => {
             let adapter = CodexAdapter::with_root(config.codex_root.clone(), config.host.clone());
-            adapter.session_from_path(source, path).ok().flatten()
+            adapter.session_from_path(source, path).map_err(|_| ())
         }
         ParserKind::Claude => {
             let root = fs::canonicalize(&config.claude_root)
                 .unwrap_or_else(|_| config.claude_root.clone());
             let path = fs::canonicalize(path).unwrap_or_else(|_| path.to_owned());
-            claude::discover_session(&root, &path, source)
-                .ok()
-                .flatten()
+            claude::discover_session(&root, &path, source).map_err(|_| ())
         }
         ParserKind::Pi => PiAdapter::with_roots(config.pi_roots.clone())
             .session_metadata_from_path(source, path.to_owned())
-            .ok(),
+            .map(Some)
+            .map_err(|_| ()),
     }
 }
 

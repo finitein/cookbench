@@ -8,6 +8,7 @@ use cookbench_core::domain::{
     EventKind, EventMetadata, EventSource, HarnessId, HostIdentity, ProjectIdentity, StoveEvent,
     StoveIdentity,
 };
+use cookbench_core::locator::HostApplication;
 
 use crate::io::{discover_jsonl_files, JsonlTailer, TailLimits, TailRecord};
 use crate::{
@@ -82,6 +83,7 @@ impl CodexAdapter {
             .map_err(|error| AdapterError::Message(error.to_string()))?;
         let mut session_id = None;
         let mut cwd = None;
+        let mut metadata = None;
         for sequence in 1..=1 {
             let records = tailer
                 .poll()
@@ -99,6 +101,7 @@ impl CodexAdapter {
                     ) {
                         session_id = session_id.or(parsed.session_id);
                         cwd = cwd.or(parsed.cwd);
+                        metadata = metadata.or(parsed.session_metadata);
                     }
                 }
             }
@@ -109,6 +112,12 @@ impl CodexAdapter {
         let Some(native_session_id) = session_id.or(fallback_id) else {
             return Ok(None);
         };
+        if metadata
+            .as_ref()
+            .is_some_and(|metadata| metadata.is_subagent())
+        {
+            return Ok(None);
+        }
         let host = source.host().clone();
         let project = cwd.map(|cwd| ProjectIdentity::new(host.clone(), cwd));
         let locator_kind = match source {
@@ -116,15 +125,20 @@ impl CodexAdapter {
             HostSource::Ssh(_) => SessionLocatorKind::RemotePath,
         };
         let locator = SessionLocator::new(locator_kind, path.to_string_lossy())?;
-        NativeSession::new(
+        let session = NativeSession::new(
             host,
             HarnessId::Codex,
             native_session_id,
             project,
             None,
             locator,
-        )
-        .map(Some)
+        )?;
+        Ok(Some(match metadata {
+            Some(metadata) if metadata.is_desktop_origin() => {
+                session.with_host_application(HostApplication::CodexDesktop)
+            }
+            _ => session,
+        }))
     }
 
     async fn emit_snapshot(&self, sink: &EventSink) -> Result<(), AdapterError> {

@@ -8,7 +8,38 @@ use super::progress::plan_progress;
 pub struct CodexRecord {
     pub session_id: Option<String>,
     pub cwd: Option<String>,
+    pub session_metadata: Option<CodexSessionMetadata>,
     pub event: Option<StoveEvent>,
+}
+
+/// Structural session classification emitted by Codex session metadata.
+///
+/// This deliberately excludes task text and other conversation content. New
+/// values remain `Unknown`, which keeps them visible rather than guessing.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct CodexSessionMetadata {
+    pub originator: Option<String>,
+    pub thread_source: CodexThreadSource,
+    pub parent_session_id: Option<String>,
+    pub subagent_depth: Option<u32>,
+}
+
+impl CodexSessionMetadata {
+    pub fn is_subagent(&self) -> bool {
+        self.thread_source == CodexThreadSource::Subagent
+    }
+
+    pub fn is_desktop_origin(&self) -> bool {
+        matches!(self.originator.as_deref(), Some("codex_work_desktop"))
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum CodexThreadSource {
+    User,
+    Subagent,
+    #[default]
+    Unknown,
 }
 
 /// Parses only fixture-backed Codex JSONL variants. Unknown/malformed records
@@ -43,6 +74,8 @@ pub fn parse_record(
     );
     let timestamp_ms = timestamp_ms(value.get("timestamp")).unwrap_or(sequence);
     let record_type = value.get("type").and_then(Value::as_str)?;
+    let session_metadata = matches!(record_type, "session_meta" | "session_started")
+        .then(|| session_metadata(payload, max_field_bytes));
     let payload_type = payload.get("type").and_then(Value::as_str);
     let kind = match (record_type, payload_type) {
         ("response_item", Some("message"))
@@ -97,6 +130,7 @@ pub fn parse_record(
     Some(CodexRecord {
         session_id,
         cwd,
+        session_metadata,
         event: kind.map(|kind| {
             StoveEvent::new(
                 kind,
@@ -104,6 +138,40 @@ pub fn parse_record(
             )
         }),
     })
+}
+
+fn session_metadata(payload: &Value, max_field_bytes: usize) -> CodexSessionMetadata {
+    let thread_source = match payload.get("thread_source").and_then(Value::as_str) {
+        Some("user") => CodexThreadSource::User,
+        Some("subagent") => CodexThreadSource::Subagent,
+        _ => CodexThreadSource::Unknown,
+    };
+    let subagent = payload
+        .get("source")
+        .and_then(Value::as_object)
+        .and_then(|source| source.get("subagent"))
+        .and_then(Value::as_object);
+    let thread_spawn = subagent
+        .and_then(|subagent| subagent.get("thread_spawn"))
+        .and_then(Value::as_object);
+    CodexSessionMetadata {
+        originator: bounded_string(payload.get("originator"), max_field_bytes),
+        thread_source,
+        parent_session_id: thread_spawn
+            .or(subagent)
+            .and_then(|source| {
+                source
+                    .get("parent_thread_id")
+                    .or_else(|| source.get("parent_session_id"))
+                    .or_else(|| source.get("parent_id"))
+            })
+            .and_then(|value| bounded_string(Some(value), max_field_bytes)),
+        subagent_depth: thread_spawn
+            .or(subagent)
+            .and_then(|spawn| spawn.get("depth"))
+            .and_then(Value::as_u64)
+            .and_then(|depth| u32::try_from(depth).ok()),
+    }
 }
 
 fn update_plan_progress(payload: &Value) -> Option<(u32, u32)> {

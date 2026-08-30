@@ -35,7 +35,7 @@ export default function App() {
   }
 
   return (
-    <main className="shell" aria-label="Cookbench">
+    <main className="shell shell--global-bar" aria-label="Cookbench">
       <GlobalBar
         stoves={stoves}
         onActivateStove={activate}

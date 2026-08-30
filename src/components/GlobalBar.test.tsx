@@ -24,7 +24,29 @@ describe("GlobalBar", () => {
     expect(screen.getAllByTestId("stove")).toHaveLength(10);
     expect(screen.getByRole("list", { name: "Stoves" })).toHaveAttribute("aria-label", "Stoves");
     expect(screen.getByRole("region", { name: "Cookbench global bar with 10 stoves" }))
-      .toHaveStyle("--stove-grid-width: 688px");
+      .toHaveAttribute("data-layout", "mixed");
+  });
+
+  it("exposes lightweight named harness benches only when a harness needs a second row", () => {
+    const originalWidth = document.documentElement.clientWidth;
+    Object.defineProperty(document.documentElement, "clientWidth", { configurable: true, value: 254 });
+    const codex = [makeStove(0), makeStove(3), makeStove(6)];
+    const claude = [makeStove(1)];
+    const pi = [makeStove(2)];
+    try {
+      const view = render(<GlobalBar stoves={[...codex, ...claude, ...pi]} />);
+
+      expect(screen.getByRole("region", { name: "Cookbench global bar with 5 stoves" }))
+        .toHaveAttribute("data-layout", "grouped");
+      expect(screen.getByRole("region", { name: "Codex" })).toBeVisible();
+      expect(screen.getByRole("region", { name: "Claude Code" })).toBeVisible();
+      expect(screen.getByRole("region", { name: "Pi" })).toBeVisible();
+      expect(screen.getByRole("list", { name: "Codex stoves" })).toHaveAttribute("class", expect.stringContaining("global-bar__bench-stoves"));
+
+      view.unmount();
+    } finally {
+      Object.defineProperty(document.documentElement, "clientWidth", { configurable: true, value: originalWidth });
+    }
   });
 
   it("makes Codex, Claude Code, and Pi visible on their burners", () => {

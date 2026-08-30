@@ -25,11 +25,12 @@ test("uses complete terminal rings and a determinate arc only with structured Co
   const driver = await e2eDriver(page);
   await driver.replaceStoves(allStateFixtures());
 
-  const rings = page.getByTestId("progress-ring");
-  await expect(rings.nth(2)).toHaveAttribute("data-ring-mode", "determinate");
-  await expect(rings.nth(2)).toHaveAttribute("data-progress", "40");
-  for (const index of [3, 4, 5, 6]) {
-    await expect(rings.nth(index)).toHaveAttribute("data-ring-mode", "complete");
-    await expect(rings.nth(index)).not.toHaveAttribute("data-progress", /.+/);
+  const cookingRing = page.locator('[data-testid="stove"][data-state="cooking"] [data-testid="progress-ring"]');
+  await expect(cookingRing).toHaveAttribute("data-ring-mode", "determinate");
+  await expect(cookingRing).toHaveAttribute("data-progress", "40");
+  for (const state of ["needsHuman", "cooked", "failed", "disconnected"]) {
+    const ring = page.locator(`[data-testid="stove"][data-state="${state}"] [data-testid="progress-ring"]`);
+    await expect(ring).toHaveAttribute("data-ring-mode", "complete");
+    await expect(ring).not.toHaveAttribute("data-progress", /.+/);
   }
 });

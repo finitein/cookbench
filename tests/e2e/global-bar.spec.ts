@@ -17,6 +17,41 @@ test("global Bar presents sessions from Codex, Claude Code, and Pi together", as
   }
 });
 
+test("dense harness activity becomes named wrapping benches without scroll containers", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(process.env.COOKBENCH_E2E_URL ?? "http://127.0.0.1:1420");
+  const driver = await e2eDriver(page);
+  await driver.replaceStoves([
+    stoveFixture(0),
+    stoveFixture(3),
+    stoveFixture(6),
+    stoveFixture(9),
+    stoveFixture(1),
+    stoveFixture(2),
+  ]);
+
+  const bar = page.getByLabel(/Cookbench global bar with 6 stoves/);
+  await expect(bar).toHaveAttribute("data-layout", "grouped");
+  await expect(bar.getByRole("region", { name: "Codex" })).toBeVisible();
+  await expect(bar.getByRole("region", { name: "Claude Code" })).toBeVisible();
+  await expect(bar.getByRole("region", { name: "Pi" })).toBeVisible();
+  await expect(bar.getByTestId("stove")).toHaveCount(6);
+
+  const scrollContainers = await bar.locator(".global-bar__bench-stoves").evaluateAll((benches) =>
+    benches.filter((bench) => {
+      const style = getComputedStyle(bench);
+      return style.overflowX !== "visible" || style.overflowY !== "visible" || bench.scrollWidth > bench.clientWidth || bench.scrollHeight > bench.clientHeight;
+    }).length,
+  );
+  expect(scrollContainers).toBe(0);
+  if (process.env.COOKBENCH_CAPTURE_EVIDENCE === "1") {
+    await page.screenshot({
+      path: "docs/verification/evidence/e2e-grouped-benches.png",
+      fullPage: true,
+    });
+  }
+});
+
 test("hovered Stove details stay inside the rendered Bar and close when the pointer leaves", async ({ page }) => {
   await page.goto(process.env.COOKBENCH_E2E_URL ?? "http://127.0.0.1:1420");
   const driver = await e2eDriver(page);
@@ -38,6 +73,12 @@ test("hovered Stove details stay inside the rendered Bar and close when the poin
   expect(tooltipBounds.x).toBeGreaterThanOrEqual(barBounds.x);
   expect(tooltipBounds.x + tooltipBounds.width).toBeLessThanOrEqual(barBounds.x + barBounds.width);
   expect(tooltipBounds.y + tooltipBounds.height).toBeLessThanOrEqual(barBounds.y + barBounds.height);
+  if (process.env.COOKBENCH_CAPTURE_EVIDENCE === "1") {
+    await page.screenshot({
+      path: "docs/verification/evidence/e2e-hover-detail.png",
+      fullPage: true,
+    });
+  }
 
   await page.mouse.move(0, 0);
   await expect(tooltip).toHaveCount(0);

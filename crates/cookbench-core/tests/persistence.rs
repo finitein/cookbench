@@ -240,14 +240,26 @@ fn legacy_layouts_keep_the_global_bar_visible() {
 }
 
 #[test]
-fn legacy_layouts_default_to_a_standard_resizable_global_bar() {
+fn legacy_layouts_leave_global_bar_size_unset() {
     let config: PersistedConfig = serde_json::from_str(
         r#"{"version":1,"layout":{"detached_stoves":[],"detached_layouts":[]}}"#,
     )
     .unwrap();
 
+    assert_eq!(config.layout.global_bar_size, None);
+}
+
+#[test]
+fn legacy_global_bar_presets_do_not_override_freeform_window_size() {
+    let config: PersistedConfig = serde_json::from_str(
+        r#"{"version":1,"layout":{"global_bar_visible":false,"global_bar_placement":"bottomRight","global_bar_size":"wide","detached_stoves":[],"detached_layouts":[]}}"#,
+    )
+    .unwrap();
+
+    assert_eq!(config.layout.global_bar_size, None);
+    assert!(!config.layout.global_bar_visible);
     assert_eq!(
-        config.layout.global_bar_size,
-        cookbench_core::persistence::GlobalBarSize::Standard
+        config.layout.global_bar_placement,
+        GlobalBarPlacement::BottomRight
     );
 }

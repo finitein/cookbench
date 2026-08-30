@@ -3,11 +3,15 @@ use std::{fs, path::PathBuf};
 use cookbench_adapters::{
     codex::{
         codex_home_from, correlate_processes, default_codex_home, inspect_notify_hook,
-        parse_record, sanitize_fixture_record, CodexAdapter, CodexProcess, NotifyHookPlan,
+        parse_record, sanitize_fixture_record, CodexAdapter, CodexProcess, CodexThreadSource,
+        NotifyHookPlan,
     },
     HarnessAdapter, HostSource, SessionLocatorKind,
 };
-use cookbench_core::domain::{EventKind, HarnessId, HostIdentity};
+use cookbench_core::{
+    domain::{EventKind, HarnessId, HostIdentity},
+    locator::HostApplication,
+};
 use serde_json::Value;
 use tokio::sync::mpsc;
 
@@ -149,6 +153,84 @@ fn parses_lifecycle_progress_failure_and_ignores_unknown_records() {
         ),
         EventKind::QuestionAsked
     ));
+}
+
+#[test]
+fn classifies_only_safe_structural_codex_session_metadata() {
+    let root = parse_record(
+        r#"{"type":"session_meta","payload":{"id":"root-1","cwd":"/synthetic/root","originator":"codex_work_desktop","thread_source":"user"}}"#,
+        1,
+        32,
+        1024,
+    )
+    .unwrap();
+    let metadata = root.session_metadata.unwrap();
+    assert_eq!(metadata.thread_source, CodexThreadSource::User);
+    assert!(metadata.is_desktop_origin());
+    assert!(!metadata.is_subagent());
+
+    let child = parse_record(
+        r#"{"type":"session_meta","payload":{"id":"child-1","thread_source":"subagent","source":{"subagent":{"thread_spawn":{"parent_thread_id":"root-1","depth":2}}}}}"#,
+        1,
+        32,
+        1024,
+    )
+    .unwrap();
+    let metadata = child.session_metadata.unwrap();
+    assert!(metadata.is_subagent());
+    assert_eq!(metadata.parent_session_id.as_deref(), Some("root-1"));
+    assert_eq!(metadata.subagent_depth, Some(2));
+
+    let unknown = parse_record(
+        r#"{"type":"session_meta","payload":{"thread_source":"future-worker","originator":{"not":"a string"}}}"#,
+        1,
+        32,
+        1024,
+    )
+    .unwrap();
+    let metadata = unknown.session_metadata.unwrap();
+    assert_eq!(metadata.thread_source, CodexThreadSource::Unknown);
+    assert!(!metadata.is_subagent());
+    assert!(!metadata.is_desktop_origin());
+}
+
+#[tokio::test]
+async fn hides_codex_subagent_sessions_but_keeps_root_sessions() {
+    let root = std::env::temp_dir().join(format!(
+        "cookbench-codex-root-filter-{}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&root).unwrap();
+    fs::write(
+        root.join("root.jsonl"),
+        format!(
+            "{}\n",
+            r#"{"type":"session_meta","payload":{"id":"root-session","cwd":"/synthetic/root","originator":"codex_work_desktop","thread_source":"user"}}"#
+        ),
+    )
+    .unwrap();
+    fs::write(
+        root.join("subagent.jsonl"),
+        format!(
+            "{}\n",
+            r#"{"type":"session_meta","payload":{"id":"child-session","cwd":"/synthetic/root","thread_source":"subagent"}}"#
+        ),
+    )
+    .unwrap();
+
+    let adapter = CodexAdapter::with_root(&root, HostIdentity::local("test-host"));
+    let sessions = adapter
+        .discover(&HostSource::local(HostIdentity::local("test-host")))
+        .await
+        .unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].native_session_id, "root-session");
+    assert_eq!(
+        sessions[0].host_application,
+        Some(HostApplication::CodexDesktop)
+    );
+
+    fs::remove_dir_all(root).unwrap();
 }
 
 #[test]

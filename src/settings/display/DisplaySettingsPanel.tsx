@@ -6,7 +6,6 @@ import {
   getDisplaySettings,
   type DisplaySettingsWire,
   type GlobalBarPlacement,
-  type GlobalBarSize,
 } from "./service";
 import "./display-settings.css";
 
@@ -17,12 +16,6 @@ const PLACEMENTS: Array<{ value: GlobalBarPlacement; label: string }> = [
   { value: "bottomLeft", label: "Bottom left" },
   { value: "bottomCenter", label: "Bottom center" },
   { value: "bottomRight", label: "Bottom right" },
-];
-
-const SIZES: Array<{ value: GlobalBarSize; label: string }> = [
-  { value: "compact", label: "Compact" },
-  { value: "standard", label: "Standard" },
-  { value: "wide", label: "Wide" },
 ];
 
 export function DisplaySettingsPanel() {
@@ -36,7 +29,7 @@ export function DisplaySettingsPanel() {
     });
   }, []);
 
-  const save = (change: Partial<Pick<DisplaySettingsWire, "globalBarVisible" | "globalBarPlacement" | "globalBarSize">>) => {
+  const save = (change: Partial<Pick<DisplaySettingsWire, "globalBarVisible" | "globalBarPlacement">>) => {
     if (!settings) return;
     const next = { ...settings, ...change };
     setSettings(next);
@@ -44,7 +37,6 @@ export function DisplaySettingsPanel() {
     void configureDisplaySettings({
       globalBarVisible: next.globalBarVisible,
       globalBarPlacement: next.globalBarPlacement,
-      globalBarSize: next.globalBarSize,
     }).then(setSettings).catch(() => {
       setSettings(settings);
       setStatus("Display settings could not be saved.");
@@ -93,16 +85,6 @@ export function DisplaySettingsPanel() {
             onChange={(event) => save({ globalBarPlacement: event.target.value as GlobalBarPlacement })}
           >
             {PLACEMENTS.map((placement) => <option key={placement.value} value={placement.value}>{placement.label}</option>)}
-          </select>
-        </label>
-        <label className="display-settings__placement">
-          <span>Size</span>
-          <select
-            value={settings?.globalBarSize ?? "standard"}
-            disabled={!settings || !settings.globalBarVisible}
-            onChange={(event) => save({ globalBarSize: event.target.value as GlobalBarSize })}
-          >
-            {SIZES.map((size) => <option key={size.value} value={size.value}>{size.label}</option>)}
           </select>
         </label>
       </section>

@@ -30,12 +30,14 @@ impl runtime::ObservationSink for TauriObservationSink {
         identity: StoveIdentity,
         project: ProjectIdentity,
         _native_locator: String,
+        host_application: Option<cookbench_core::locator::HostApplication>,
         _title: Option<String>,
         summary: runtime::ObservationSummary,
         origin: runtime::ObservationOrigin,
         event: StoveEvent,
     ) {
         let locator = SessionLocator {
+            host_application,
             working_directory: std::path::Path::new(&project.canonical_root)
                 .is_absolute()
                 .then(|| project.canonical_root.clone()),
@@ -98,6 +100,7 @@ pub fn run() {
         .manage(app_state::AppState::default())
         .manage(notification_runtime)
         .manage(remote::runtime::RemoteRuntimeState::default())
+        .manage(runtime::LocalSourceStatusState::default())
         .manage(LocalRuntimeState(Mutex::new(None)))
         .manage(HookRuntimeState(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
@@ -107,7 +110,8 @@ pub fn run() {
             commands::windows::clear_detached_stove,
             commands::windows::close_detached_bar,
             commands::windows::record_detached_stove_position,
-            commands::windows::resize_global_bar,
+            commands::windows::record_global_bar_size,
+            commands::windows::set_global_bar_minimum_size,
             commands::display::get_display_settings,
             commands::display::configure_display_settings,
             commands::display::record_global_bar_position,
@@ -119,6 +123,7 @@ pub fn run() {
             commands::remote::get_remote_sources,
             commands::remote::configure_remote_source,
             commands::remote::remove_remote_source,
+            commands::sources::get_local_source_status,
         ])
         .setup(|app| {
             let app_data = app.path().app_data_dir()?;
@@ -159,10 +164,14 @@ pub fn run() {
             let observer = Arc::new(TauriObservationSink {
                 app: app.handle().clone(),
             });
-            let handle = runtime::start(
-                runtime::LocalObservationConfig::from_environment(HostIdentity::local("local")),
-                observer,
-            );
+            let local_config =
+                runtime::LocalObservationConfig::from_environment(HostIdentity::local("local"));
+            let local_status = app
+                .state::<runtime::LocalSourceStatusState>()
+                .inner()
+                .clone();
+            local_status.configure(&local_config);
+            let handle = runtime::start(local_config, observer, local_status);
             *app.state::<LocalRuntimeState>()
                 .0
                 .lock()
@@ -194,7 +203,7 @@ pub fn run() {
 
             platform::publish_optional_gnome_snapshot(&state.stoves.snapshot());
             let layout = state.persisted_config().layout;
-            if let Err(error) = commands::display::resize_global_bar_for_size(
+            if let Err(error) = commands::display::restore_global_bar_size(
                 &app.handle().clone(),
                 layout.global_bar_size,
             ) {
