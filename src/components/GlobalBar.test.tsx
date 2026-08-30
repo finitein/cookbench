@@ -6,12 +6,25 @@ import { globalBarFixture, makeStove } from "../stories/GlobalBar.fixture";
 import { GlobalBar } from "./GlobalBar";
 
 describe("GlobalBar", () => {
+  it("keeps the empty state as a compact branded bar rather than a blank window", () => {
+    render(<GlobalBar stoves={[]} />);
+
+    const bar = screen.getByRole("region", { name: "Cookbench global bar with 0 stoves" });
+    expect(bar).toHaveClass("global-bar--empty");
+    expect(screen.getByRole("img", { name: "Cookbench" })).toHaveAttribute(
+      "src",
+      expect.stringContaining("cookbench-mark"),
+    );
+  });
+
   it("renders every stove at the same time and preserves the session count", () => {
     const stoves = globalBarFixture(10);
     render(<GlobalBar stoves={stoves} />);
 
     expect(screen.getAllByTestId("stove")).toHaveLength(10);
     expect(screen.getByRole("list", { name: "Stoves" })).toHaveAttribute("aria-label", "Stoves");
+    expect(screen.getByRole("region", { name: "Cookbench global bar with 10 stoves" }))
+      .toHaveStyle("--stove-grid-width: 688px");
   });
 
   it("makes Codex, Claude Code, and Pi visible on their burners", () => {
@@ -81,7 +94,7 @@ describe("GlobalBar", () => {
 
     screen.getByRole("button", { name: "Detach Codex Stove" }).click();
     screen.getByRole("button", { name: "Clear Codex Stove" }).click();
-    screen.getByRole("button", { name: "Open notification settings" }).click();
+    screen.getByRole("button", { name: "Open Cookbench settings" }).click();
     expect(actions).toEqual(["detach", "clear", "settings"]);
   });
 

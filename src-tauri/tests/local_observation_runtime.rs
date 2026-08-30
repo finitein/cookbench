@@ -10,7 +10,8 @@ use std::{
 
 use cookbench_core::domain::{EventKind, HostIdentity, ProjectIdentity, StoveEvent, StoveIdentity};
 use cookbench_desktop_lib::runtime::{
-    LocalObservationConfig, LocalObservationRuntime, ObservationSink, ObservationSummary,
+    LocalObservationConfig, LocalObservationRuntime, ObservationOrigin, ObservationSink,
+    ObservationSummary,
 };
 
 #[derive(Default)]
@@ -23,6 +24,7 @@ impl ObservationSink for Sink {
         _: String,
         _: Option<String>,
         _: ObservationSummary,
+        _: ObservationOrigin,
         event: StoveEvent,
     ) {
         self.0.lock().unwrap().push((identity, project, event));

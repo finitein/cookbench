@@ -1,9 +1,24 @@
 import "@testing-library/jest-dom/vitest";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { NotificationSettings } from "./NotificationSettings";
+import { NotificationSettingsPanel } from "./NotificationSettingsPanel";
+
+vi.mock("./service", () => ({
+  configureNotificationDestination: vi.fn(),
+  getNotificationSettings: vi.fn(async () => []),
+  sendTestNotification: vi.fn(),
+}));
 
 describe("NotificationSettings", () => {
+  it("uses a dedicated solid settings surface instead of inheriting the floating Bar layout", async () => {
+    render(<NotificationSettingsPanel />);
+
+    await waitFor(() => expect(screen.getByRole("main", { name: "Cookbench settings" })).toBeInTheDocument());
+    expect(screen.getByText("Settings", { selector: "h1" })).toBeInTheDocument();
+    expect(document.querySelector(".notification-settings__surface")).toBeInTheDocument();
+  });
+
   it("only exposes outbound destination toggles and synthetic test sends", async () => {
     const onChange = vi.fn();
     const onTest = vi.fn(async () => {});

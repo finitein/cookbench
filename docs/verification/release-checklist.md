@@ -15,7 +15,7 @@ pnpm build
 pnpm test:e2e
 ```
 
-On the macOS development runner, `pnpm test:e2e` passes all nine Chromium flows.
+On the macOS development runner, `pnpm test:e2e` passes all ten Chromium flows.
 The test-only driver supplies sanitized snapshots, restart, detached placement,
 clear, and outbound-notification observations in Vite `e2e` mode. A production
 build scan confirms that the driver name, storage keys, and implementation are
@@ -26,9 +26,9 @@ absent from `dist`.
 | # | Requirement | Evidence required | Current status |
 | --- | --- | --- | --- |
 | 1 | Graphical macOS, Windows, Ubuntu installation | Package smoke run on each platform | macOS arm64 app/DMG build and package smoke pass; Windows, Ubuntu, and macOS Intel pending |
-| 2 | Codex, Claude Code, Pi create stoves from their original tools | Sanitized fixture E2E plus manual original-tool sessions | Three-harness E2E passes; manual original-tool sessions pending |
+| 2 | Codex, Claude Code, Pi create stoves from their original tools | Sanitized fixture E2E plus manual original-tool sessions | Three-harness E2E passes; packaged macOS app automatically discovered live local Codex session files; manual Claude Code and Pi native checks pending |
 | 3 | Every burner names its harness | `global-bar.spec.ts` plus screen-reader check | E2E and component accessible-name checks pass; manual screen reader pending |
-| 4 | Global Bar contains all active and uncleared stoves | `global-bar.spec.ts` with three sources and retained Cooked fixture | E2E passes |
+| 4 | Global Bar contains all active and uncleared stoves | `global-bar.spec.ts` with three sources and retained Cooked fixture | E2E passes; packaged macOS snapshot populated from native sessions after the release ACL fallback regression was fixed |
 | 5 | Hover/focus exposes safe project, task, state, activity, progress | Desktop screenshot and keyboard-focus check | Production summary projection, tooltip, and keyboard component tests pass; manual native hover screenshot pending |
 | 6 | Needs Human and Cooked use authoritative transitions | State-machine and lifecycle evidence | Reducer, native Hook projection, cross-source ordering, and lifecycle E2E pass; live original-tool observation pending |
 | 7 | Click returns to original surface or honest fallback | Locator tests and manual host checks | Automated fallback coverage; host checks pending |
@@ -39,7 +39,7 @@ absent from `dist`.
 | 12 | Outbound-only notifications filter by destination/state | `notifications.spec.ts`, mock endpoint audit, no listener/polling assertion | Mock sender and filtered E2E pass; live sandboxes pending |
 | 13 | Attention, Cooked, Failed, Disconnected use complete rings | `stove-lifecycle.spec.ts`; screenshots | Component and E2E coverage pass; four browser screenshots recorded |
 | 14 | Only structured Cooking has a determinate arc | `stove-lifecycle.spec.ts` with structured and empty progress fixtures | Component and E2E coverage pass |
-| 15 | Approved light-default SVG/CSS material, no third-party logos/heavy media | Asset inventory and screenshot comparison with visual prototype | Four browser screenshots recorded; exact two-SVG master comparison and macOS package audit pass |
+| 15 | Approved light-default SVG/CSS material, no third-party logos/heavy media | Asset inventory and screenshot comparison with visual prototype | Five browser screenshots plus a cropped packaged-macOS capture recorded; exact two-SVG master comparison and macOS package audit pass |
 | 16 | Reduced motion and accessible state labels | Emulated media-feature screenshots and keyboard/screen-reader check | Reduced-motion E2E and component labels pass; OS/screen-reader check pending |
 | 17 | No photos, GIFs, video, Lottie, sprites, or bundled web fonts | Package artifact inventory | macOS arm64 app/DMG package inventory passes; Windows and Ubuntu artifacts pending |
 
@@ -53,7 +53,7 @@ overlap, blank content, hidden stoves, and layout shifts.
 | --- | --- | --- | --- | --- |
 | 1280x720 at 100% | Browser evidence recorded | Native window pending | Default and reduced motion | E2E passed |
 | 1440x900 at 100% | Dark-background evidence recorded | Native window pending | Reduced motion; increased contrast pending | E2E passed |
-| 2560x1440 at 200% effective scale | Existing macOS window evidence | Native window pending | Reduced transparency pending | Partial macOS evidence |
+| 2560x1440 at 200% effective scale | Packaged macOS Bar recorded at 790x128 logical pixels | Native detached window pending | Reduced transparency pending | Global Bar passed; detached pending |
 | 390x844 at 100% browser viewport | Responsive evidence recorded | Not applicable | Keyboard focus covered by components | E2E passed |
 
 Compare each capture with `docs/visual-prototype/index.html`: bright

@@ -62,7 +62,7 @@ export async function subscribeToStoves(
       void transport.snapshot().then((snapshot) => onSnapshot(sync.replace(snapshot)));
     }
   };
-  const unlisten = await transport.listen(handle);
+  const unlisten = await transport.listen(handle).catch((): UnlistenFn => () => {});
   onSnapshot(sync.replace(await transport.snapshot()));
   ready = true;
   for (const change of queued.sort((left, right) => left.revision - right.revision)) handle(change);

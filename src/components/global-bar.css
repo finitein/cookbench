@@ -13,7 +13,8 @@
   box-sizing: border-box;
   display: flex;
   align-items: stretch;
-  width: min(100%, 900px);
+  width: fit-content;
+  max-width: calc(100vw - 24px);
   min-height: 104px;
   padding: 11px 12px;
   border: 1px solid var(--bar-line);
@@ -30,6 +31,7 @@
 }
 
 .global-bar__brand {
+  position: relative;
   display: grid;
   width: 52px;
   min-width: 52px;
@@ -38,8 +40,26 @@
   border-right: 1px solid rgb(109 129 148 / 16%);
 }
 
-.global-bar__brand img { width: 30px; height: 30px; }
+.global-bar--empty {
+  min-height: 72px;
+  padding: 8px;
+}
+
+.global-bar--empty .global-bar__brand {
+  min-height: 54px;
+  border-right: 0;
+}
+
+.global-bar__brand img {
+  display: block;
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+}
 .global-bar__settings {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
   display: grid;
   width: 24px;
   height: 24px;
@@ -61,17 +81,27 @@
 .global-bar__settings i:nth-child(2)::after { right: 2px; }
 
 .global-bar__stoves {
-  display: grid;
-  flex: 1 1 auto;
-  grid-template-columns: repeat(auto-fit, minmax(76px, 82px));
-  grid-auto-rows: 74px;
-  align-content: start;
+  display: flex;
+  flex: 0 1 auto;
+  align-items: stretch;
   gap: 4px;
+  width: min(var(--stove-grid-width), calc(100vw - 94px), 900px);
   min-width: 0;
+  max-width: 100%;
   padding-left: 5px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
 }
 
-.global-bar__item { min-width: 0; }
+.global-bar__stoves::-webkit-scrollbar { display: none; }
+
+.global-bar--empty .global-bar__stoves { display: none; }
+
+:root[data-cookbench-native="true"] .global-bar { max-width: none; }
+:root[data-cookbench-native="true"] .global-bar__stoves { width: var(--stove-grid-width); }
+
+.global-bar__item { flex: 0 0 82px; min-width: 0; }
 
 .stove-burner-wrap {
   position: relative;

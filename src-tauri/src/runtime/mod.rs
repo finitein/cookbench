@@ -113,7 +113,7 @@ impl LocalObservationConfig {
             claude_root: claude.projects_root().to_owned(),
             pi_roots: pi.roots().to_vec(),
             startup_min_modified: SystemTime::now()
-                .checked_sub(Duration::from_secs(14 * 24 * 60 * 60))
+                .checked_sub(Duration::from_secs(24 * 60 * 60))
                 .unwrap_or(SystemTime::UNIX_EPOCH),
             startup_candidate_limit: 64,
         }
@@ -121,6 +121,7 @@ impl LocalObservationConfig {
 }
 
 pub trait ObservationSink: Send + Sync + 'static {
+    #[allow(clippy::too_many_arguments)]
     fn apply(
         &self,
         identity: StoveIdentity,
@@ -128,8 +129,15 @@ pub trait ObservationSink: Send + Sync + 'static {
         locator: String,
         title: Option<String>,
         summary: ObservationSummary,
+        origin: ObservationOrigin,
         event: StoveEvent,
     );
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ObservationOrigin {
+    Replay,
+    Live,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -219,10 +227,10 @@ impl<S: ObservationSink> LocalObservationRuntime<S> {
 
     /// Testable one-path equivalent of a filesystem notification.
     pub fn observe_path(&mut self, path: &Path) {
-        self.observe_path_once(path);
+        self.observe_path_once(path, ObservationOrigin::Live);
     }
 
-    fn observe_path_once(&mut self, path: &Path) -> bool {
+    fn observe_path_once(&mut self, path: &Path, origin: ObservationOrigin) -> bool {
         let canonical = fs::canonicalize(path).unwrap_or_else(|_| path.to_owned());
         let lookup = if self.sessions.contains_key(&canonical) {
             canonical
@@ -254,6 +262,7 @@ impl<S: ObservationSink> LocalObservationRuntime<S> {
                         &event,
                         current_time_ms(),
                     ),
+                    origin,
                     event,
                 );
             }
@@ -263,7 +272,7 @@ impl<S: ObservationSink> LocalObservationRuntime<S> {
 
     fn replay_recent(&mut self, path: &Path) {
         for _ in 0..MAX_REPLAY_POLLS {
-            if !self.observe_path_once(path) {
+            if !self.observe_path_once(path, ObservationOrigin::Replay) {
                 break;
             }
         }
@@ -347,6 +356,7 @@ impl<S: ObservationSink> LocalObservationRuntime<S> {
                 &discovered,
                 current_time_ms(),
             ),
+            ObservationOrigin::Replay,
             discovered,
         );
         self.sessions.insert(

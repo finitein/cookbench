@@ -8,7 +8,10 @@ use std::{
 
 use cookbench_core::{
     domain::{EventMetadata, EventSource, HarnessId, HostIdentity, StoveIdentity},
-    persistence::{AtomicJsonFile, ClearCursor, PersistedConfig, PersistedState, RetainedStove},
+    persistence::{
+        AtomicJsonFile, ClearCursor, GlobalBarPlacement, PersistedConfig, PersistedState,
+        RetainedStove,
+    },
 };
 
 struct TestDirectory(PathBuf);
@@ -159,10 +162,10 @@ fn unknown_future_fields_are_ignored() {
         r#"{"version":1,"retained":[],"clear_cursors":[],"future_field":{"nested":true}}"#,
     )
     .unwrap();
-    assert_eq!(
-        AtomicJsonFile::<PersistedState>::new(path).load().unwrap(),
-        PersistedState::default()
-    );
+    let state = AtomicJsonFile::<PersistedState>::new(path).load().unwrap();
+    assert_eq!(state.version, 1);
+    assert!(state.retained.is_empty());
+    assert!(state.clear_cursors.is_empty());
 
     let config_path = temp.file("config.json");
     fs::write(&config_path, r#"{"version":1,"future_setting":true}"#).unwrap();
@@ -215,5 +218,23 @@ fn config_never_serializes_credential_values() {
     let encoded = serde_json::to_string(&config).unwrap();
     assert!(!encoded.contains("credential_value"));
     assert!(config.layout.global_bar_visible);
+    assert_eq!(
+        config.layout.global_bar_placement,
+        GlobalBarPlacement::TopCenter
+    );
     assert!(config.preferences.always_on_top);
+}
+
+#[test]
+fn legacy_layouts_keep_the_global_bar_visible() {
+    let config: PersistedConfig = serde_json::from_str(
+        r#"{"version":1,"layout":{"detached_stoves":[],"detached_layouts":[]}}"#,
+    )
+    .unwrap();
+
+    assert!(config.layout.global_bar_visible);
+    assert_eq!(
+        config.layout.global_bar_placement,
+        GlobalBarPlacement::TopCenter
+    );
 }

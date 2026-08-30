@@ -6,7 +6,9 @@ use std::{
 
 use cookbench_core::{
     domain::{EventMetadata, EventSource, HarnessId, HostIdentity, StoveIdentity, StoveState},
-    persistence::{PersistedConfig, PersistedState, RetainedStovePresentation},
+    persistence::{
+        ClearCursor, PersistedConfig, PersistedState, RetainedStove, RetainedStovePresentation,
+    },
 };
 use cookbench_desktop_lib::{
     app_state::{AppState, StoveStateWire},
@@ -42,6 +44,33 @@ fn locator() -> StoveIdentity {
 
 fn event(sequence: u64, timestamp_ms: u64) -> EventMetadata {
     EventMetadata::new(EventSource::StructuredSession, 100, sequence, timestamp_ms)
+}
+
+#[test]
+fn pre_release_replay_cache_is_migrated_without_losing_clear_cursors() {
+    let directory = TestDirectory::new();
+    let persistence = DesktopPersistence::in_app_data(&directory.0);
+    let legacy = PersistedState {
+        version: 1,
+        retained: vec![RetainedStove::new(locator(), 800)],
+        clear_cursors: vec![ClearCursor::new(locator(), 7, 700)],
+    };
+    fs::write(
+        persistence.state_path(),
+        serde_json::to_vec(&legacy).expect("serialize legacy state"),
+    )
+    .expect("write legacy state");
+
+    let loaded = persistence.load();
+
+    assert!(loaded.issues.is_empty());
+    assert_eq!(loaded.state.version, PersistedState::CURRENT_VERSION);
+    assert!(loaded.state.retained.is_empty());
+    assert_eq!(loaded.state.clear_cursors, legacy.clear_cursors);
+    let migrated: PersistedState =
+        serde_json::from_slice(&fs::read(persistence.state_path()).expect("read migrated state"))
+            .expect("parse migrated state");
+    assert_eq!(migrated, loaded.state);
 }
 
 #[test]

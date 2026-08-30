@@ -107,7 +107,7 @@ pub struct PersistedState {
 }
 
 impl PersistedState {
-    pub const CURRENT_VERSION: u32 = 1;
+    pub const CURRENT_VERSION: u32 = 2;
 
     pub fn with_retained(retained: Vec<RetainedStove>) -> Self {
         Self {

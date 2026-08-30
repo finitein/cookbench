@@ -1,3 +1,4 @@
+pub mod display;
 pub mod locator;
 pub mod notifications;
 pub mod remote;

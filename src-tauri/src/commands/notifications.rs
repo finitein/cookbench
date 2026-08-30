@@ -68,15 +68,19 @@ pub struct NotificationDestinationInput {
 #[tauri::command]
 pub fn open_notification_settings(app: AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("settings") {
+        window
+            .set_always_on_top(true)
+            .map_err(|error| error.to_string())?;
         window.show().map_err(|error| error.to_string())?;
         let _ = window.set_focus();
         return Ok(());
     }
     WebviewWindowBuilder::new(&app, "settings", WebviewUrl::App("index.html".into()))
-        .title("Cookbench Notifications")
-        .inner_size(520.0, 560.0)
-        .min_inner_size(420.0, 460.0)
+        .title("Cookbench Settings")
+        .inner_size(620.0, 720.0)
+        .min_inner_size(420.0, 520.0)
         .resizable(true)
+        .always_on_top(true)
         .build()
         .map(|_| ())
         .map_err(|error| error.to_string())

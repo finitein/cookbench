@@ -3,23 +3,56 @@ use serde::{Deserialize, Serialize};
 use crate::domain::HarnessId;
 use crate::notifications::NotificationEventKind;
 
-use super::DetachedStoveLayout;
 use super::Versioned;
+use super::{DetachedStoveLayout, MonitorIdentity, RelativePosition};
+
+/// The global Bar's screen-relative anchor. Detached Bars retain their own
+/// monitor-relative positions independently of this preference.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum GlobalBarPlacement {
+    TopLeft,
+    #[default]
+    TopCenter,
+    TopRight,
+    BottomLeft,
+    BottomCenter,
+    BottomRight,
+}
+
+/// The last user-dragged global Bar position, relative to a monitor work area.
+/// It takes precedence over the placement anchor on restore and contains no
+/// session, project, or harness data.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct GlobalBarPosition {
+    pub monitor: MonitorIdentity,
+    pub relative_position: RelativePosition,
+}
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct BarLayout {
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub global_bar_visible: bool,
+    #[serde(default)]
+    pub global_bar_placement: GlobalBarPlacement,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub global_bar_position: Option<GlobalBarPosition>,
     #[serde(default)]
     pub detached_stoves: Vec<String>,
     #[serde(default)]
     pub detached_layouts: Vec<DetachedStoveLayout>,
 }
 
+const fn default_true() -> bool {
+    true
+}
+
 impl Default for BarLayout {
     fn default() -> Self {
         Self {
             global_bar_visible: true,
+            global_bar_placement: GlobalBarPlacement::default(),
+            global_bar_position: None,
             detached_stoves: Vec::new(),
             detached_layouts: Vec::new(),
         }

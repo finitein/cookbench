@@ -32,6 +32,7 @@ impl runtime::ObservationSink for TauriObservationSink {
         _native_locator: String,
         _title: Option<String>,
         summary: runtime::ObservationSummary,
+        origin: runtime::ObservationOrigin,
         event: StoveEvent,
     ) {
         let locator = SessionLocator {
@@ -54,15 +55,26 @@ impl runtime::ObservationSink for TauriObservationSink {
             summary.elapsed_ms,
         );
         let state = self.app.state::<app_state::AppState>();
-        let _ = state.apply_observation_and_emit(
-            &self.app,
-            identity,
-            project,
-            app_state::LocatorCapability::Available,
-            Some(locator),
-            Some(summary),
-            event,
-        );
+        let _ = match origin {
+            runtime::ObservationOrigin::Replay => state.apply_replay_observation_and_emit(
+                &self.app,
+                identity,
+                project,
+                app_state::LocatorCapability::Available,
+                Some(locator),
+                Some(summary),
+                event,
+            ),
+            runtime::ObservationOrigin::Live => state.apply_observation_and_emit(
+                &self.app,
+                identity,
+                project,
+                app_state::LocatorCapability::Available,
+                Some(locator),
+                Some(summary),
+                event,
+            ),
+        };
     }
 }
 
@@ -93,7 +105,12 @@ pub fn run() {
             commands::stoves::clear_cooked_stove,
             commands::windows::detach_stove,
             commands::windows::clear_detached_stove,
+            commands::windows::close_detached_bar,
             commands::windows::record_detached_stove_position,
+            commands::windows::resize_global_bar,
+            commands::display::get_display_settings,
+            commands::display::configure_display_settings,
+            commands::display::record_global_bar_position,
             commands::locator::activate_stove_locator,
             commands::notifications::open_notification_settings,
             commands::notifications::get_notification_settings,
@@ -128,7 +145,9 @@ pub fn run() {
             }
 
             app.manage(commands::windows::TauriWindowCommandService::new(
-                window_registry::WindowRegistry::new(true),
+                window_registry::WindowRegistry::new(
+                    state.persisted_config().layout.global_bar_visible,
+                ),
                 commands::windows::TauriDetachedWindowHost::new(app.handle().clone()),
                 commands::windows::TauriMonitorProvider::new(app.handle().clone()),
             ));
@@ -173,14 +192,17 @@ pub fn run() {
                     .expect("hook runtime lock poisoned") = Some(handle);
             }
 
-            let overlay = platform::TauriOverlayController::new(app.handle().clone());
             platform::publish_optional_gnome_snapshot(&state.stoves.snapshot());
-            // Wayland can show the window but cannot promise a compositor-level
-            // overlay. The capability model exposes that distinction to UI code.
-            match platform::OverlayController::show_global_bar(&overlay) {
-                Ok(()) | Err(platform::OverlayError::BestEffortWayland) => Ok(()),
-                Err(error) => Err(error.into()),
+            let layout = state.persisted_config().layout;
+            if let Err(error) = commands::display::apply_global_bar_preferences(
+                &app.handle().clone(),
+                layout.global_bar_visible,
+                layout.global_bar_placement,
+                layout.global_bar_position.as_ref(),
+            ) {
+                eprintln!("Cookbench could not restore global Bar display preferences: {error}");
             }
+            Ok(())
         })
         .build(tauri::generate_context!())
         .expect("Cookbench desktop shell failed to build");

@@ -317,7 +317,54 @@ impl AppState {
         locator_capability: LocatorCapability,
         locator: Option<SessionLocator>,
         summary: Option<StoveSummary>,
+        event: StoveEvent,
+    ) -> Result<(), AppStateError> {
+        self.apply_observation_and_emit_inner(
+            app,
+            identity,
+            project,
+            locator_capability,
+            locator,
+            summary,
+            event,
+            true,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn apply_replay_observation_and_emit<R: tauri::Runtime>(
+        &self,
+        app: &tauri::AppHandle<R>,
+        identity: StoveIdentity,
+        project: ProjectIdentity,
+        locator_capability: LocatorCapability,
+        locator: Option<SessionLocator>,
+        summary: Option<StoveSummary>,
+        event: StoveEvent,
+    ) -> Result<(), AppStateError> {
+        self.apply_observation_and_emit_inner(
+            app,
+            identity,
+            project,
+            locator_capability,
+            locator,
+            summary,
+            event,
+            false,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn apply_observation_and_emit_inner<R: tauri::Runtime>(
+        &self,
+        app: &tauri::AppHandle<R>,
+        identity: StoveIdentity,
+        project: ProjectIdentity,
+        locator_capability: LocatorCapability,
+        locator: Option<SessionLocator>,
+        summary: Option<StoveSummary>,
         mut event: StoveEvent,
+        side_effects: bool,
     ) -> Result<(), AppStateError> {
         let _serial = self.apply_lock.lock().expect("stove apply lock poisoned");
         {
@@ -374,57 +421,62 @@ impl AppState {
             summary,
             event,
         )?;
-        if let Some(stove) = self
-            .stoves
-            .core_stove_for_identity(&identity_for_persistence)
-        {
-            if let Some(runtime) = self
-                .persistence
-                .lock()
-                .expect("desktop persistence lock poisoned")
-                .as_mut()
+        if side_effects {
+            if let Some(stove) = self
+                .stoves
+                .core_stove_for_identity(&identity_for_persistence)
             {
-                let summary = self
-                    .stoves
-                    .summary_for_identity(&identity_for_persistence)
-                    .unwrap_or_else(|| StoveSummary::for_project(&stove.project));
-                let presentation = RetainedStovePresentation::new(
-                    summary.project_label,
-                    summary.project_root_display,
-                );
-                let _ = runtime.service.persist_transition_with_presentation(
-                    &mut runtime.state,
-                    identity_for_persistence,
-                    stove.state,
-                    &metadata,
-                    presentation,
-                );
+                if let Some(runtime) = self
+                    .persistence
+                    .lock()
+                    .expect("desktop persistence lock poisoned")
+                    .as_mut()
+                {
+                    let summary = self
+                        .stoves
+                        .summary_for_identity(&identity_for_persistence)
+                        .unwrap_or_else(|| StoveSummary::for_project(&stove.project));
+                    let presentation = RetainedStovePresentation::new(
+                        summary.project_label,
+                        summary.project_root_display,
+                    );
+                    let _ = runtime.service.persist_transition_with_presentation(
+                        &mut runtime.state,
+                        identity_for_persistence,
+                        stove.state,
+                        &metadata,
+                        presentation,
+                    );
+                }
             }
         }
         crate::events::emit_stove_change(app, change).map_err(AppStateError::Emit)?;
         crate::platform::publish_optional_gnome_snapshot(&self.stoves.snapshot());
-        if let Some(stove) = self
-            .stoves
-            .core_stove_for_identity(&identity_for_notification)
-        {
-            let Some(kind) = notification_event(&observed_kind, stove.state) else {
-                return Ok(());
-            };
-            let summary = self
+        if side_effects {
+            if let Some(stove) = self
                 .stoves
-                .summary_for_identity(&identity_for_notification)
-                .unwrap_or_else(|| StoveSummary::for_project(&stove.project));
-            self.enqueue_notification(app, &stove, summary.clone(), kind, None);
-            if matches!(observed_kind, EventKind::PlanUpdated { .. }) {
-                let current_progress = progress_percent(stove.progress.as_ref());
-                if let Some(milestone) = crossed_milestone(previous_progress, current_progress) {
-                    self.enqueue_notification(
-                        app,
-                        &stove,
-                        summary,
-                        NotificationEventKind::ProgressMilestone,
-                        Some(milestone),
-                    );
+                .core_stove_for_identity(&identity_for_notification)
+            {
+                let Some(kind) = notification_event(&observed_kind, stove.state) else {
+                    return Ok(());
+                };
+                let summary = self
+                    .stoves
+                    .summary_for_identity(&identity_for_notification)
+                    .unwrap_or_else(|| StoveSummary::for_project(&stove.project));
+                self.enqueue_notification(app, &stove, summary.clone(), kind, None);
+                if matches!(observed_kind, EventKind::PlanUpdated { .. }) {
+                    let current_progress = progress_percent(stove.progress.as_ref());
+                    if let Some(milestone) = crossed_milestone(previous_progress, current_progress)
+                    {
+                        self.enqueue_notification(
+                            app,
+                            &stove,
+                            summary,
+                            NotificationEventKind::ProgressMilestone,
+                            Some(milestone),
+                        );
+                    }
                 }
             }
         }

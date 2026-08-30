@@ -10,6 +10,7 @@ import {
 } from "./service";
 import "./notification-settings.css";
 import { RemoteSourcesPanel } from "../remote/RemoteSourcesPanel";
+import { DisplaySettingsPanel } from "../display/DisplaySettingsPanel";
 
 const LABELS: Record<NotificationDestination, string> = {
   telegram: "Telegram",
@@ -90,12 +91,19 @@ export function NotificationSettingsPanel() {
 
   return (
     <main className="notification-settings" aria-label="Cookbench settings">
-      <header>
-        <h1>Settings</h1>
-      </header>
-      <section aria-labelledby="notification-settings-title">
-      <h2 id="notification-settings-title">Notifications</h2>
-      <div className="notification-settings__destinations">
+      <div className="notification-settings__surface">
+        <header className="notification-settings__masthead">
+          <div>
+            <p>Cookbench</p>
+            <h1>Settings</h1>
+          </div>
+        </header>
+        <DisplaySettingsPanel />
+        <section aria-labelledby="notification-settings-title">
+          <div className="notification-settings__section-heading">
+            <h2 id="notification-settings-title">Notifications</h2>
+          </div>
+          <div className="notification-settings__destinations">
         {destinations.map((item) => (
           <section key={item.destination} aria-label={LABELS[item.destination]}>
             <div className="notification-settings__heading">
@@ -173,10 +181,11 @@ export function NotificationSettingsPanel() {
             </div>
           </section>
         ))}
+          </div>
+          <output role="status" aria-live="polite">{status}</output>
+        </section>
+        <RemoteSourcesPanel />
       </div>
-      <output role="status" aria-live="polite">{status}</output>
-      </section>
-      <RemoteSourcesPanel />
     </main>
   );
 }

@@ -1,0 +1,10 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "desktop",
+  "description": "Cookbench desktop windows receive live Stove events and expose an explicit drag handle.",
+  "windows": ["main", "settings", "stove-*"],
+  "permissions": [
+    "core:event:default",
+    "core:window:allow-start-dragging"
+  ]
+}

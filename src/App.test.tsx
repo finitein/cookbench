@@ -1,5 +1,10 @@
 import "@testing-library/jest-dom/vitest";
 import { render, screen } from "@testing-library/react";
+import { vi } from "vitest";
+
+const { useGlobalBarWindow } = vi.hoisted(() => ({ useGlobalBarWindow: vi.fn() }));
+vi.mock("./hooks/useGlobalBarWindow", () => ({ useGlobalBarWindow }));
+
 import App from "./App";
 
 describe("App", () => {
@@ -8,5 +13,6 @@ describe("App", () => {
 
     expect(screen.getByLabelText("Cookbench global bar with 0 stoves")).toBeInTheDocument();
     expect(screen.queryAllByRole("listitem")).toHaveLength(0);
+    expect(useGlobalBarWindow).toHaveBeenCalledOnce();
   });
 });

@@ -4,6 +4,7 @@ import { DetachedStoveWindow } from "./components/DetachedStoveWindow";
 import { GlobalBar } from "./components/GlobalBar";
 import { LocatorActivationNotice } from "./components/LocatorActivationNotice";
 import { useDetachedWindowStove } from "./hooks/useDetachedWindow";
+import { useGlobalBarWindow } from "./hooks/useGlobalBarWindow";
 import { useStoves } from "./hooks/useStoves";
 import { detachedStoveTransport } from "./services/detachedStoves";
 import { activateStove, type LocatorActivationResult } from "./services/locator";
@@ -15,6 +16,7 @@ import type { StoveWire } from "./types/stove";
 export default function App() {
   const { stoves } = useStoves();
   const detached = useDetachedWindowStove(stoves);
+  useGlobalBarWindow();
   const [activation, setActivation] = useState<LocatorActivationResult | null>(null);
   const activate = (stove: StoveWire) => {
     void activateStove(stove.id)

@@ -48,4 +48,18 @@ describe("StoveSync", () => {
     await vi.waitFor(() => expect(received).toHaveLength(2));
     expect(received[1]).toEqual({ revision: 3, stoves: [stove] });
   });
+
+  it("delivers the authoritative snapshot when live event registration is unavailable", async () => {
+    const transport: StoveTransport = {
+      snapshot: vi.fn(async () => ({ revision: 56, stoves: [stove] })),
+      listen: vi.fn(async () => { throw new Error("event listen denied"); }),
+    };
+    const received: StoveSnapshot[] = [];
+
+    const unlisten = await subscribeToStoves((next) => received.push(next), transport);
+
+    expect(transport.snapshot).toHaveBeenCalledOnce();
+    expect(received).toEqual([{ revision: 56, stoves: [stove] }]);
+    expect(() => unlisten()).not.toThrow();
+  });
 });

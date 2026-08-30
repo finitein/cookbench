@@ -82,13 +82,24 @@ impl DesktopPersistence {
                 PersistedConfig::default()
             }
         };
-        let state = match self.state.load() {
+        let mut state = match self.state.load() {
             Ok(state) => state,
             Err(error) => {
                 issues.push(LoadIssue::State(error_kind(&error)));
                 PersistedState::default()
             }
         };
+        if state.version == 1 {
+            // Pre-release builds treated bootstrap transcript replay as live
+            // completion and filled this Cookbench-owned cache with history.
+            // Native session files remain untouched; clear cursors still
+            // protect explicit user clears.
+            state.retained.clear();
+            state.version = PersistedState::CURRENT_VERSION;
+            if let Err(error) = self.state.save(&state) {
+                issues.push(LoadIssue::State(error_kind(&error)));
+            }
+        }
 
         LoadedDesktopPersistence {
             config,

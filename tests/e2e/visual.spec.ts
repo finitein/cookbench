@@ -9,6 +9,28 @@ const scenarios = [
   { name: "narrow", width: 390, height: 844, dark: false, reducedMotion: false },
 ] as const;
 
+test("empty Bar stays compact and retains the Cookbench mark", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto("/");
+  const driver = await e2eDriver(page);
+  await driver.replaceStoves([]);
+
+  const bar = page.getByRole("region", { name: "Cookbench global bar with 0 stoves" });
+  await expect(bar).toHaveClass(/global-bar--empty/);
+  await expect(page.getByRole("img", { name: "Cookbench" })).toBeVisible();
+  const bounds = await bar.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds!.width).toBeLessThanOrEqual(100);
+  expect(bounds!.height).toBeLessThanOrEqual(100);
+
+  if (process.env.COOKBENCH_CAPTURE_EVIDENCE === "1") {
+    await page.screenshot({
+      path: "docs/verification/evidence/e2e-empty-bar.png",
+      fullPage: true,
+    });
+  }
+});
+
 for (const scenario of scenarios) {
   test(`visual layout remains bounded for ${scenario.name}`, async ({ page }) => {
     await page.setViewportSize({ width: scenario.width, height: scenario.height });
@@ -27,9 +49,16 @@ for (const scenario of scenarios) {
     const overflow = await page.evaluate(() => {
       const viewport = { width: window.innerWidth, height: window.innerHeight };
       const elements = [...document.querySelectorAll<HTMLElement>(".global-bar, .stove-burner")]
-        .map((element) => ({ className: element.className, rect: element.getBoundingClientRect() }))
-        .filter(({ rect }) =>
-          rect.left < 0 || rect.top < 0 || rect.right > viewport.width || rect.bottom > viewport.height
+        .map((element) => ({
+          className: element.className,
+          rect: element.getBoundingClientRect(),
+          intentionallyScrolled: element.matches(".stove-burner")
+            && (element.closest(".global-bar__stoves")?.scrollWidth ?? 0)
+              > (element.closest(".global-bar__stoves")?.clientWidth ?? 0),
+        }))
+        .filter(({ rect, intentionallyScrolled }) =>
+          !intentionallyScrolled
+          && (rect.left < 0 || rect.top < 0 || rect.right > viewport.width || rect.bottom > viewport.height)
         )
         .map(({ className }) => className);
       if (document.documentElement.scrollWidth > viewport.width)

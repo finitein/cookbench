@@ -1,0 +1,31 @@
+.display-settings {
+  box-sizing: border-box;
+  color: #171a1f;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.display-settings header { margin-bottom: 12px; }
+.display-settings h2 { margin: 0; font-size: 16px; line-height: 1.25; }
+.display-settings h3 { margin: 0; font-size: 13px; line-height: 1.25; }
+.display-settings p { margin: 3px 0 0; color: #5f6875; font-size: 12px; line-height: 1.4; }
+.display-settings__section { display: grid; gap: 10px; padding: 14px 0; border-top: 1px solid #d8e0e8; }
+.display-settings__toggle { display: inline-flex; align-items: center; gap: 7px; width: fit-content; font-size: 12px; }
+.display-settings__placement { display: grid; gap: 5px; max-width: 180px; color: #5f6875; font-size: 11px; }
+.display-settings select { min-height: 30px; border: 1px solid #aab8c5; border-radius: 4px; background: #fff; color: #26323d; font: inherit; font-size: 12px; }
+.display-settings__bars { display: grid; gap: 1px; margin: 0; padding: 0; overflow: hidden; border: 1px solid #d8e0e8; border-radius: 4px; list-style: none; }
+.display-settings__bars li { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 8px 10px; background: #fff; font-size: 12px; }
+.display-settings__bars li + li { border-top: 1px solid #d8e0e8; }
+.display-settings__bars span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.display-settings button { min-width: 58px; height: 28px; border: 1px solid #aab8c5; border-radius: 4px; background: #fff; color: #26323d; font: inherit; font-size: 12px; cursor: pointer; }
+.display-settings button:disabled, .display-settings select:disabled { cursor: default; opacity: 0.5; }
+.display-settings output { display: block; min-height: 18px; color: #47525d; font-size: 12px; }
+.display-settings__empty { padding: 2px 0; }
+
+@media (prefers-contrast: more) {
+  .display-settings__section, .display-settings__bars, .display-settings__bars li + li { border-color: currentColor; }
+}
+
+@media (max-width: 460px) {
+  .display-settings__bars li { align-items: flex-start; }
+  .display-settings__bars span { white-space: normal; overflow-wrap: anywhere; }
+}

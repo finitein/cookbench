@@ -21,15 +21,21 @@ export function GlobalBar({ stoves, onActivateStove, onDetachStove, onClearStove
   }, [stoves]);
 
   return (
-    <section className="global-bar" aria-label={`Cookbench global bar with ${stoves.length} stoves`}>
+    <section
+      className={`global-bar${stoves.length === 0 ? " global-bar--empty" : ""}`}
+      aria-label={`Cookbench global bar with ${stoves.length} stoves`}
+      style={{
+        "--stove-grid-width": `${Math.min(stoves.length, 8) * 86}px`,
+      } as React.CSSProperties}
+    >
       <div className="global-bar__brand" aria-label="Cookbench">
-        <img src={mark} alt="" />
+        <img src={mark} alt="Cookbench" />
         {onOpenSettings ? (
           <button
             className="global-bar__settings"
             type="button"
-            aria-label="Open notification settings"
-            title="Notification settings"
+            aria-label="Open Cookbench settings"
+            title="Settings"
             onClick={onOpenSettings}
           >
             <span aria-hidden="true"><i /><i /><i /></span>
