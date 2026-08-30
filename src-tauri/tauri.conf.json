@@ -33,6 +33,6 @@
     "category": "DeveloperTool",
     "shortDescription": "Lightweight status stoves for local and SSH coding agents.",
     "longDescription": "Cookbench observes native Codex, Claude Code, and Pi sessions and presents their state without hosting or controlling the agents.",
-    "icon": ["icons/icon.png"]
+    "icon": ["icons/icon.png", "icons/icon.icns", "icons/icon.ico"]
   }
 }

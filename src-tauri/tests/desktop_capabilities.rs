@@ -40,3 +40,21 @@ fn desktop_csp_allows_the_bundled_inline_svg_mark() {
         "Vite inlines the approved sub-1 KB SVG mark as a data URL"
     );
 }
+
+#[test]
+fn desktop_bundle_uses_complete_platform_icons_generated_from_the_logo() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let document = fs::read_to_string(root.join("tauri.conf.json")).expect("tauri config");
+    let value: serde_json::Value = serde_json::from_str(&document).expect("valid tauri config");
+    let icons = value["bundle"]["icon"]
+        .as_array()
+        .expect("bundle icon array");
+
+    for required in ["icons/icon.png", "icons/icon.icns", "icons/icon.ico"] {
+        assert!(
+            icons.iter().any(|icon| icon == required),
+            "desktop bundle must include {required}"
+        );
+        assert!(root.join(required).is_file(), "{required} must exist");
+    }
+}

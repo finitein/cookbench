@@ -21,6 +21,8 @@ audit_tree "$root/dist"
 
 runtime_artwork="$(find "$root/src" "$root/src-tauri" "$root/gnome-extension" -type f \( -iname '*.svg' -o -iname '*.png' -o -iname '*.ico' -o -iname '*.icns' \) | sort)"
 expected_artwork="$(printf '%s\n' \
+  "$root/src-tauri/icons/icon.icns" \
+  "$root/src-tauri/icons/icon.ico" \
   "$root/src-tauri/icons/icon.png" \
   "$root/src/assets/cookbench-mark.svg" \
   "$root/src/assets/cookbench-tray.svg" | sort)"
