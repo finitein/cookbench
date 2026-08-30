@@ -31,8 +31,8 @@ async fn discovers_sanitized_claude_sessions_with_titles_and_project_paths() {
         .unwrap();
     assert_eq!(session.title.as_deref(), Some("Synthetic Claude task"));
     assert_eq!(
-        session.project.as_ref().unwrap().canonical_root,
-        "/workspace/demo"
+        PathBuf::from(&session.project.as_ref().unwrap().canonical_root),
+        decode_project_path("-workspace-demo").unwrap()
     );
     assert!(adapter.capabilities().structured_progress);
     assert!(!adapter.capabilities().watch_events);
