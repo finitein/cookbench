@@ -1,7 +1,8 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { StoveState, StoveWire } from "../types/stove";
 import mark from "../assets/cookbench-mark.svg";
 import { StoveBurner } from "./StoveBurner";
+import { StoveTooltip } from "./StoveTooltip";
 import "./global-bar.css";
 
 export type GlobalBarProps = {
@@ -15,6 +16,8 @@ export type GlobalBarProps = {
 export function GlobalBar({ stoves, onActivateStove, onDetachStove, onClearStove, onOpenSettings }: GlobalBarProps) {
   const previousStates = useRef(new Map<string, StoveState>());
   const priorStates = previousStates.current;
+  const [tooltipStoveId, setTooltipStoveId] = useState<string | null>(null);
+  const tooltipStove = stoves.find((stove) => stove.id === tooltipStoveId) ?? null;
 
   useEffect(() => {
     previousStates.current = new Map(stoves.map((stove) => [stove.id, stove.state]));
@@ -22,7 +25,7 @@ export function GlobalBar({ stoves, onActivateStove, onDetachStove, onClearStove
 
   return (
     <section
-      className={`global-bar${stoves.length === 0 ? " global-bar--empty" : ""}`}
+      className={`global-bar${stoves.length === 0 ? " global-bar--empty" : ""}${tooltipStove ? " global-bar--tooltip-open" : ""}`}
       aria-label={`Cookbench global bar with ${stoves.length} stoves`}
       style={{
         "--stove-grid-width": `${Math.min(stoves.length, 8) * 86}px`,
@@ -52,10 +55,14 @@ export function GlobalBar({ stoves, onActivateStove, onDetachStove, onClearStove
               onClear={onClearStove}
               previousState={priorStates.get(stove.id)}
               isInitialSnapshot={!priorStates.has(stove.id)}
+              tooltipId="global-bar-tooltip"
+              renderTooltip={false}
+              onTooltipVisibilityChange={(visible, value) => setTooltipStoveId((current) => visible ? value.id : current === value.id ? null : current)}
             />
           </div>
         ))}
       </div>
+      {tooltipStove ? <StoveTooltip stove={tooltipStove} id="global-bar-tooltip" className="global-bar__tooltip" /> : null}
     </section>
   );
 }

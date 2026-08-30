@@ -10,7 +10,7 @@ mod state;
 
 pub use atomic_file::{AtomicJsonFile, PersistenceError, Versioned};
 pub use config::{
-    BarLayout, CredentialReference, GlobalBarPlacement, GlobalBarPosition,
+    BarLayout, CredentialReference, GlobalBarPlacement, GlobalBarPosition, GlobalBarSize,
     NotificationDestinationConfig, PersistedConfig, RemoteSourceConfig, UserPreferences,
 };
 pub use layout::{

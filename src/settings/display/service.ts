@@ -8,6 +8,8 @@ export type GlobalBarPlacement =
   | "bottomCenter"
   | "bottomRight";
 
+export type GlobalBarSize = "compact" | "standard" | "wide";
+
 export type DetachedBarWire = {
   stoveId: string;
 };
@@ -15,10 +17,11 @@ export type DetachedBarWire = {
 export type DisplaySettingsWire = {
   globalBarVisible: boolean;
   globalBarPlacement: GlobalBarPlacement;
+  globalBarSize: GlobalBarSize;
   detachedBars: DetachedBarWire[];
 };
 
-export type DisplaySettingsInput = Pick<DisplaySettingsWire, "globalBarVisible" | "globalBarPlacement">;
+export type DisplaySettingsInput = Pick<DisplaySettingsWire, "globalBarVisible" | "globalBarPlacement" | "globalBarSize">;
 
 export function getDisplaySettings(): Promise<DisplaySettingsWire> {
   return invoke<DisplaySettingsWire>("get_display_settings");

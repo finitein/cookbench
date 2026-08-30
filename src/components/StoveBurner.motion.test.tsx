@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import type { StoveWire } from "../types/stove";
@@ -57,5 +57,22 @@ describe("StoveBurner completion presentation", () => {
     const burner = screen.getByTestId("stove");
     expect(burner).toHaveAttribute("data-completion", "settled");
     expect(burner).toHaveAttribute("data-motion", "settled");
+  });
+
+  it("announces hover and keyboard detail visibility to its owning bar", () => {
+    const visibility: boolean[] = [];
+    render(
+      <StoveBurner
+        stove={cookedStove}
+        onTooltipVisibilityChange={(visible) => visibility.push(visible)}
+      />,
+    );
+
+    const burner = screen.getByTestId("stove");
+    fireEvent.pointerEnter(burner);
+    fireEvent.focus(burner);
+    fireEvent.blur(burner);
+
+    expect(visibility).toEqual([true, true, false]);
   });
 });

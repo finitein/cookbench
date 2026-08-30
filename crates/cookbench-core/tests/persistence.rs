@@ -238,3 +238,16 @@ fn legacy_layouts_keep_the_global_bar_visible() {
         GlobalBarPlacement::TopCenter
     );
 }
+
+#[test]
+fn legacy_layouts_default_to_a_standard_resizable_global_bar() {
+    let config: PersistedConfig = serde_json::from_str(
+        r#"{"version":1,"layout":{"detached_stoves":[],"detached_layouts":[]}}"#,
+    )
+    .unwrap();
+
+    assert_eq!(
+        config.layout.global_bar_size,
+        cookbench_core::persistence::GlobalBarSize::Standard
+    );
+}

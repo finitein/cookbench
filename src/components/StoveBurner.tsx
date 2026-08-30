@@ -1,4 +1,4 @@
-import type { StoveWire } from "../types/stove";
+import { stoveDisplayIdentity, stoveSessionIdentity, type StoveWire } from "../types/stove";
 import { motionForStoveTransition, type StoveMotionPreferences, type StoveMotionState } from "../animation/stoveMotion";
 import { HarnessMark } from "./HarnessMark";
 import { HostBadge } from "./HostBadge";
@@ -13,13 +13,28 @@ export type StoveBurnerProps = {
   previousState?: StoveMotionState;
   isInitialSnapshot?: boolean;
   motionPreferences?: StoveMotionPreferences;
+  onTooltipVisibilityChange?: (visible: boolean, stove: StoveWire) => void;
+  tooltipId?: string;
+  renderTooltip?: boolean;
 };
 
-export function StoveBurner({ stove, onActivate, onDetach, onClear, previousState, isInitialSnapshot, motionPreferences }: StoveBurnerProps) {
-  const tooltipId = `stove-tooltip-${stove.id}`;
+export function StoveBurner({
+  stove,
+  onActivate,
+  onDetach,
+  onClear,
+  previousState,
+  isInitialSnapshot,
+  motionPreferences,
+  onTooltipVisibilityChange,
+  tooltipId: suppliedTooltipId,
+  renderTooltip = true,
+}: StoveBurnerProps) {
+  const tooltipId = suppliedTooltipId ?? `stove-tooltip-${stove.id}`;
   const stateLabel = stoveStateLabel(stove.state);
   const sessionLabel = stove.taskTitle ?? "Current session";
-  const projectLabel = stove.projectLabel;
+  const projectLabel = stove.projectLabel ?? "Session";
+  const sessionIdentity = stoveSessionIdentity(stove);
   const motion = motionForStoveTransition(
     { previousState, nextState: stove.state, isInitialSnapshot },
     motionPreferences ?? { reducedMotion: false, soundEnabled: false },
@@ -35,14 +50,25 @@ export function StoveBurner({ stove, onActivate, onDetach, onClear, previousStat
         data-motion={motion.completion === "none" ? "system" : motion.completion}
         type="button"
         aria-describedby={tooltipId}
-        aria-label={`${stove.harness.label}: ${projectLabel}, ${sessionLabel}, ${stateLabel}`}
+        aria-label={`${stove.harness.label}: ${stoveDisplayIdentity(stove)}, ${sessionLabel}, ${stateLabel}`}
         onClick={() => onActivate?.(stove)}
+        onPointerEnter={() => onTooltipVisibilityChange?.(true, stove)}
+        onPointerLeave={() => onTooltipVisibilityChange?.(false, stove)}
+        onFocus={() => onTooltipVisibilityChange?.(true, stove)}
+        onBlur={() => onTooltipVisibilityChange?.(false, stove)}
       >
         <span className="stove-burner__ring"><ProgressRing stove={stove} /></span>
         <span className="stove-burner__identity"><HarnessMark harness={stove.harness} /></span>
+        <span
+          className="stove-burner__session"
+          data-testid="stove-session-identity"
+          title={stoveDisplayIdentity(stove)}
+        >
+          <span>{projectLabel}</span><b>{sessionIdentity}</b>
+        </span>
         <HostBadge stove={stove} />
       </button>
-      <StoveTooltip stove={stove} id={tooltipId} />
+      {renderTooltip ? <StoveTooltip stove={stove} id={tooltipId} /> : null}
       {onDetach ? (
         <button
           className="stove-burner__control stove-burner__control--detach"

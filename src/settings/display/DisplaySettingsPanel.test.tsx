@@ -21,6 +21,7 @@ describe("DisplaySettingsPanel", () => {
     getDisplaySettings.mockResolvedValue({
       globalBarVisible: true,
       globalBarPlacement: "topCenter",
+      globalBarSize: "standard",
       detachedBars: [{ stoveId: "host-a:session-1" }],
     });
     configureDisplaySettings.mockImplementation(async (input) => ({
@@ -48,9 +49,24 @@ describe("DisplaySettingsPanel", () => {
       expect(configureDisplaySettings).toHaveBeenCalledWith({
         globalBarVisible: false,
         globalBarPlacement: "topCenter",
+        globalBarSize: "standard",
       });
     });
     expect(screen.getByRole("button", { name: "Close independent Bar host-a:session-1" })).toBeInTheDocument();
+  });
+
+  it("lets people choose a comfortable global Bar width", async () => {
+    render(<DisplaySettingsPanel />);
+    const size = await screen.findByRole("combobox", { name: "Size" });
+    fireEvent.change(size, { target: { value: "wide" } });
+
+    await waitFor(() => {
+      expect(configureDisplaySettings).toHaveBeenCalledWith({
+        globalBarVisible: true,
+        globalBarPlacement: "topCenter",
+        globalBarSize: "wide",
+      });
+    });
   });
 
   it("closes only the selected independent Bar", async () => {

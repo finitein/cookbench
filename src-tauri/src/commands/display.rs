@@ -4,11 +4,11 @@
 //! or manage a harness session.
 
 use cookbench_core::persistence::{
-    GlobalBarPlacement, GlobalBarPosition, MonitorIdentity, MonitorWorkArea, PersistedConfig,
-    RelativePosition, WindowPosition,
+    GlobalBarPlacement, GlobalBarPosition, GlobalBarSize, MonitorIdentity, MonitorWorkArea,
+    PersistedConfig, RelativePosition, WindowPosition,
 };
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, PhysicalPosition, State};
+use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, State};
 
 use crate::{
     app_state::AppState,
@@ -27,6 +27,7 @@ pub struct DetachedBarWire {
 pub struct DisplaySettingsWire {
     pub global_bar_visible: bool,
     pub global_bar_placement: GlobalBarPlacement,
+    pub global_bar_size: GlobalBarSize,
     pub detached_bars: Vec<DetachedBarWire>,
 }
 
@@ -35,12 +36,14 @@ pub struct DisplaySettingsWire {
 pub struct DisplaySettingsInput {
     pub global_bar_visible: bool,
     pub global_bar_placement: GlobalBarPlacement,
+    pub global_bar_size: GlobalBarSize,
 }
 
 pub fn settings_wire(config: &PersistedConfig) -> DisplaySettingsWire {
     DisplaySettingsWire {
         global_bar_visible: config.layout.global_bar_visible,
         global_bar_placement: config.layout.global_bar_placement,
+        global_bar_size: config.layout.global_bar_size,
         detached_bars: config
             .layout
             .detached_layouts
@@ -64,27 +67,55 @@ pub fn configure_display_settings(
     state: State<'_, AppState>,
     windows: State<'_, TauriWindowCommandService>,
 ) -> Result<DisplaySettingsWire, String> {
+    let previous = state.persisted_config().layout;
+    let placement_changed = previous.global_bar_placement != input.global_bar_placement;
+    state.update_persisted_config(|config| {
+        config.layout.global_bar_visible = input.global_bar_visible;
+        config.layout.global_bar_placement = input.global_bar_placement;
+        config.layout.global_bar_size = input.global_bar_size;
+        if placement_changed {
+            // Choosing a screen anchor is an explicit request to leave the
+            // last free-form drag position behind.
+            config.layout.global_bar_position = None;
+        }
+    })?;
+    resize_global_bar_for_size(&app, input.global_bar_size)?;
     apply_global_bar_preferences(
         &app,
         input.global_bar_visible,
         input.global_bar_placement,
-        None,
+        if placement_changed {
+            None
+        } else {
+            previous.global_bar_position.as_ref()
+        },
     )?;
-    let global_bar_position = input
-        .global_bar_visible
-        .then(|| capture_global_bar_position(&app))
-        .transpose()?;
+    app.emit("global-bar-size-changed", input.global_bar_size)
+        .map_err(|error| error.to_string())?;
     windows
         .set_global_bar_visible(input.global_bar_visible)
         .map_err(|error| error.to_string())?;
-    state.update_persisted_config(|config| {
-        config.layout.global_bar_visible = input.global_bar_visible;
-        config.layout.global_bar_placement = input.global_bar_placement;
-        if input.global_bar_visible {
-            config.layout.global_bar_position = global_bar_position;
-        }
-    })?;
     Ok(settings_wire(&state.persisted_config()))
+}
+
+pub fn resize_global_bar_for_size(app: &AppHandle, size: GlobalBarSize) -> Result<(), String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "Cookbench global Bar window is unavailable".to_owned())?;
+    window
+        .set_size(LogicalSize::new(
+            global_bar_content_width(size) + 24.0,
+            128.0,
+        ))
+        .map_err(|error| error.to_string())
+}
+
+fn global_bar_content_width(size: GlobalBarSize) -> f64 {
+    match size {
+        GlobalBarSize::Compact => 360.0,
+        GlobalBarSize::Standard => 640.0,
+        GlobalBarSize::Wide => 900.0,
+    }
 }
 
 /// Records a user drag without changing the selected placement anchor. The
@@ -124,20 +155,6 @@ pub fn apply_global_bar_preferences(
         return restore_global_bar_position(&window, position);
     }
     position_global_bar(&window, placement)
-}
-
-fn capture_global_bar_position(app: &AppHandle) -> Result<GlobalBarPosition, String> {
-    let window = app
-        .get_webview_window("main")
-        .ok_or_else(|| "Cookbench global Bar window is unavailable".to_owned())?;
-    let position = window.outer_position().map_err(|error| error.to_string())?;
-    capture_global_bar_position_at(
-        app,
-        WindowPosition {
-            x: position.x,
-            y: position.y,
-        },
-    )
 }
 
 fn capture_global_bar_position_at(
@@ -306,10 +323,18 @@ mod tests {
             DisplaySettingsWire {
                 global_bar_visible: false,
                 global_bar_placement: GlobalBarPlacement::BottomRight,
+                global_bar_size: GlobalBarSize::Standard,
                 detached_bars: vec![DetachedBarWire {
                     stove_id: "remote-a:session-1".into()
                 }],
             }
         );
+    }
+
+    #[test]
+    fn size_presets_leave_space_for_the_native_shadow_shell() {
+        assert_eq!(global_bar_content_width(GlobalBarSize::Compact), 360.0);
+        assert_eq!(global_bar_content_width(GlobalBarSize::Standard), 640.0);
+        assert_eq!(global_bar_content_width(GlobalBarSize::Wide), 900.0);
     }
 }

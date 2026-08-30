@@ -56,6 +56,30 @@ export interface StoveChange {
   removedStoveId: string | null;
 }
 
+/**
+ * A compact, UI-only discriminator derived from a Stove key. The full key is
+ * deliberately never rendered: session keys can be long and do not belong in
+ * an always-visible desktop surface.
+ */
+export function stoveSessionIdentity(stove: Pick<StoveWire, "id">): string {
+  const nativeSessionId = stove.id.split(":").at(-1) ?? "";
+  if (/^[A-Za-z0-9_-]{4,}$/.test(nativeSessionId)) {
+    return `#${nativeSessionId.slice(-8)}`;
+  }
+
+  // Keep malformed or future adapter ids recognizable without echoing them.
+  let hash = 2_166_136_261;
+  for (const character of stove.id) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return `#${(hash >>> 0).toString(36).padStart(6, "0").slice(-6)}`;
+}
+
+export function stoveDisplayIdentity(stove: Pick<StoveWire, "id" | "projectLabel">): string {
+  return `${stove.projectLabel?.trim() || "Session"} ${stoveSessionIdentity(stove)}`;
+}
+
 export function hasStructuredProgress(stove: StoveWire): stove is StoveWire & { progress: ProgressWire } {
   return stove.progress !== null && stove.progress.total > 0;
 }

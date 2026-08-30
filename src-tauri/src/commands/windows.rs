@@ -400,7 +400,8 @@ pub fn close_detached_bar(
 }
 
 /// Resizes only Cookbench's transparent main window to its measured bar. This
-/// prevents an invisible 680x180 hit target from swallowing desktop clicks.
+/// prevents an invisible hit target from swallowing desktop clicks. Position is
+/// deliberately untouched so a manual drag remains authoritative.
 #[tauri::command]
 pub fn resize_global_bar(
     app: AppHandle,
@@ -408,7 +409,7 @@ pub fn resize_global_bar(
     height: f64,
     state: State<'_, crate::app_state::AppState>,
 ) -> Result<(), String> {
-    let width = width.ceil().clamp(120.0, 900.0);
+    let width = width.ceil().clamp(120.0, 1024.0);
     let height = height.ceil().clamp(80.0, 720.0);
     let window = app
         .get_webview_window("main")
@@ -416,13 +417,8 @@ pub fn resize_global_bar(
     window
         .set_size(LogicalSize::new(width, height))
         .map_err(|error| error.to_string())?;
-    let layout = state.persisted_config().layout;
-    crate::commands::display::apply_global_bar_preferences(
-        &app,
-        layout.global_bar_visible,
-        layout.global_bar_placement,
-        layout.global_bar_position.as_ref(),
-    )
+    let _ = state;
+    Ok(())
 }
 
 #[tauri::command]

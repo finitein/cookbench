@@ -20,6 +20,18 @@ pub enum GlobalBarPlacement {
     BottomRight,
 }
 
+/// A bounded width choice for the Global Bar. Presets keep the floating
+/// surface readable and prevent a transparent native window from growing into
+/// an accidental desktop-sized hit target.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum GlobalBarSize {
+    Compact,
+    #[default]
+    Standard,
+    Wide,
+}
+
 /// The last user-dragged global Bar position, relative to a monitor work area.
 /// It takes precedence over the placement anchor on restore and contains no
 /// session, project, or harness data.
@@ -35,6 +47,8 @@ pub struct BarLayout {
     pub global_bar_visible: bool,
     #[serde(default)]
     pub global_bar_placement: GlobalBarPlacement,
+    #[serde(default)]
+    pub global_bar_size: GlobalBarSize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub global_bar_position: Option<GlobalBarPosition>,
     #[serde(default)]
@@ -52,6 +66,7 @@ impl Default for BarLayout {
         Self {
             global_bar_visible: true,
             global_bar_placement: GlobalBarPlacement::default(),
+            global_bar_size: GlobalBarSize::default(),
             global_bar_position: None,
             detached_stoves: Vec::new(),
             detached_layouts: Vec::new(),

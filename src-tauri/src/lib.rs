@@ -194,6 +194,12 @@ pub fn run() {
 
             platform::publish_optional_gnome_snapshot(&state.stoves.snapshot());
             let layout = state.persisted_config().layout;
+            if let Err(error) = commands::display::resize_global_bar_for_size(
+                &app.handle().clone(),
+                layout.global_bar_size,
+            ) {
+                eprintln!("Cookbench could not restore global Bar size: {error}");
+            }
             if let Err(error) = commands::display::apply_global_bar_preferences(
                 &app.handle().clone(),
                 layout.global_bar_visible,

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import type { StoveWire } from "../types/stove";
@@ -35,6 +35,13 @@ describe("GlobalBar", () => {
     expect(screen.getByLabelText("Pi")).toBeVisible();
   });
 
+  it("keeps a concise project and safe session identity visible on every Stove", () => {
+    render(<GlobalBar stoves={[makeStove(0, { id: "local:host:codex:session-12345678" })]} />);
+
+    expect(screen.getByTestId("stove-session-identity")).toHaveTextContent("Project 1");
+    expect(screen.getByTestId("stove-session-identity")).toHaveTextContent("#12345678");
+  });
+
   it("uses a determinate arc only for Cooking with structured progress", () => {
     render(<GlobalBar stoves={[makeStove(0, { state: "cooking" }), makeStove(3, { state: "cooking", progress: null })]} />);
 
@@ -67,8 +74,26 @@ describe("GlobalBar", () => {
     render(<GlobalBar stoves={[remote]} />);
 
     expect(screen.getByLabelText("Remote host: build-host")).toBeVisible();
+    fireEvent.pointerEnter(screen.getByTestId("stove"));
     expect(screen.getByRole("tooltip")).toHaveTextContent("Remote: build-host");
     expect(screen.getByRole("tooltip")).toHaveTextContent("Project 1");
+  });
+
+  it("reserves an unclipped detail surface while a Stove is hovered and releases it immediately", () => {
+    render(<GlobalBar stoves={[makeStove(0)]} />);
+
+    const stove = screen.getByTestId("stove");
+    fireEvent.pointerEnter(stove);
+
+    expect(screen.getByRole("region", { name: "Cookbench global bar with 1 stoves" }))
+      .toHaveClass("global-bar--tooltip-open");
+    expect(screen.getByRole("tooltip")).toHaveClass("global-bar__tooltip");
+
+    fireEvent.pointerLeave(stove);
+
+    expect(screen.getByRole("region", { name: "Cookbench global bar with 1 stoves" }))
+      .not.toHaveClass("global-bar--tooltip-open");
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
   });
 
   it("activates the original stove without controlling the harness", () => {

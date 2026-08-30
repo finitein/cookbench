@@ -11,6 +11,7 @@
   --bar-claude: #bd4f22;
   --bar-pi: #8135ae;
   box-sizing: border-box;
+  position: relative;
   display: flex;
   align-items: stretch;
   width: fit-content;
@@ -98,8 +99,46 @@
 
 .global-bar--empty .global-bar__stoves { display: none; }
 
+/* The native webview cannot paint outside its window. Grow only while a detail
+   card is requested so the card remains a real, reachable hover/focus surface. */
+.global-bar--tooltip-open {
+  min-width: 292px;
+  min-height: 330px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.global-bar--tooltip-open::before {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 102px;
+  border: 1px solid var(--bar-line);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 88%);
+  box-shadow: 0 20px 48px rgb(65 88 112 / 20%), inset 0 1px 0 rgb(255 255 255 / 76%);
+  content: "";
+}
+
+.global-bar--tooltip-open .global-bar__brand,
+.global-bar--tooltip-open .global-bar__stoves { position: relative; z-index: 1; }
+
 :root[data-cookbench-native="true"] .global-bar { max-width: none; }
 :root[data-cookbench-native="true"] .global-bar__stoves { width: var(--stove-grid-width); }
+
+:root[data-cookbench-native="true"][data-cookbench-bar-size="compact"] .global-bar,
+:root[data-cookbench-native="true"][data-cookbench-bar-size="standard"] .global-bar,
+:root[data-cookbench-native="true"][data-cookbench-bar-size="wide"] .global-bar {
+  width: min(var(--cookbench-bar-width), 900px);
+}
+:root[data-cookbench-native="true"][data-cookbench-bar-size="compact"] .global-bar { --cookbench-bar-width: 360px; }
+:root[data-cookbench-native="true"][data-cookbench-bar-size="standard"] .global-bar { --cookbench-bar-width: 640px; }
+:root[data-cookbench-native="true"][data-cookbench-bar-size="wide"] .global-bar { --cookbench-bar-width: 900px; }
+:root[data-cookbench-native="true"][data-cookbench-bar-size] .global-bar__stoves { flex: 1 1 auto; width: auto; }
 
 .global-bar__item { flex: 0 0 82px; min-width: 0; }
 
@@ -226,15 +265,49 @@
 .progress-ring--starting,
 .progress-ring--planning { color: var(--bar-heat); }
 
-.stove-burner__identity { display: grid; place-items: center; }
+.stove-burner__identity {
+  position: absolute;
+  z-index: 1;
+  top: 5px;
+  left: 5px;
+  display: grid;
+  place-items: center;
+}
+
+.stove-burner__session {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 9px 9px;
+  grid-row: 2;
+  min-width: 0;
+  padding: 0 1px;
+  color: var(--bar-muted);
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 9px;
+  text-align: center;
+}
+
+.stove-burner__session > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stove-burner__session b {
+  color: #47525d;
+  font-size: 7px;
+  font-weight: 750;
+  line-height: 9px;
+}
 
 .harness-mark {
-  min-width: 31px;
-  padding: 2px 4px;
+  min-width: 22px;
+  padding: 1px 3px;
   border-radius: 4px;
   background: color-mix(in srgb, currentColor 14%, white);
   color: var(--bar-codex);
-  font-size: 10px;
+  font-size: 8px;
   font-weight: 750;
   line-height: 1.2;
 }
@@ -282,8 +355,40 @@
   transition: opacity 140ms ease, transform 140ms ease;
 }
 
+.global-bar__item:first-child .stove-tooltip:not(.global-bar__tooltip) {
+  left: -16px;
+  transform: translate(0, -4px);
+}
+
+.global-bar__item:last-child:not(:first-child) .stove-tooltip:not(.global-bar__tooltip) {
+  right: -16px;
+  left: auto;
+  transform: translate(0, -4px);
+}
+
 .stove-burner-wrap:hover .stove-tooltip,
 .stove-burner:focus-visible + .stove-tooltip { opacity: 1; transform: translate(-50%, 0); }
+
+.global-bar__item:first-child .stove-burner-wrap:hover .stove-tooltip:not(.global-bar__tooltip),
+.global-bar__item:first-child .stove-burner:focus-visible + .stove-tooltip:not(.global-bar__tooltip),
+.global-bar__item:last-child:not(:first-child) .stove-burner-wrap:hover .stove-tooltip:not(.global-bar__tooltip),
+.global-bar__item:last-child:not(:first-child) .stove-burner:focus-visible + .stove-tooltip:not(.global-bar__tooltip) {
+  transform: translate(0, 0);
+}
+
+.global-bar__tooltip {
+  z-index: 2;
+  top: 92px;
+  left: 16px;
+  padding: 8px;
+  opacity: 1;
+  transform: none;
+}
+
+.global-bar__tooltip dl { gap: 2px; margin-top: 6px; }
+.global-bar__tooltip dl div { gap: 6px; }
+.global-bar__tooltip dt,
+.global-bar__tooltip dd { line-height: 1.2; }
 
 .stove-tooltip strong,
 .stove-tooltip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
