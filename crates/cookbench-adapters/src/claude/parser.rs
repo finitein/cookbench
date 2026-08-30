@@ -66,7 +66,7 @@ pub fn parse_record(record: &str, limits: TailLimits, sequence: u64) -> Option<P
         (_, Some("question" | "ask_user_question" | "input_required")) | ("question", _) => {
             events.push(StoveEvent::new(EventKind::QuestionAsked, metadata.clone()));
         }
-        (_, Some("stop" | "turn_completed" | "success")) => {
+        ("system", Some("turn_duration")) | (_, Some("stop" | "turn_completed" | "success")) => {
             events.push(StoveEvent::new(EventKind::TurnCompleted, metadata.clone()));
         }
         (_, Some("error" | "failed")) | ("error", _) => {

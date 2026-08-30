@@ -70,7 +70,7 @@ fn reconstructs_three_native_harnesses_then_observes_appended_lifecycle_records(
         .join("claude-session.jsonl");
     let pi = pi_root.join("pi-session.jsonl");
     write(&codex, "{\"type\":\"session_meta\",\"payload\":{\"id\":\"codex-1\",\"cwd\":\"/synthetic/codex\"}}\n{\"type\":\"turn_completed\"}\n");
-    write(&claude, "{\"type\":\"user\",\"session_name\":\"synthetic claude\"}\n{\"type\":\"event\",\"subtype\":\"stop\"}\n");
+    write(&claude, "{\"type\":\"user\",\"session_name\":\"synthetic claude\"}\n{\"type\":\"system\",\"subtype\":\"turn_duration\",\"durationMs\":4177}\n");
     write(&pi, "{\"type\":\"session_start\",\"sessionId\":\"pi-1\",\"cwd\":\"/synthetic/pi\"}\n{\"type\":\"turn_completed\",\"status\":\"success\"}\n");
 
     let sink = Arc::new(Sink::default());

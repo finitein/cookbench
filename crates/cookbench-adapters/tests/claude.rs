@@ -104,6 +104,35 @@ fn parser_normalizes_tasks_lifecycle_attention_completion_failure_and_ignores_un
 }
 
 #[test]
+fn parser_uses_structured_turn_duration_for_turn_completion() {
+    let completed = parse_record(
+        r#"{"type":"system","subtype":"turn_duration","durationMs":4177}"#,
+        TailLimits::default(),
+        101,
+    )
+    .expect("Claude's explicit turn terminator should be observable");
+    assert!(completed
+        .events
+        .iter()
+        .any(|event| matches!(event.kind, EventKind::TurnCompleted)));
+
+    let tool_use = parse_record(
+        r#"{"type":"assistant","message":{"stop_reason":"tool_use","content":[{"type":"tool_use"}]}}"#,
+        TailLimits::default(),
+        102,
+    )
+    .expect("tool use should remain observable activity");
+    assert!(tool_use
+        .events
+        .iter()
+        .any(|event| matches!(event.kind, EventKind::ToolStarted)));
+    assert!(!tool_use
+        .events
+        .iter()
+        .any(|event| matches!(event.kind, EventKind::TurnCompleted)));
+}
+
+#[test]
 fn hook_transforms_preserve_existing_entries_and_uninstall_deterministically() {
     let original = json!({
         "hooks": {
