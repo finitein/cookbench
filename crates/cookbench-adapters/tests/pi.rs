@@ -76,6 +76,28 @@ fn parses_lifecycle_and_todo_records_without_retaining_transcript_content() {
 }
 
 #[test]
+fn metadata_only_registration_keeps_the_structured_project_locator() {
+    let path = fixture("versioned/v2/tree/pi-synthetic-001.jsonl");
+    let adapter = PiAdapter::with_roots([fixture("versioned")]);
+    let session = adapter
+        .session_metadata_from_path(
+            &HostSource::local(HostIdentity::local("pi-test-host")),
+            path,
+        )
+        .unwrap();
+
+    assert_eq!(session.native_session_id, "pi-synthetic-001");
+    assert_eq!(session.title.as_deref(), Some("Synthetic Pi task"));
+    assert_eq!(
+        session
+            .project
+            .as_ref()
+            .map(|project| project.canonical_root.as_str()),
+        Some("/synthetic/pi-project")
+    );
+}
+
+#[test]
 fn preserves_a_fork_as_its_own_native_session_identity() {
     let parsed = parse_session_file(&fixture("forked/opaque-file-name.jsonl")).unwrap();
 

@@ -11,7 +11,7 @@ use crate::{
     ResumeAction, SessionLocator, SessionLocatorKind, WatchHandle,
 };
 
-use super::parser::parse_session_file;
+use super::parser::{parse_session_file, parse_session_metadata_file};
 
 /// Read-only adapter for Pi session trees. Roots are configurable for portable
 /// installs and tests; an unset adapter uses Pi's conventional local root.
@@ -88,11 +88,7 @@ impl PiAdapter {
         source: &HostSource,
         path: PathBuf,
     ) -> Result<NativeSession, AdapterError> {
-        let native_session_id = path
-            .file_stem()
-            .and_then(|stem| stem.to_str())
-            .filter(|stem| !stem.is_empty())
-            .ok_or_else(|| AdapterError::Message("Pi session path has no safe identity".into()))?;
+        let parsed = parse_session_metadata_file(&path)?;
         let locator_kind = match source {
             HostSource::Local(_) => SessionLocatorKind::LocalPath,
             HostSource::Ssh(_) => SessionLocatorKind::RemotePath,
@@ -100,9 +96,11 @@ impl PiAdapter {
         NativeSession::new(
             source.host().clone(),
             HarnessId::Pi,
-            native_session_id,
-            None,
-            None,
+            parsed.native_session_id,
+            parsed
+                .project
+                .map(|root| ProjectIdentity::new(source.host().clone(), root)),
+            parsed.title,
             SessionLocator::new(locator_kind, path.to_string_lossy())?,
         )
     }

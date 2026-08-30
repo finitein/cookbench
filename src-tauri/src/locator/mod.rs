@@ -161,30 +161,69 @@ fn run(program: &str, args: &[String]) -> JumpOutcome {
 
 #[cfg(target_os = "macos")]
 fn focus_terminal_tab(terminal: &TerminalKind, tty: &str) -> JumpOutcome {
-    if !matches!(terminal, TerminalKind::MacosTerminal) {
-        return JumpOutcome::Unavailable;
-    }
-    const SCRIPT: &str = r#"on run argv
+    const TERMINAL_SCRIPT: &str = r#"on run argv
 set targetTTY to item 1 of argv
 tell application "Terminal"
+  set matchCount to 0
+  set matchedWindow to missing value
+  set matchedTab to missing value
   repeat with targetWindow in windows
     repeat with targetTab in tabs of targetWindow
       if tty of targetTab is targetTTY then
-        set selected tab of targetWindow to targetTab
-        set frontmost of targetWindow to true
-        activate
-        return
+        set matchCount to matchCount + 1
+        set matchedWindow to targetWindow
+        set matchedTab to targetTab
       end if
     end repeat
   end repeat
-  error number 1
+  if matchCount is not 1 then error number 1
+  set selected tab of matchedWindow to matchedTab
+  set frontmost of matchedWindow to true
+  activate
+  delay 0.05
+  if tty of selected tab of front window is not targetTTY then error number 1
+  return "focused"
 end tell
 end run"#;
+    const ITERM_SCRIPT: &str = r#"on run argv
+set targetTTY to item 1 of argv
+tell application "iTerm2"
+  set matchCount to 0
+  set matchedWindow to missing value
+  set matchedTab to missing value
+  set matchedSession to missing value
+  repeat with targetWindow in windows
+    repeat with targetTab in tabs of targetWindow
+      repeat with targetSession in sessions of targetTab
+        if tty of targetSession is targetTTY then
+          set matchCount to matchCount + 1
+          set matchedWindow to targetWindow
+          set matchedTab to targetTab
+          set matchedSession to targetSession
+        end if
+      end repeat
+    end repeat
+  end repeat
+  if matchCount is not 1 then error number 1
+  select matchedSession
+  select matchedTab
+  select matchedWindow
+  activate
+  delay 0.05
+  if tty of current session of current tab of current window is not targetTTY then error number 1
+  return "focused"
+end tell
+end run"#;
+    let script = match terminal {
+        TerminalKind::MacosTerminal => TERMINAL_SCRIPT,
+        TerminalKind::ITerm2 => ITERM_SCRIPT,
+        _ => return JumpOutcome::Unavailable,
+    };
     run(
         "/usr/bin/osascript",
         &[
             "-e".to_owned(),
-            SCRIPT.to_owned(),
+            script.to_owned(),
             "--".to_owned(),
             tty.to_owned(),
         ],
@@ -246,7 +285,7 @@ pub fn actions_for(locator: &SessionLocator) -> Vec<JumpAction> {
     }
 
     if let (Some(terminal), Some(tty)) = (locator.terminal.as_ref(), locator.tty.as_ref()) {
-        if matches!(terminal, TerminalKind::MacosTerminal) {
+        if matches!(terminal, TerminalKind::MacosTerminal | TerminalKind::ITerm2) {
             actions.push(JumpAction::ExactTerminalTab {
                 terminal: terminal.clone(),
                 tty: tty.clone(),

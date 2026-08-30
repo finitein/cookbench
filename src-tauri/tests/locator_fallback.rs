@@ -151,6 +151,77 @@ fn ambiguous_terminal_processes_do_not_claim_an_exact_session() {
 }
 
 #[test]
+fn iterm_is_an_exact_terminal_capability() {
+    let locator = SessionLocator {
+        host_application: Some(HostApplication::ITerm2),
+        terminal: Some(TerminalKind::ITerm2),
+        tty: Some("/dev/ttys008".to_owned()),
+        native_session_id: "opaque-terminal-session".to_owned(),
+        ..SessionLocator::default()
+    };
+
+    assert!(matches!(
+        actions_for(&locator).first(),
+        Some(JumpAction::ExactTerminalTab {
+            terminal: TerminalKind::ITerm2,
+            tty,
+        }) if tty == "/dev/ttys008"
+    ));
+}
+
+#[test]
+fn correlates_an_iterm_host_without_using_window_titles() {
+    let processes = vec![
+        ObservedProcess::new(
+            10,
+            1,
+            None,
+            "/Applications/iTerm.app/Contents/MacOS/iTerm2",
+            None,
+        ),
+        ObservedProcess::new(20, 10, Some("ttys008"), "zsh", None),
+        ObservedProcess::new(30, 20, Some("ttys008"), "pi", Some("/workspace/cookbench")),
+    ];
+    let base = SessionLocator {
+        working_directory: Some("/workspace/cookbench".to_owned()),
+        native_session_id: "opaque-pi-session".to_owned(),
+        ..SessionLocator::default()
+    };
+
+    let correlated =
+        correlate_terminal_locator(&cookbench_core::domain::HarnessId::Pi, base, &processes);
+
+    assert_eq!(correlated.host_application, Some(HostApplication::ITerm2));
+    assert_eq!(correlated.terminal, Some(TerminalKind::ITerm2));
+    assert_eq!(correlated.tty.as_deref(), Some("/dev/ttys008"));
+}
+
+#[test]
+fn pi_project_metadata_selects_the_matching_terminal_from_multiple_pi_sessions() {
+    let processes = vec![
+        ObservedProcess::new(10, 1, None, "Terminal", None),
+        ObservedProcess::new(30, 10, Some("ttys008"), "pi", Some("/workspace/cookbench")),
+        ObservedProcess::new(
+            31,
+            10,
+            Some("ttys009"),
+            "pi",
+            Some("/workspace/another-project"),
+        ),
+    ];
+    let base = SessionLocator {
+        working_directory: Some("/workspace/cookbench".to_owned()),
+        native_session_id: "opaque-pi-session".to_owned(),
+        ..SessionLocator::default()
+    };
+
+    let correlated =
+        correlate_terminal_locator(&cookbench_core::domain::HarnessId::Pi, base, &processes);
+
+    assert_eq!(correlated.tty.as_deref(), Some("/dev/ttys008"));
+}
+
+#[test]
 fn permission_denial_continues_to_project_directory() {
     let mut executor = RecordingExecutor::with_outcomes([
         JumpOutcome::PermissionDenied,

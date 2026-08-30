@@ -114,6 +114,10 @@ fn reconstructs_three_native_harnesses_then_observes_appended_lifecycle_records(
             .count(),
         3
     );
+    assert!(initial
+        .iter()
+        .filter(|(identity, _, _)| identity.harness == cookbench_core::domain::HarnessId::Pi)
+        .all(|(_, project, _)| project.canonical_root == "/synthetic/pi"));
     drop(initial);
 
     append(&codex, "{\"type\":\"user_message\"}\n");

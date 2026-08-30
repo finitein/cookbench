@@ -1,4 +1,8 @@
-use std::path::Path;
+use std::{
+    fs,
+    io::{BufRead, BufReader, Read},
+    path::Path,
+};
 
 use cookbench_core::domain::{EventKind, EventMetadata, EventSource, StoveEvent};
 use serde_json::Value;
@@ -11,6 +15,8 @@ use crate::{
 const MAX_RECORD_BYTES: usize = 64 * 1024;
 const MAX_DEPTH: usize = 24;
 const MAX_EVENTS_PER_SESSION: usize = 4_096;
+const MAX_METADATA_BYTES: u64 = 64 * 1024;
+const MAX_METADATA_RECORDS: usize = 8;
 
 /// A bounded, content-free projection of a Pi session file.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -44,6 +50,30 @@ pub fn parse_session_file(path: &Path) -> Result<ParsedPiSession, AdapterError> 
             if let TailRecord::Record(line) = record {
                 parse_line(&line, &mut state);
             }
+        }
+    }
+    Ok(finish(state))
+}
+
+/// Reads only the bounded opening records needed to identify a Pi session.
+/// Prompt and response fields may be present in those records but are never
+/// projected into the returned metadata.
+pub(crate) fn parse_session_metadata_file(path: &Path) -> Result<ParsedPiSession, AdapterError> {
+    let metadata =
+        fs::symlink_metadata(path).map_err(|error| AdapterError::Message(error.to_string()))?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err(AdapterError::Message(
+            "Pi session metadata path must be a regular file".into(),
+        ));
+    }
+    let file = fs::File::open(path).map_err(|error| AdapterError::Message(error.to_string()))?;
+    let mut state = initial_state(path);
+    let reader = BufReader::new(file).take(MAX_METADATA_BYTES);
+    for line in reader.lines().take(MAX_METADATA_RECORDS) {
+        let line = line.map_err(|error| AdapterError::Message(error.to_string()))?;
+        parse_metadata_line(&line, &mut state);
+        if state.project.is_some() && state.title.is_some() {
+            break;
         }
     }
     Ok(finish(state))
@@ -103,6 +133,38 @@ fn parse_line(line: &str, state: &mut ParseState) {
         return;
     };
     visit_value(&value, state, 0);
+}
+
+fn parse_metadata_line(line: &str, state: &mut ParseState) {
+    if line.len() > MAX_RECORD_BYTES {
+        return;
+    }
+    let Ok(value) = serde_json::from_str::<Value>(line) else {
+        return;
+    };
+    visit_metadata_value(&value, state, 0);
+}
+
+fn visit_metadata_value(value: &Value, state: &mut ParseState, depth: usize) {
+    if depth > MAX_DEPTH {
+        return;
+    }
+    match value {
+        Value::Object(object) => {
+            populate_metadata(object, state);
+            for value in object.values() {
+                if value.is_array() || value.is_object() {
+                    visit_metadata_value(value, state, depth + 1);
+                }
+            }
+        }
+        Value::Array(values) => {
+            for value in values {
+                visit_metadata_value(value, state, depth + 1);
+            }
+        }
+        _ => {}
+    }
 }
 
 fn finish(state: ParseState) -> ParsedPiSession {
