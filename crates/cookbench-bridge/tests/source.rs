@@ -5,8 +5,10 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+#[cfg(unix)]
+use cookbench_bridge::protocol::{ConfiguredHarness, ConfiguredRoot};
 use cookbench_bridge::{
-    protocol::{ConfiguredHarness, ConfiguredRoot, NormalizedState},
+    protocol::NormalizedState,
     source::{NativeSessionSource, SourceHarness, SourceRoot},
 };
 
@@ -115,6 +117,7 @@ fn emits_only_new_complete_appends_after_the_initial_bounded_replay() {
 }
 
 #[test]
+#[cfg(unix)]
 fn configured_custom_root_auto_detects_harness_and_project_metadata() {
     let root = temp_root().join("arbitrary-storage");
     write(
