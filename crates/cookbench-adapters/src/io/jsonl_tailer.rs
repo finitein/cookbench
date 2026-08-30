@@ -6,6 +6,8 @@ use std::{
 
 use super::TailLimits;
 
+const FILE_ANCHOR_BYTES: u64 = 64;
+
 /// A bounded outcome for one complete native JSONL line.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TailRecord {
@@ -77,6 +79,12 @@ struct FileIdentity {
     modified: Option<std::time::SystemTime>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct FileAnchor {
+    length: u64,
+    hash: u64,
+}
+
 impl FileIdentity {
     fn from_metadata(metadata: &Metadata) -> Self {
         #[cfg(unix)]
@@ -115,6 +123,7 @@ pub struct JsonlTailer {
     limits: TailLimits,
     identity: FileIdentity,
     cursor: u64,
+    anchor: Option<FileAnchor>,
     partial: Vec<u8>,
     discarding_oversized_line: bool,
 }
@@ -138,6 +147,7 @@ impl JsonlTailer {
             limits,
             identity: FileIdentity::from_metadata(&metadata),
             cursor: 0,
+            anchor: None,
             partial: Vec::new(),
             discarding_oversized_line: false,
         })
@@ -149,9 +159,12 @@ impl JsonlTailer {
         let checked = checked_regular_file(&self.root, &self.path)?;
         let metadata = fs::metadata(&checked)?;
         let identity = FileIdentity::from_metadata(&metadata);
-        if identity != self.identity || metadata.len() < self.cursor {
+        let anchor_matches =
+            metadata.len() >= self.cursor && file_anchor(&checked, self.cursor)? == self.anchor;
+        if identity != self.identity || metadata.len() < self.cursor || !anchor_matches {
             self.identity = identity;
             self.cursor = 0;
+            self.anchor = None;
             self.partial.clear();
             self.discarding_oversized_line = false;
         }
@@ -167,6 +180,7 @@ impl JsonlTailer {
         let mut bytes = vec![0; to_read];
         file.read_exact(&mut bytes)?;
         self.cursor += to_read as u64;
+        self.anchor = file_anchor_from(&mut file, self.cursor)?;
 
         let mut records = Vec::new();
         for byte in bytes {
@@ -206,6 +220,7 @@ impl JsonlTailer {
         let metadata = fs::metadata(&checked)?;
         self.identity = FileIdentity::from_metadata(&metadata);
         self.cursor = metadata.len();
+        self.anchor = file_anchor(&checked, self.cursor)?;
         self.partial.clear();
         self.discarding_oversized_line = false;
         Ok(())
@@ -220,6 +235,7 @@ impl JsonlTailer {
         let metadata = fs::metadata(&checked)?;
         self.identity = FileIdentity::from_metadata(&metadata);
         self.cursor = metadata.len().saturating_sub(maximum_bytes);
+        self.anchor = file_anchor(&checked, self.cursor)?;
         self.partial.clear();
         self.discarding_oversized_line = self.cursor > 0;
         Ok(())
@@ -238,6 +254,30 @@ impl JsonlTailer {
     pub fn cursor(&self) -> u64 {
         self.cursor
     }
+}
+
+fn file_anchor(path: &Path, cursor: u64) -> Result<Option<FileAnchor>, TailError> {
+    let mut file = File::open(path)?;
+    file_anchor_from(&mut file, cursor).map_err(TailError::from)
+}
+
+fn file_anchor_from(file: &mut File, cursor: u64) -> io::Result<Option<FileAnchor>> {
+    let length = cursor.min(FILE_ANCHOR_BYTES);
+    if length == 0 {
+        return Ok(None);
+    }
+
+    file.seek(SeekFrom::Start(cursor - length))?;
+    let mut bytes = vec![0; length as usize];
+    file.read_exact(&mut bytes)?;
+
+    // Keep only a bounded continuity hash in memory. It lets stable Rust
+    // detect path replacement on Windows without persisting or exposing the
+    // sampled native session bytes.
+    let hash = bytes.into_iter().fold(0xcbf29ce484222325, |hash, byte| {
+        (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3)
+    });
+    Ok(Some(FileAnchor { length, hash }))
 }
 
 fn decode_line(mut line: Vec<u8>, max_record_bytes: usize) -> TailRecord {

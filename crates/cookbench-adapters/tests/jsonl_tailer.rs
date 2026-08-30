@@ -101,6 +101,18 @@ fn truncation_and_file_replacement_reset_the_cursor_safely() {
 }
 
 #[test]
+fn same_length_rewrite_resets_the_cursor_without_platform_file_ids() {
+    let temp = fixture();
+    let path = temp.path().join("session.jsonl");
+    fs::write(&path, "{\"event\":\"one\"}\n").unwrap();
+    let mut tailer = JsonlTailer::open(temp.path(), &path, TailLimits::default()).unwrap();
+    assert_eq!(records(tailer.poll().unwrap()), ["{\"event\":\"one\"}"]);
+
+    fs::write(&path, "{\"event\":\"two\"}\n").unwrap();
+    assert_eq!(records(tailer.poll().unwrap()), ["{\"event\":\"two\"}"]);
+}
+
+#[test]
 fn rejects_oversized_lines_without_retaining_them() {
     let temp = fixture();
     let path = temp.path().join("session.jsonl");
