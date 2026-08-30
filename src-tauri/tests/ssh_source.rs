@@ -55,6 +55,19 @@ fn successful_probe(path: &str) -> Result<ProbeOutput, SshError> {
     })
 }
 
+fn nul_probe(paths: &[&str]) -> Result<ProbeOutput, SshError> {
+    let mut stdout = Vec::new();
+    for path in paths {
+        stdout.extend_from_slice(path.as_bytes());
+        stdout.push(0);
+    }
+    Ok(ProbeOutput {
+        status: 0,
+        stdout,
+        stderr: String::new(),
+    })
+}
+
 fn suffix_probe(bytes: &[u8]) -> Result<ProbeOutput, SshError> {
     Ok(ProbeOutput {
         status: 0,
@@ -123,11 +136,53 @@ fn custom_roots_are_only_read_with_a_fixed_find_probe() {
 
     assert_eq!(
         remote_probe,
-        "exec find '/custom root/sessions' -type f -name '*.jsonl' -mtime -7 -print0"
+        "if [ -d '/custom root/sessions' ]; then exec find '/custom root/sessions' -type f -name '*.jsonl' -mtime -7 -print0; fi"
     );
     assert!(!remote_probe.contains("rm "));
     assert!(!remote_probe.contains(">"));
     assert!(!remote_probe.contains("curl"));
+}
+
+#[test]
+fn automatic_roots_use_fixed_remote_home_expressions() {
+    let host = RemoteHost::new("fixture-host", vec![]).unwrap();
+    let invocation = SshInvocation::resolve_automatic_roots(&host);
+    let remote_probe = invocation.args.last().unwrap();
+
+    assert!(remote_probe.contains("CODEX_HOME"));
+    assert!(remote_probe.contains("CLAUDE_CONFIG_DIR"));
+    assert!(remote_probe.contains("PI_SESSION_DIR"));
+    assert!(remote_probe.contains("$HOME/.codex"));
+    assert!(!remote_probe.contains("rm "));
+    assert!(!remote_probe.contains("curl"));
+}
+
+#[test]
+fn empty_roots_resolve_and_scan_every_supported_harness() {
+    let host = RemoteHost::new("fixture-host", vec![]).unwrap();
+    let mut source = ZeroInstallSshSource::new(
+        host,
+        FakeSsh::new([
+            nul_probe(&[
+                "/home/test/.codex/sessions",
+                "/home/test/.claude/projects",
+                "/home/test/.pi/agent/sessions",
+            ]),
+            successful_probe("/home/test/.codex/sessions/codex.jsonl"),
+            successful_probe("/home/test/.claude/projects/claude.jsonl"),
+            successful_probe("/home/test/.pi/agent/sessions/pi.jsonl"),
+        ]),
+    );
+
+    let (paths, _) = source.discover().unwrap();
+    assert_eq!(
+        paths,
+        [
+            "/home/test/.codex/sessions/codex.jsonl",
+            "/home/test/.claude/projects/claude.jsonl",
+            "/home/test/.pi/agent/sessions/pi.jsonl",
+        ]
+    );
 }
 
 #[test]

@@ -68,6 +68,9 @@ binary explicitly when the remote platform or architecture differs.
 
 SSH uses the system `ssh` command, the user's existing configuration, and
 `known_hosts`. Cookbench stores no SSH password and opens no listening port.
+An empty Session roots field selects automatic discovery of every first-party
+Harness supported by the installed Cookbench build. Explicit absolute roots
+remain available as an override for nonstandard remote layouts.
 
 ## Removal
 

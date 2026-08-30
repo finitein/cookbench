@@ -55,7 +55,11 @@ fn run_stdio() -> Result<(), ProtocolError> {
                 write_frame(&mut output, &Frame::Heartbeat)?;
             }
             ServerAction::Configure(roots) => {
-                source = Some(NativeSessionSource::from_configured_roots(roots));
+                source = Some(if roots.is_empty() {
+                    NativeSessionSource::default()
+                } else {
+                    NativeSessionSource::from_configured_roots(roots)
+                });
                 emit_events(
                     &mut output,
                     &server,

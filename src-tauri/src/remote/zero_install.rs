@@ -16,7 +16,9 @@ use cookbench_core::{
 
 use super::{
     reconnect::ReconnectState,
-    ssh::{session_paths, suffix_bytes, SshError, SshInvocation, SshRunner},
+    ssh::{
+        automatic_session_roots, session_paths, suffix_bytes, SshError, SshInvocation, SshRunner,
+    },
 };
 
 const MAX_CANDIDATES_PER_POLL: usize = 64;
@@ -58,6 +60,7 @@ pub struct ZeroInstallSshSource<R> {
     observed_suffixes: Vec<(String, Vec<u8>)>,
     sequence: u64,
     sequence_counter: Option<Arc<AtomicU64>>,
+    resolved_automatic_roots: Option<Vec<SessionRoot>>,
 }
 
 impl<R: SshRunner> ZeroInstallSshSource<R> {
@@ -70,6 +73,7 @@ impl<R: SshRunner> ZeroInstallSshSource<R> {
             observed_suffixes: Vec::new(),
             sequence: 0,
             sequence_counter: None,
+            resolved_automatic_roots: None,
         }
     }
 
@@ -94,7 +98,7 @@ impl<R: SshRunner> ZeroInstallSshSource<R> {
 
     /// Returns `true` only when a previously disconnected host has recovered.
     pub fn discover(&mut self) -> Result<(Vec<String>, bool), SshError> {
-        let roots: Vec<SessionRoot> = self.host.session_roots().to_vec();
+        let roots = self.discovery_roots()?;
         let result = roots.into_iter().try_fold(Vec::new(), |mut paths, root| {
             let output = self
                 .runner
@@ -178,7 +182,7 @@ impl<R: SshRunner> ZeroInstallSshSource<R> {
     }
 
     fn recent_paths(&mut self) -> Result<Vec<String>, SshError> {
-        let roots: Vec<SessionRoot> = self.host.session_roots().to_vec();
+        let roots = self.discovery_roots()?;
         roots.into_iter().try_fold(Vec::new(), |mut paths, root| {
             let output = self
                 .runner
@@ -186,6 +190,21 @@ impl<R: SshRunner> ZeroInstallSshSource<R> {
             paths.extend(session_paths(&output, &root)?);
             Ok::<_, SshError>(paths)
         })
+    }
+
+    fn discovery_roots(&mut self) -> Result<Vec<SessionRoot>, SshError> {
+        if !self.host.uses_automatic_roots() {
+            return Ok(self.host.session_roots().to_vec());
+        }
+        if let Some(roots) = &self.resolved_automatic_roots {
+            return Ok(roots.clone());
+        }
+        let output = self
+            .runner
+            .run(&SshInvocation::resolve_automatic_roots(&self.host))?;
+        let roots = automatic_session_roots(&output)?;
+        self.resolved_automatic_roots = Some(roots.clone());
+        Ok(roots)
     }
 
     fn disconnected_poll(&mut self, error: SshError) -> RemotePoll {

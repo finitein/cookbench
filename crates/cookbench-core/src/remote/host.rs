@@ -43,9 +43,6 @@ impl RemoteHost {
             return Err(HostValidationError::UnsafeAlias);
         }
         validate_text(&alias)?;
-        if session_roots.is_empty() {
-            return Err(HostValidationError::NoSessionRoots);
-        }
         Ok(Self {
             alias,
             session_roots,
@@ -58,6 +55,12 @@ impl RemoteHost {
 
     pub fn session_roots(&self) -> &[SessionRoot] {
         &self.session_roots
+    }
+
+    /// Empty configured roots mean the transport should resolve every
+    /// first-party Harness root supported by this Cookbench build.
+    pub fn uses_automatic_roots(&self) -> bool {
+        self.session_roots.is_empty()
     }
 
     /// Percent-encoding makes host aliases unambiguous alongside local hosts.
@@ -123,7 +126,6 @@ impl PollInterval {
 pub enum HostValidationError {
     UnsafeAlias,
     RootMustBeAbsolute,
-    NoSessionRoots,
     EmptySessionId,
     UnsafeText,
 }
@@ -135,7 +137,6 @@ impl std::fmt::Display for HostValidationError {
                 "SSH host aliases must be nonempty, option-free, and whitespace-free"
             }
             Self::RootMustBeAbsolute => "remote session roots must be absolute paths",
-            Self::NoSessionRoots => "an SSH source needs at least one session root",
             Self::EmptySessionId => "remote native session IDs must be nonempty",
             Self::UnsafeText => "remote source values must be bounded and control-free",
         })
@@ -193,5 +194,13 @@ mod tests {
     fn polling_is_fast_only_when_a_source_is_active() {
         assert!(PollInterval::Active.duration() < PollInterval::Idle.duration());
         assert!(PollInterval::Idle.duration() < PollInterval::Disconnected.duration());
+    }
+
+    #[test]
+    fn empty_roots_select_automatic_supported_harness_discovery() {
+        let host = RemoteHost::new("automatic-host", vec![]).expect("automatic roots");
+
+        assert!(host.uses_automatic_roots());
+        assert!(host.session_roots().is_empty());
     }
 }

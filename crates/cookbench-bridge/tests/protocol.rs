@@ -100,6 +100,21 @@ fn configured_roots_are_bounded_absolute_read_only_inputs() {
 }
 
 #[test]
+fn empty_configuration_selects_bridge_default_harness_roots() {
+    let mut server = BridgeServer::new(vec![]);
+    server
+        .handle(Frame::Hello {
+            version: ProtocolVersion::CURRENT,
+        })
+        .unwrap();
+
+    assert_eq!(
+        server.handle(Frame::Configure { roots: vec![] }).unwrap(),
+        ServerAction::Configure(vec![])
+    );
+}
+
+#[test]
 fn mismatched_versions_and_corrupt_or_oversized_input_are_rejected() {
     let mut server = BridgeServer::new(vec![]);
     assert!(matches!(

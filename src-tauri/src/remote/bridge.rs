@@ -51,7 +51,7 @@ impl BridgeDeploymentSelection {
     }
 
     pub fn with_roots(mut self, roots: Vec<ConfiguredRoot>) -> Result<Self, BridgeError> {
-        if roots.is_empty() || roots.len() > 16 {
+        if roots.len() > 16 {
             return Err(BridgeError::UnsafeSelection);
         }
         self.roots = roots;
@@ -205,11 +205,6 @@ impl BridgeSession for SystemBridgeSession {
             ));
         }
         self.pending = events;
-        if self.configured_roots.is_empty() {
-            return Err(SystemBridgeError::Protocol(
-                "bridge session roots were not configured".to_owned(),
-            ));
-        }
         self.write_frame(&Frame::Configure {
             roots: self.configured_roots.clone(),
         })?;

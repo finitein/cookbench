@@ -46,7 +46,7 @@ impl BridgeServer {
             Frame::Hello { version } => self.hello(version),
             Frame::Heartbeat if self.negotiated => Ok(ServerAction::Reply(Frame::Heartbeat)),
             Frame::Configure { roots } if self.negotiated => {
-                if roots.is_empty() || roots.len() > 16 {
+                if roots.len() > 16 {
                     return Err(ProtocolError::InvalidRoot);
                 }
                 Ok(ServerAction::Configure(roots))

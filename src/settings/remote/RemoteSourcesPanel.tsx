@@ -92,16 +92,23 @@ export function RemoteSourcesPanel() {
         ) : null}
         <label>
           <span>Session roots</span>
-          <input value={roots} onChange={(event) => setRoots(event.target.value)} autoComplete="off" />
+          <input
+            value={roots}
+            onChange={(event) => setRoots(event.target.value)}
+            autoComplete="off"
+            placeholder="Automatic when empty"
+          />
         </label>
-        <button type="button" disabled={!alias.trim() || !roots.trim()} onClick={() => void add()}>Add</button>
+        <button type="button" disabled={!alias.trim()} onClick={() => void add()}>Add</button>
       </div>
       <div className="remote-settings__sources">
         {sources.map((source) => (
           <div key={source.id} className="remote-settings__source">
             <div>
               <strong>{source.alias}</strong>
-              <span>{source.sessionRoots.join(", ")}</span>
+              <span>{source.sessionRoots.length > 0
+                ? source.sessionRoots.join(", ")
+                : "Automatic supported Harness roots"}</span>
               <span>{source.bridgeEnabled ? "Temporary stdio bridge" : "Zero-install read-only"}</span>
             </div>
             <button type="button" onClick={() => void toggle(source)}>

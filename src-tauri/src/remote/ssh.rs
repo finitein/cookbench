@@ -20,10 +20,27 @@ impl SshInvocation {
     /// alias; no `-F`, identity file, password, or host-key override is passed.
     pub fn discover(host: &RemoteHost, root: &SessionRoot) -> Self {
         let remote_command = format!(
-            "exec find {} -type f -name '*.jsonl' -mtime -7 -print0",
-            shell_quote(root.as_str())
+            "if [ -d {} ]; then exec find {} -type f -name '*.jsonl' -mtime -7 -print0; fi",
+            shell_quote(root.as_str()),
+            shell_quote(root.as_str()),
         );
         Self::readonly(host, remote_command)
+    }
+
+    /// Resolves only the conventional roots for the Harnesses compiled into
+    /// Cookbench. The command is fixed and emits NUL-delimited absolute paths.
+    pub fn resolve_automatic_roots(host: &RemoteHost) -> Self {
+        Self::readonly(
+            host,
+            concat!(
+                "for root in ",
+                "\"${CODEX_HOME:-$HOME/.codex}/sessions\" ",
+                "\"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects\" ",
+                "\"${PI_SESSION_DIR:-$HOME/.pi/agent/sessions}\"; ",
+                "do case \"$root\" in /*) printf '%s\\0' \"$root\";; esac; done"
+            )
+            .to_owned(),
+        )
     }
 
     /// Reads a bounded suffix after discovery has already validated the path.
@@ -193,6 +210,28 @@ pub fn session_paths(output: &ProbeOutput, root: &SessionRoot) -> Result<Vec<Str
             }
         })
         .collect()
+}
+
+pub fn automatic_session_roots(output: &ProbeOutput) -> Result<Vec<SessionRoot>, SshError> {
+    if output.status != 0 {
+        return Err(SshError::UnsafeOutput);
+    }
+    let mut roots = Vec::new();
+    for bytes in output
+        .stdout
+        .split(|byte| *byte == 0)
+        .filter(|path| !path.is_empty())
+    {
+        if roots.len() >= 16 {
+            return Err(SshError::UnsafeOutput);
+        }
+        let path = std::str::from_utf8(bytes).map_err(|_| SshError::UnsafeOutput)?;
+        let root = SessionRoot::new(path.to_owned()).map_err(|_| SshError::UnsafeOutput)?;
+        if !roots.contains(&root) {
+            roots.push(root);
+        }
+    }
+    Ok(roots)
 }
 
 pub fn suffix_bytes(output: &ProbeOutput) -> Result<&[u8], SshError> {
