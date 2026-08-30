@@ -1,8 +1,7 @@
 use std::cell::RefCell;
 
 use cookbench_core::{
-    notifications::NotificationEventKind,
-    persistence::LocalNotificationPreferences,
+    notifications::NotificationEventKind, persistence::LocalNotificationPreferences,
 };
 use cookbench_desktop_lib::notifications::local::{
     LocalAlertChannel, LocalAlertDispatcher, LocalAlertEffects, LocalAlertPayload,
@@ -21,7 +20,9 @@ impl LocalAlertEffects for FakeEffects {
     }
 
     fn show_banner(&self, _: &LocalAlertPayload) -> LocalAlertResult {
-        self.calls.borrow_mut().push(LocalAlertChannel::SystemBanner);
+        self.calls
+            .borrow_mut()
+            .push(LocalAlertChannel::SystemBanner);
         LocalAlertResult::Delivered
     }
 
@@ -31,7 +32,9 @@ impl LocalAlertEffects for FakeEffects {
     }
 
     fn request_attention(&self) -> LocalAlertResult {
-        self.calls.borrow_mut().push(LocalAlertChannel::SystemAttention);
+        self.calls
+            .borrow_mut()
+            .push(LocalAlertChannel::SystemAttention);
         LocalAlertResult::Delivered
     }
 }
@@ -52,7 +55,10 @@ fn default_preferences_deliver_only_sound_for_selected_events() {
         &effects,
     );
 
-    assert_eq!(delivered, vec![(LocalAlertChannel::Sound, LocalAlertResult::Delivered)]);
+    assert_eq!(
+        delivered,
+        vec![(LocalAlertChannel::Sound, LocalAlertResult::Delivered)]
+    );
     assert_eq!(*effects.calls.borrow(), vec![LocalAlertChannel::Sound]);
 }
 

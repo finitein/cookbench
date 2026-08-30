@@ -10,7 +10,10 @@ use cookbench_core::{
         DestinationId, NotificationEventKind, NotificationRule, NotificationSettings, RuleScope,
         Template,
     },
-    persistence::{CredentialReference, NotificationDestinationConfig, PersistedConfig},
+    persistence::{
+        CredentialReference, LocalNotificationPreferences, NotificationDestinationConfig,
+        PersistedConfig,
+    },
 };
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
@@ -18,6 +21,10 @@ use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use crate::{
     app_state::AppState,
     notifications::{
+        local::{
+            LocalAlertChannel, LocalAlertDispatcher, LocalAlertPayload, LocalAlertResult,
+            TauriLocalAlertEffects,
+        },
         sender::{DestinationKind, ReqwestTransport},
         service::{DestinationConfiguration, NotificationService},
     },
@@ -27,6 +34,8 @@ use crate::{
 pub type NotificationRuntime = NotificationService<ReqwestTransport, NativeSecretStore>;
 
 pub struct NotificationCommandState(pub Arc<NotificationRuntime>);
+
+pub struct LocalAlertCommandState(pub Arc<LocalAlertDispatcher>);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -65,6 +74,26 @@ pub struct NotificationDestinationInput {
     pub template: Option<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalNotificationSettingsWire {
+    pub sound: bool,
+    pub system_banner: bool,
+    pub bar_flash: bool,
+    pub system_attention: bool,
+    pub events: Vec<NotificationEventWire>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalNotificationInput {
+    pub sound: bool,
+    pub system_banner: bool,
+    pub bar_flash: bool,
+    pub system_attention: bool,
+    pub events: Vec<NotificationEventWire>,
+}
+
 #[tauri::command]
 pub fn open_notification_settings(app: AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("settings") {
@@ -89,6 +118,66 @@ pub fn open_notification_settings(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn get_notification_settings(state: State<'_, AppState>) -> Vec<NotificationDestinationWire> {
     settings_wire(&state.persisted_config())
+}
+
+#[tauri::command]
+pub fn get_local_notification_settings(
+    state: State<'_, AppState>,
+) -> LocalNotificationSettingsWire {
+    local_notification_settings_wire(&state.persisted_config())
+}
+
+#[tauri::command]
+pub fn configure_local_notification_settings(
+    input: LocalNotificationInput,
+    app: AppHandle,
+    app_state: State<'_, AppState>,
+) -> Result<LocalNotificationSettingsWire, String> {
+    let current = app_state.persisted_config();
+    if input.system_banner && !current.preferences.local_notifications.system_banner {
+        let effects = TauriLocalAlertEffects::new(&app);
+        match effects.request_banner_permission() {
+            LocalAlertResult::Delivered => {}
+            LocalAlertResult::PermissionDenied => {
+                return Err("System notifications are not allowed".to_owned());
+            }
+            LocalAlertResult::Unavailable => {
+                return Err("System notifications are unavailable".to_owned());
+            }
+        }
+    }
+
+    let mut updated = current;
+    apply_local_notification_input(&mut updated, input)?;
+    app_state.update_persisted_config(|config| *config = updated.clone())?;
+    Ok(local_notification_settings_wire(&updated))
+}
+
+#[tauri::command]
+pub fn test_local_notification(
+    channel: LocalAlertChannel,
+    app: AppHandle,
+    state: State<'_, LocalAlertCommandState>,
+    app_state: State<'_, AppState>,
+) -> LocalAlertResult {
+    let effects = TauriLocalAlertEffects::new(&app);
+    if channel == LocalAlertChannel::SystemBanner {
+        let permission = effects.request_banner_permission();
+        if permission != LocalAlertResult::Delivered {
+            return permission;
+        }
+    }
+    let snapshot = app_state.stoves.snapshot();
+    let (stove_id, project) = snapshot
+        .stoves
+        .first()
+        .map(|stove| (stove.id.as_str(), stove.project_label.as_str()))
+        .unwrap_or(("__cookbench_test__", "Cookbench"));
+    state.0.test_channel(
+        channel,
+        &LocalAlertPayload::new(stove_id, project, NotificationEventKind::Cooked),
+        &effects,
+    )
 }
 
 #[tauri::command]
@@ -257,6 +346,40 @@ fn settings_wire(config: &PersistedConfig) -> Vec<NotificationDestinationWire> {
             }
         })
         .collect()
+}
+
+pub fn local_notification_settings_wire(config: &PersistedConfig) -> LocalNotificationSettingsWire {
+    let preferences = &config.preferences.local_notifications;
+    LocalNotificationSettingsWire {
+        sound: preferences.sound,
+        system_banner: preferences.system_banner,
+        bar_flash: preferences.bar_flash,
+        system_attention: preferences.system_attention,
+        events: preferences
+            .events
+            .iter()
+            .filter_map(|event| NotificationEventWire::try_from(*event).ok())
+            .collect(),
+    }
+}
+
+pub fn apply_local_notification_input(
+    config: &mut PersistedConfig,
+    input: LocalNotificationInput,
+) -> Result<(), String> {
+    if input.events.len() > LocalNotificationPreferences::MAX_EVENTS {
+        return Err("Too many local notification events".to_owned());
+    }
+    config.preferences.local_notifications = LocalNotificationPreferences {
+        sound: input.sound,
+        system_banner: input.system_banner,
+        bar_flash: input.bar_flash,
+        system_attention: input.system_attention,
+        events: LocalNotificationPreferences::normalize_events(
+            input.events.into_iter().map(Into::into),
+        ),
+    };
+    Ok(())
 }
 
 fn parse_destination(value: &str) -> Result<(DestinationKind, &'static str), String> {

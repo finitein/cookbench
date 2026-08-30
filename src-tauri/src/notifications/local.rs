@@ -7,10 +7,9 @@ use std::{
 };
 
 use cookbench_core::{
-    notifications::NotificationEventKind,
-    persistence::LocalNotificationPreferences,
+    notifications::NotificationEventKind, persistence::LocalNotificationPreferences,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{plugin::PermissionState, Emitter, Manager, Runtime, UserAttentionType};
 use tauri_plugin_notification::NotificationExt;
 
@@ -19,7 +18,7 @@ const DUPLICATE_WINDOW_MS: u64 = 1_000;
 const MAX_RECENT_ALERTS: usize = 256;
 const SOUND_TIMEOUT: Duration = Duration::from_secs(2);
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum LocalAlertChannel {
     Sound,
@@ -28,7 +27,8 @@ pub enum LocalAlertChannel {
     SystemAttention,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub enum LocalAlertResult {
     Delivered,
     PermissionDenied,
@@ -111,10 +111,7 @@ impl LocalAlertDispatcher {
             ));
         }
         if preferences.bar_flash {
-            outcomes.push((
-                LocalAlertChannel::BarFlash,
-                effects.flash_stove(payload),
-            ));
+            outcomes.push((LocalAlertChannel::BarFlash, effects.flash_stove(payload)));
         }
         if preferences.system_attention {
             outcomes.push((

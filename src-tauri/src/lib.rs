@@ -160,6 +160,7 @@ pub fn run() {
         .expect("Cookbench outbound HTTPS client failed to initialize");
 
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -167,6 +168,9 @@ pub fn run() {
         ))
         .manage(app_state::AppState::default())
         .manage(notification_runtime)
+        .manage(commands::notifications::LocalAlertCommandState(Arc::new(
+            notifications::local::LocalAlertDispatcher::default(),
+        )))
         .manage(remote::runtime::RemoteRuntimeState::default())
         .manage(runtime::LocalSourceStatusState::default())
         .manage(LocalRuntimeState(Mutex::new(None)))
@@ -191,6 +195,9 @@ pub fn run() {
             commands::locator::activate_stove_locator,
             commands::notifications::open_notification_settings,
             commands::notifications::get_notification_settings,
+            commands::notifications::get_local_notification_settings,
+            commands::notifications::configure_local_notification_settings,
+            commands::notifications::test_local_notification,
             commands::notifications::configure_notification_destination,
             commands::notifications::send_test_notification,
             commands::remote::get_remote_sources,

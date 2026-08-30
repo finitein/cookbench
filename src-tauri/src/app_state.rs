@@ -989,14 +989,27 @@ impl AppState {
         event: NotificationEventKind,
         milestone: Option<u8>,
     ) {
+        // Source timestamps describe harness ordering, not local queue age.
+        // Using them here could expire a newly observed event.
+        let now_ms = current_time_ms();
+        if let Some(local) =
+            app.try_state::<crate::commands::notifications::LocalAlertCommandState>()
+        {
+            let preferences = self.persisted_config().preferences.local_notifications;
+            let payload = crate::notifications::local::LocalAlertPayload::new(
+                stove_id(&stove.identity),
+                &summary.project_label,
+                event,
+            );
+            let effects = crate::notifications::local::TauriLocalAlertEffects::new(app);
+            let _ = local.0.dispatch(&preferences, &payload, now_ms, &effects);
+        }
+
         let Some(notifications) =
             app.try_state::<crate::commands::notifications::NotificationCommandState>()
         else {
             return;
         };
-        // Source timestamps describe harness ordering, not local queue age.
-        // Using them here could expire a newly observed event.
-        let now_ms = current_time_ms();
         notifications.0.enqueue_transition(
             &NotificationContext {
                 stove_id: stove_id(&stove.identity),
