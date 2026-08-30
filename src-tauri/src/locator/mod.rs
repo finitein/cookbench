@@ -295,6 +295,7 @@ fn run_bounded_with_env(
     run_bounded_for_with_env(program, args, environment, FOCUS_TIMEOUT)
 }
 
+#[cfg(any(target_os = "macos", test))]
 pub(super) fn run_bounded_for(
     program: &str,
     args: &[String],

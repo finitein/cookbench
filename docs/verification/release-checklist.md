@@ -15,7 +15,7 @@ pnpm build
 pnpm test:e2e
 ```
 
-On the macOS development runner, `pnpm test:e2e` passes all ten Chromium flows.
+On the macOS development runner, `pnpm test:e2e` passes all twelve Chromium flows.
 The test-only driver supplies sanitized snapshots, restart, detached placement,
 clear, and outbound-notification observations in Vite `e2e` mode. A production
 build scan confirms that the driver name, storage keys, and implementation are
@@ -25,7 +25,7 @@ absent from `dist`.
 
 | # | Requirement | Evidence required | Current status |
 | --- | --- | --- | --- |
-| 1 | Graphical macOS, Windows, Ubuntu installation | Package smoke run on each platform | macOS arm64 app/DMG build and package smoke pass; Windows, Ubuntu, and macOS Intel pending |
+| 1 | Graphical macOS, Windows, Ubuntu installation | Package smoke run on each platform | macOS arm64 app/DMG and Ubuntu 24.04 ARM64 DEB/AppImage build and graphical package smoke pass; Windows and macOS Intel pending |
 | 2 | Codex, Claude Code, Pi create stoves from their original tools | Sanitized fixture E2E plus manual original-tool sessions | Three-harness E2E passes; packaged macOS app automatically discovered live local Codex session files; manual Claude Code and Pi native checks pending |
 | 3 | Every burner names its harness | `global-bar.spec.ts` plus screen-reader check | E2E and component accessible-name checks pass; manual screen reader pending |
 | 4 | Global Bar contains all active and uncleared stoves | `global-bar.spec.ts` with three sources and retained Cooked fixture | E2E passes; packaged macOS snapshot populated from native sessions after the release ACL fallback regression was fixed |
@@ -41,7 +41,7 @@ absent from `dist`.
 | 14 | Only structured Cooking has a determinate arc | `stove-lifecycle.spec.ts` with structured and empty progress fixtures | Component and E2E coverage pass |
 | 15 | Approved light-default SVG/CSS material, no third-party logos/heavy media | Asset inventory and screenshot comparison with visual prototype | Five browser screenshots plus a cropped packaged-macOS capture recorded; exact two-SVG master comparison and macOS package audit pass |
 | 16 | Reduced motion and accessible state labels | Emulated media-feature screenshots and keyboard/screen-reader check | Reduced-motion E2E and component labels pass; OS/screen-reader check pending |
-| 17 | No photos, GIFs, video, Lottie, sprites, or bundled web fonts | Package artifact inventory | macOS arm64 app/DMG package inventory passes; Windows and Ubuntu artifacts pending |
+| 17 | No photos, GIFs, video, Lottie, sprites, or bundled web fonts | Package artifact inventory | macOS arm64 app/DMG and Ubuntu ARM64 DEB/AppImage package inventories pass; Windows pending |
 
 ## Visual Matrix
 
@@ -68,8 +68,9 @@ asset additions. Verify blur-unavailable fallback is solid and legible.
   fallback. Do not claim Accessibility permission is required for basic UI.
 - Windows: normal-user topmost window, detached restore, 100% and 150% scale,
   foreground/elevated-target fallback, and outbound notification send.
-- Ubuntu 22.04 X11: graphical app, keep-above behavior, detached restore, and
-  notification send.
+- Ubuntu X11: Ubuntu 24.04.4 ARM64 graphical launch, keep-above, arbitrary
+  compositor move/resize, DEB, and AppImage are verified. Ubuntu 22.04,
+  detached restore, and live notification delivery remain pending.
 - Ubuntu 24.04 GNOME Wayland: graphical fallback without extension, then
   presentation-only extension behavior. Record best-effort limitations rather
   than treating them as failures or full-overlay success.

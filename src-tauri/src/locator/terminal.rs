@@ -1,8 +1,7 @@
-use std::{
-    collections::HashMap,
-    path::Path,
-    time::{Duration, Instant},
-};
+use std::{collections::HashMap, path::Path};
+
+#[cfg(target_os = "macos")]
+use std::time::{Duration, Instant};
 
 use cookbench_core::{
     domain::HarnessId,
@@ -12,8 +11,10 @@ use cookbench_core::{
 #[cfg(target_os = "macos")]
 use super::run_bounded_for;
 
-const MAX_PROCESSES: usize = 4_096;
 const MAX_ANCESTORS: usize = 64;
+#[cfg(target_os = "macos")]
+const MAX_PROCESSES: usize = 4_096;
+#[cfg(target_os = "macos")]
 const MAX_HARNESS_PROCESSES: usize = 16;
 #[cfg(target_os = "macos")]
 const PROCESS_DISCOVERY_DEADLINE: Duration = Duration::from_millis(1_500);
@@ -221,6 +222,7 @@ fn observe_processes(_harness: &HarnessId) -> Vec<ObservedProcess> {
     Vec::new()
 }
 
+#[cfg(target_os = "macos")]
 fn parse_process_line(line: &str) -> Option<ObservedProcess> {
     let mut fields = line.split_whitespace();
     let process_id = fields.next()?.parse().ok()?;

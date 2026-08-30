@@ -20,11 +20,12 @@ optional presentation-only GNOME extension is installed.
 | Capability model: GNOME Wayland without extension is graphical + best effort | Passes in `platform_capabilities` | macOS development machine |
 | Capability model: GNOME Wayland with extension is full overlay | Passes in `platform_capabilities` | macOS development machine |
 | Tauri compile and workspace tests | Passed: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, and `cargo build --workspace` | macOS development machine, 2026-08-30 |
+| Native Ubuntu ARM64 compile and workspace tests | Passed: Rust fmt, strict Clippy, full workspace tests, 79 Vitest tests, TypeScript lint, and production frontend build | Ubuntu 24.04.4 GNOME X11 host, 2026-08-30 |
+| Native Ubuntu packages | ARM64 DEB and AppImage built with executable bridge/hook sidecars; both package forms launched a Cookbench window | Ubuntu 24.04.4 GNOME X11 host, 2026-08-30 |
 
 Automated tests prove the platform contract and compile the Tauri-backed window
-operations. They do not prove a compositor honored an overlay request.
-The current Rust toolchain has only the `aarch64-apple-darwin` target installed,
-so Windows and Ubuntu binaries have not been cross-compiled from this machine.
+operations. The native Ubuntu run additionally proves the tested X11 compositor
+honored the keep-above request. Windows still requires a native runner.
 
 ## Manual Evidence Matrix
 
@@ -35,8 +36,16 @@ so Windows and Ubuntu binaries have not been cross-compiled from this machine.
 | Windows 10 | Not available on this machine | Not verified | Not verified | Not verified | Not verified | VM or hardware required |
 | Windows 11 | Not available on this machine | Not verified | Not verified | Not verified | Not verified | VM or hardware required |
 | Ubuntu 22.04 X11 | Not available on this machine | Not verified | Not verified | Not verified | Not verified | VM or hardware required |
+| Ubuntu 24.04.4 GNOME X11, ARM64 | Linux 6.17.0-1014-nvidia on DGX Spark | 1920x1080, GNOME text scale 1.0 | Full-screen not exercised | Single connected display | Pass: native debug/release launch, DEB launch, AppImage launch, `_NET_WM_STATE_ABOVE`, and a compositor-applied move/resize to 820x300 at (120,140) | [`evidence/ubuntu-24.04-x11-global-bar.png`](evidence/ubuntu-24.04-x11-global-bar.png), package inventory, `wmctrl`, `xprop`, and `xwininfo`, 2026-08-30 |
 | Ubuntu 24.04 GNOME Wayland, no extension | Not available on this machine | Not verified | Not verified | Not verified | Not verified; graphical fallback must be checked | VM or hardware required |
 | Ubuntu 24.04 GNOME Wayland, extension | Not available on this machine | Not verified | Not verified | Not verified | Not verified | VM or hardware required |
+
+The Ubuntu graphical smoke used an isolated temporary `HOME`, the logged-in
+user's existing X11 session, and software rendering because a process launched
+over SSH did not inherit direct DRM/GBM device access. The resulting process
+stayed alive with one native window and an empty application log. No native
+session content was read. AppImage validation used extract-and-run mode so the
+result does not depend on FUSE being enabled on the verification host.
 
 ## Manual Checklist
 
