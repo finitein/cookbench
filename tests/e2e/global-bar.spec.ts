@@ -93,3 +93,19 @@ test("hovered Stove details stay inside the rendered Bar and close when the poin
   await page.mouse.move(0, 0);
   await expect(tooltip).toHaveCount(0);
 });
+
+test("a local alert emphasizes only its named Stove without changing layout", async ({ page }) => {
+  await page.goto(process.env.COOKBENCH_E2E_URL ?? "http://127.0.0.1:1420");
+  const driver = await e2eDriver(page);
+  const first = stoveFixture(0);
+  const second = stoveFixture(1);
+  await driver.replaceStoves([first, second]);
+
+  const bar = page.getByLabel(/Cookbench global bar with 2 stoves/);
+  const originalHeight = await bar.evaluate((element) => element.clientHeight);
+  await driver.flash(second.id);
+
+  await expect(bar.locator(`[data-stove-id="${second.id}"]`)).toHaveClass(/stove-burner-wrap--alert/);
+  await expect(bar.locator(`[data-stove-id="${first.id}"]`)).not.toHaveClass(/stove-burner-wrap--alert/);
+  await expect(bar).toHaveJSProperty("clientHeight", originalHeight);
+});

@@ -12,12 +12,14 @@ import { activateStove, type LocatorActivationResult } from "./services/locator"
 import { archiveStove, clearCookedStove, setStovePinned } from "./services/stoves";
 import { NotificationSettingsPanel } from "./settings/notifications/NotificationSettingsPanel";
 import { openNotificationSettings } from "./settings/notifications/service";
+import { useLocalAlert } from "./services/localAlerts";
 import type { StoveWire } from "./types/stove";
 
 export default function App() {
   const { stoves } = useStoves();
   const detached = useDetachedWindowStove(stoves);
   const displaySettings = useDisplaySettings();
+  const activeAlertStoveId = useLocalAlert();
   useGlobalBarWindow();
   const [activation, setActivation] = useState<LocatorActivationResult | null>(null);
   const activate = (stove: StoveWire) => {
@@ -32,7 +34,7 @@ export default function App() {
 
   if (detached.isDetached) {
     return detached.stove
-      ? <DetachedStoveWindow stove={detached.stove} onActivate={activate} />
+      ? <DetachedStoveWindow stove={detached.stove} onActivate={activate} activeAlertStoveId={activeAlertStoveId} />
       : <main className="shell shell--detached" aria-label="Cookbench detached Stove" />;
   }
 
@@ -47,6 +49,7 @@ export default function App() {
         onArchiveStove={(stove) => { void archiveStove(stove.id); }}
         onOpenSettings={() => { void openNotificationSettings(); }}
         hoverDetailsEnabled={displaySettings?.hoverDetailsEnabled ?? false}
+        activeAlertStoveId={activeAlertStoveId}
       />
       <LocatorActivationNotice result={activation} />
     </main>

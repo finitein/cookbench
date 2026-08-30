@@ -8,9 +8,10 @@ import { archiveStove, setStovePinned } from "../services/stoves";
 export type DetachedStoveWindowProps = {
   stove: StoveWire;
   onActivate?: (stove: StoveWire) => void;
+  activeAlertStoveId?: string | null;
 };
 
-export function DetachedStoveWindow({ stove, onActivate }: DetachedStoveWindowProps) {
+export function DetachedStoveWindow({ stove, onActivate, activeAlertStoveId }: DetachedStoveWindowProps) {
   useEffect(() => {
     const persistence = createPositionPersistence(({ x, y }) => {
       void detachedStoveTransport.recordPosition(stove.id, x, y);
@@ -44,6 +45,7 @@ export function DetachedStoveWindow({ stove, onActivate }: DetachedStoveWindowPr
         onClear={stove.retainedCompletion ? (current) => { void detachedStoveTransport.clear(current.id); } : undefined}
         onPin={(current) => { void setStovePinned(current.id, !current.pinned); }}
         onArchive={stove.retainedCompletion ? undefined : (current) => { void archiveStove(current.id); }}
+        activeAlertStoveId={activeAlertStoveId}
       />
     </main>
   );

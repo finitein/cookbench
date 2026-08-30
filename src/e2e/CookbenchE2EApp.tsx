@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { DetachedStoveBar } from "../components/DetachedStoveBar";
 import { GlobalBar } from "../components/GlobalBar";
+import { LOCAL_ALERT_TEST_STOVE_ID } from "../services/localAlerts";
 import type { StoveWire } from "../types/stove";
 
 type Placement = { x: number; y: number };
@@ -14,6 +15,7 @@ export type CookbenchE2EDriver = {
   restoreDetached(): Promise<void>;
   clear(stoveId: string): Promise<void>;
   notifications(): Promise<readonly NotificationRecord[]>;
+  flash(stoveId?: string): Promise<void>;
 };
 
 declare global {
@@ -37,6 +39,7 @@ export default function CookbenchE2EApp() {
   const [stoves, setStoves] = useState<StoveWire[]>([]);
   const [placements, setPlacements] = useState<Record<string, Placement>>({});
   const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
+  const [activeAlertStoveId, setActiveAlertStoveId] = useState<string | null>(null);
 
   useEffect(() => {
     const persistPlacements = (next: Record<string, Placement>) => {
@@ -76,6 +79,9 @@ export default function CookbenchE2EApp() {
       async notifications() {
         return notifications;
       },
+      async flash(stoveId = LOCAL_ALERT_TEST_STOVE_ID) {
+        setActiveAlertStoveId(stoveId);
+      },
     };
     return () => {
       delete window.__COOKBENCH_E2E__;
@@ -91,6 +97,7 @@ export default function CookbenchE2EApp() {
         onClearStove={() => undefined}
         onOpenSettings={() => undefined}
         hoverDetailsEnabled
+        activeAlertStoveId={activeAlertStoveId}
       />
       {Object.entries(placements).map(([stoveId, placement]) => {
         const stove = stoves.find((candidate) => candidate.id === stoveId);

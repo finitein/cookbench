@@ -19,6 +19,7 @@ export type StoveBurnerProps = {
   tooltipId?: string;
   renderTooltip?: boolean;
   showHarnessMark?: boolean;
+  flashing?: boolean;
 };
 
 export function StoveBurner({
@@ -35,6 +36,7 @@ export function StoveBurner({
   tooltipId: suppliedTooltipId,
   renderTooltip = true,
   showHarnessMark = true,
+  flashing = false,
 }: StoveBurnerProps) {
   const tooltipId = suppliedTooltipId ?? `stove-tooltip-${stove.id}`;
   const hasTooltip = renderTooltip || Boolean(onTooltipVisibilityChange);
@@ -48,7 +50,7 @@ export function StoveBurner({
   );
 
   return (
-    <div className="stove-burner-wrap">
+    <div className={`stove-burner-wrap${flashing ? " stove-burner-wrap--alert" : ""}`} data-stove-id={stove.id}>
       <button
         className="stove-burner"
         data-testid="stove"

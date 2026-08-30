@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { StoveWire } from "../types/stove";
 import { globalBarFixture, makeStove } from "../stories/GlobalBar.fixture";
 import { GlobalBar } from "./GlobalBar";
+import { LOCAL_ALERT_TEST_STOVE_ID } from "../services/localAlerts";
 
 describe("GlobalBar", () => {
   it("keeps the empty state as a compact branded bar rather than a blank window", () => {
@@ -178,5 +179,18 @@ describe("GlobalBar", () => {
     expect(screen.getByTestId("stove")).toHaveAttribute("data-completion", "none");
     view.rerender(<GlobalBar stoves={[{ ...stove, state: "cooked", retainedCompletion: true }]} />);
     expect(screen.getByTestId("stove")).toHaveAttribute("data-completion", "finishing");
+  });
+
+  it("briefly emphasizes only the Stove named by a local alert", () => {
+    const first = makeStove(0, { id: "stove-first" });
+    const second = makeStove(1, { id: "stove-second" });
+    const view = render(<GlobalBar stoves={[first, second]} activeAlertStoveId="stove-second" />);
+
+    expect(document.querySelector('[data-stove-id="stove-first"]')).not.toHaveClass("stove-burner-wrap--alert");
+    expect(document.querySelector('[data-stove-id="stove-second"]')).toHaveClass("stove-burner-wrap--alert");
+
+    view.rerender(<GlobalBar stoves={[first, second]} activeAlertStoveId={LOCAL_ALERT_TEST_STOVE_ID} />);
+    expect(screen.getByRole("region", { name: "Cookbench global bar with 2 stoves" })).toHaveClass("global-bar--alert");
+    expect(document.querySelector('[data-stove-id="stove-second"]')).not.toHaveClass("stove-burner-wrap--alert");
   });
 });

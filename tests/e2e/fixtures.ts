@@ -60,5 +60,6 @@ export async function e2eDriver(page: Page) {
     restoreDetached: () => page.evaluate(() => window.__COOKBENCH_E2E__!.restoreDetached()),
     clear: (stoveId: string) => page.evaluate((id) => window.__COOKBENCH_E2E__!.clear(id), stoveId),
     notifications: () => page.evaluate(() => window.__COOKBENCH_E2E__!.notifications()),
+    flash: (stoveId?: string) => page.evaluate((id) => window.__COOKBENCH_E2E__!.flash(id), stoveId),
   };
 }

@@ -11,10 +11,11 @@ export type DetachedStoveBarProps = {
   onPin?: (stove: StoveWire) => void;
   onArchive?: (stove: StoveWire) => void;
   onStartDrag?: () => void;
+  activeAlertStoveId?: string | null;
 };
 
 /** One movable view of one Stove; it intentionally shares the global burner. */
-export function DetachedStoveBar({ stove, onActivate, onClose, onClear, onPin, onArchive, onStartDrag }: DetachedStoveBarProps) {
+export function DetachedStoveBar({ stove, onActivate, onClose, onClear, onPin, onArchive, onStartDrag, activeAlertStoveId = null }: DetachedStoveBarProps) {
   return (
     <section
       className="detached-stove-bar"
@@ -35,6 +36,7 @@ export function DetachedStoveBar({ stove, onActivate, onClose, onClear, onPin, o
         onArchive={onArchive}
         renderTooltip={false}
         showHarnessMark={false}
+        flashing={activeAlertStoveId === stove.id}
       />
       <button
         className="detached-stove-bar__close"

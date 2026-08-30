@@ -76,4 +76,12 @@ describe("DetachedStoveBar", () => {
 
     expect(onStartDrag).toHaveBeenCalledOnce();
   });
+
+  it("emphasizes its Stove only when the local alert targets it", () => {
+    const view = render(<DetachedStoveBar stove={stove} activeAlertStoveId="another-stove" />);
+    expect(document.querySelector(".stove-burner-wrap")).not.toHaveClass("stove-burner-wrap--alert");
+
+    view.rerender(<DetachedStoveBar stove={stove} activeAlertStoveId={stove.id} />);
+    expect(document.querySelector(".stove-burner-wrap")).toHaveClass("stove-burner-wrap--alert");
+  });
 });

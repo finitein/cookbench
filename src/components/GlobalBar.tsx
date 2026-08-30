@@ -4,6 +4,7 @@ import mark from "../assets/cookbench-mark.svg";
 import { arrangeBenches, stoveCapacityForWidth } from "./benchLayout";
 import { StoveBurner } from "./StoveBurner";
 import { StoveTooltip } from "./StoveTooltip";
+import { LOCAL_ALERT_TEST_STOVE_ID } from "../services/localAlerts";
 import "./global-bar.css";
 
 export type GlobalBarProps = {
@@ -15,6 +16,7 @@ export type GlobalBarProps = {
   onArchiveStove?: (stove: StoveWire) => void;
   onOpenSettings?: () => void;
   hoverDetailsEnabled?: boolean;
+  activeAlertStoveId?: string | null;
 };
 
 function usableBarWidth(): number {
@@ -57,6 +59,7 @@ export function GlobalBar({
   onArchiveStove,
   onOpenSettings,
   hoverDetailsEnabled = false,
+  activeAlertStoveId = null,
 }: GlobalBarProps) {
   const previousStates = useRef(new Map<string, StoveState>());
   const priorStates = previousStates.current;
@@ -77,7 +80,7 @@ export function GlobalBar({
 
   return (
     <section
-      className={`global-bar${stoves.length === 0 ? " global-bar--empty" : ""}${tooltipStove ? " global-bar--tooltip-open" : ""}`}
+      className={`global-bar${stoves.length === 0 ? " global-bar--empty" : ""}${tooltipStove ? " global-bar--tooltip-open" : ""}${activeAlertStoveId === LOCAL_ALERT_TEST_STOVE_ID ? " global-bar--alert" : ""}`}
       aria-label={`Cookbench global bar with ${stoves.length} stoves`}
       data-layout={layout.grouped ? "grouped" : "mixed"}
     >
@@ -117,6 +120,7 @@ export function GlobalBar({
                     isInitialSnapshot={!priorStates.has(stove.id)}
                     tooltipId={hoverDetailsEnabled ? "global-bar-tooltip" : undefined}
                     renderTooltip={false}
+                    flashing={activeAlertStoveId === stove.id}
                     onTooltipVisibilityChange={hoverDetailsEnabled
                       ? (visible, value) => setTooltipStoveId((current) => visible ? value.id : current === value.id ? null : current)
                       : undefined}
