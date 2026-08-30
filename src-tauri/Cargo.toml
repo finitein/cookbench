@@ -13,6 +13,7 @@ tauri-build = { version = "2.2.0", features = [] }
 
 [dependencies]
 tauri = { version = "2.8.1", features = ["tray-icon"] }
+tauri-plugin-notification = "2"
 cookbench-core = { path = "../crates/cookbench-core" }
 cookbench-adapters = { path = "../crates/cookbench-adapters" }
 cookbench-bridge = { path = "../crates/cookbench-bridge" }
