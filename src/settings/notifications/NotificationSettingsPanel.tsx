@@ -3,8 +3,13 @@ import { useEffect, useState } from "react";
 import type { NotificationDestination } from "./NotificationSettings";
 import {
   configureNotificationDestination,
+  configureLocalNotificationSettings,
+  getLocalNotificationSettings,
   getNotificationSettings,
   sendTestNotification,
+  testLocalNotification,
+  type LocalNotificationChannel,
+  type LocalNotificationSettingsWire,
   type NotificationDestinationWire,
   type NotificationEvent,
 } from "./service";
@@ -36,18 +41,46 @@ const EVENTS: Array<{ id: NotificationEvent; label: string }> = [
   { id: "stoveCleared", label: "Stove Cleared" },
 ];
 
+const LOCAL_CHANNELS: Array<{ id: LocalNotificationChannel; label: string }> = [
+  { id: "sound", label: "Sound" },
+  { id: "systemBanner", label: "System notification" },
+  { id: "barFlash", label: "Flash Stove" },
+  { id: "systemAttention", label: "Request attention" },
+];
+
+const DEFAULT_LOCAL_NOTIFICATION_SETTINGS: LocalNotificationSettingsWire = {
+  sound: true,
+  systemBanner: false,
+  barFlash: false,
+  systemAttention: false,
+  events: ["needsHuman", "cooked", "failed", "disconnected"],
+};
+
 export function NotificationSettingsPanel() {
   const [tab, setTab] = useState<"general" | "archive">("general");
   const [destinations, setDestinations] = useState<NotificationDestinationWire[]>([]);
+  const [localSettings, setLocalSettings] = useState<LocalNotificationSettingsWire>(
+    DEFAULT_LOCAL_NOTIFICATION_SETTINGS,
+  );
   const [secrets, setSecrets] = useState<Partial<Record<NotificationDestination, string>>>({});
   const [busy, setBusy] = useState<NotificationDestination | null>(null);
+  const [localBusy, setLocalBusy] = useState<"save" | LocalNotificationChannel | null>(null);
   const [status, setStatus] = useState("");
 
   useEffect(() => {
     void getNotificationSettings().then(setDestinations).catch(() => {
       setStatus("Notification settings are unavailable.");
     });
+    void getLocalNotificationSettings().then(setLocalSettings).catch(() => {
+      setStatus("Local alert settings are unavailable.");
+    });
   }, []);
+
+  useEffect(() => {
+    if (!status) return undefined;
+    const timeout = window.setTimeout(() => setStatus(""), 20_000);
+    return () => window.clearTimeout(timeout);
+  }, [status]);
 
   const update = (
     destination: NotificationDestination,
@@ -93,6 +126,43 @@ export function NotificationSettingsPanel() {
     }
   };
 
+  const updateLocal = (change: Partial<LocalNotificationSettingsWire>) => {
+    setLocalSettings((current) => ({ ...current, ...change }));
+  };
+
+  const saveLocal = async () => {
+    setLocalBusy("save");
+    setStatus("");
+    try {
+      setLocalSettings(await configureLocalNotificationSettings(localSettings));
+      setStatus("Local alerts saved.");
+    } catch {
+      setStatus("Local alerts could not be saved.");
+    } finally {
+      setLocalBusy(null);
+    }
+  };
+
+  const testLocal = async (channel: LocalNotificationChannel) => {
+    setLocalBusy(channel);
+    setStatus("");
+    try {
+      const result = await testLocalNotification(channel);
+      const label = LOCAL_CHANNELS.find((item) => item.id === channel)?.label ?? "Local alert";
+      setStatus(
+        result === "delivered"
+          ? `${label} test sent.`
+          : result === "permissionDenied"
+            ? `${label} needs system notification permission.`
+            : `${label} is unavailable on this system.`,
+      );
+    } catch {
+      setStatus("Local alert test failed.");
+    } finally {
+      setLocalBusy(null);
+    }
+  };
+
   return (
     <main className="notification-settings" aria-label="Cookbench settings">
       <div className="notification-settings__surface">
@@ -108,6 +178,53 @@ export function NotificationSettingsPanel() {
         </div>
         {tab === "archive" ? <ArchiveSettingsPanel /> : <>
         <DisplaySettingsPanel />
+        <section aria-labelledby="local-alerts-title">
+          <div className="notification-settings__section-heading">
+            <h2 id="local-alerts-title">Local alerts</h2>
+          </div>
+          <div className="notification-settings__local-alerts">
+            {LOCAL_CHANNELS.map((channel) => (
+              <div className="notification-settings__local-channel" key={channel.id}>
+                <label className="notification-settings__toggle">
+                  <input
+                    type="checkbox"
+                    checked={localSettings[channel.id]}
+                    onChange={(event) => updateLocal({ [channel.id]: event.target.checked })}
+                  />
+                  <span>{channel.label}</span>
+                </label>
+                <button
+                  type="button"
+                  aria-label={`Test ${channel.label}`}
+                  disabled={localBusy !== null}
+                  onClick={() => void testLocal(channel.id)}
+                >
+                  Test
+                </button>
+              </div>
+            ))}
+            <fieldset>
+              <legend>States</legend>
+              {EVENTS.map((event) => (
+                <label key={event.id}>
+                  <input
+                    type="checkbox"
+                    checked={localSettings.events.includes(event.id)}
+                    onChange={(input) => updateLocal({
+                      events: input.target.checked
+                        ? [...localSettings.events, event.id]
+                        : localSettings.events.filter((candidate) => candidate !== event.id),
+                    })}
+                  />
+                  {event.label}
+                </label>
+              ))}
+            </fieldset>
+            <div className="notification-settings__actions">
+              <button type="button" disabled={localBusy !== null} onClick={() => void saveLocal()}>Save</button>
+            </div>
+          </div>
+        </section>
         <section aria-labelledby="notification-settings-title">
           <div className="notification-settings__section-heading">
             <h2 id="notification-settings-title">Notifications</h2>
