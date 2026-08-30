@@ -31,6 +31,7 @@ pub enum LocalAlertChannel {
 #[serde(rename_all = "camelCase")]
 pub enum LocalAlertResult {
     Delivered,
+    Queued,
     PermissionDenied,
     Unavailable,
 }
@@ -270,32 +271,49 @@ fn sound_commands_for_platform(platform: &str) -> &'static [SystemSoundCommand] 
 }
 
 fn play_system_sound() -> LocalAlertResult {
-    for sound in sound_commands_for_platform(std::env::consts::OS) {
-        let mut command = Command::new(sound.program);
-        command.args(sound.args);
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            command.creation_flags(0x0800_0000);
-        }
-        if let Ok(child) = command.spawn() {
-            thread::spawn(move || wait_bounded(child, SOUND_TIMEOUT));
-            return LocalAlertResult::Delivered;
-        }
+    let commands = sound_commands_for_platform(std::env::consts::OS);
+    if commands.is_empty() {
+        return LocalAlertResult::Unavailable;
     }
-    LocalAlertResult::Unavailable
+
+    thread::Builder::new()
+        .name("cookbench-local-sound".to_owned())
+        .spawn(move || {
+            first_successful_sound(commands, run_system_sound_command);
+        })
+        .map_or(LocalAlertResult::Unavailable, |_| LocalAlertResult::Queued)
 }
 
-fn wait_bounded(mut child: Child, timeout: Duration) {
+fn first_successful_sound(
+    commands: &[SystemSoundCommand],
+    mut run: impl FnMut(SystemSoundCommand) -> bool,
+) -> bool {
+    commands.iter().copied().any(&mut run)
+}
+
+fn run_system_sound_command(sound: SystemSoundCommand) -> bool {
+    let mut command = Command::new(sound.program);
+    command.args(sound.args);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000);
+    }
+    command
+        .spawn()
+        .is_ok_and(|child| wait_bounded(child, SOUND_TIMEOUT))
+}
+
+fn wait_bounded(mut child: Child, timeout: Duration) -> bool {
     let started = Instant::now();
     loop {
         match child.try_wait() {
-            Ok(Some(_)) => return,
+            Ok(Some(status)) => return status.success(),
             Ok(None) if started.elapsed() < timeout => thread::sleep(Duration::from_millis(20)),
             _ => {
                 let _ = child.kill();
                 let _ = child.wait();
-                return;
+                return false;
             }
         }
     }
@@ -303,4 +321,32 @@ fn wait_bounded(mut child: Child, timeout: Duration) {
 
 fn bounded(value: &str, max_chars: usize) -> String {
     value.chars().take(max_chars).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{first_successful_sound, SystemSoundCommand};
+
+    #[test]
+    fn sound_candidates_continue_after_a_nonzero_exit() {
+        let commands = [
+            SystemSoundCommand {
+                program: "first",
+                args: &[],
+            },
+            SystemSoundCommand {
+                program: "second",
+                args: &[],
+            },
+        ];
+        let mut attempted = Vec::new();
+
+        let delivered = first_successful_sound(&commands, |command| {
+            attempted.push(command.program);
+            command.program == "second"
+        });
+
+        assert!(delivered);
+        assert_eq!(attempted, ["first", "second"]);
+    }
 }

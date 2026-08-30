@@ -76,6 +76,19 @@ describe("NotificationSettings", () => {
     expect(screen.getByText("System notification needs system notification permission.")).toBeInTheDocument();
   });
 
+  it("reports an asynchronously queued sound test without claiming synchronous delivery", async () => {
+    const service = await import("./service");
+    vi.mocked(service.testLocalNotification).mockResolvedValueOnce("queued");
+    render(<NotificationSettingsPanel />);
+
+    const section = screen.getByRole("heading", { name: "Local alerts" }).closest("section");
+    expect(section).not.toBeNull();
+    fireEvent.click(within(section!).getByRole("button", { name: "Test Sound" }));
+
+    await waitFor(() => expect(service.testLocalNotification).toHaveBeenCalledWith("sound"));
+    expect(screen.getByText("Sound test sent.")).toBeInTheDocument();
+  });
+
   it("removes local alert feedback after twenty seconds", async () => {
     render(<NotificationSettingsPanel />);
     const section = (await screen.findByRole("heading", { name: "Local alerts" })).closest("section");

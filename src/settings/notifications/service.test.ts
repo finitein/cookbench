@@ -44,9 +44,9 @@ describe("local notification service", () => {
   });
 
   it("tests a local channel through an opaque channel id", async () => {
-    invoke.mockResolvedValueOnce("delivered");
+    invoke.mockResolvedValueOnce("queued");
 
-    await expect(testLocalNotification("sound")).resolves.toBe("delivered");
+    await expect(testLocalNotification("sound")).resolves.toBe("queued");
     expect(invoke).toHaveBeenCalledWith("test_local_notification", { channel: "sound" });
   });
 });

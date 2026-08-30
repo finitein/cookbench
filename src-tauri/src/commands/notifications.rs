@@ -137,7 +137,7 @@ pub fn configure_local_notification_settings(
     if input.system_banner && !current.preferences.local_notifications.system_banner {
         let effects = TauriLocalAlertEffects::new(&app);
         match effects.request_banner_permission() {
-            LocalAlertResult::Delivered => {}
+            LocalAlertResult::Delivered | LocalAlertResult::Queued => {}
             LocalAlertResult::PermissionDenied => {
                 return Err("System notifications are not allowed".to_owned());
             }

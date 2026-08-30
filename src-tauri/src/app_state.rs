@@ -1465,6 +1465,9 @@ fn is_superseded(previous: Option<&EventMetadata>, incoming: &EventMetadata) -> 
     let Some(previous) = previous else {
         return false;
     };
+    if incoming == previous {
+        return true;
+    }
     match incoming.sequence.cmp(&previous.sequence) {
         std::cmp::Ordering::Less => true,
         std::cmp::Ordering::Greater => false,
@@ -1679,7 +1682,8 @@ mod notification_tests {
     };
 
     use super::{
-        crossed_milestone, notification_event, LocatorCapability, StoveStore, StoveSummary,
+        crossed_milestone, is_superseded, notification_event, LocatorCapability, StoveStore,
+        StoveSummary,
     };
 
     #[test]
@@ -1702,6 +1706,17 @@ mod notification_tests {
             notification_event(&EventKind::PermissionRequested, StoveState::Cooking),
             None
         );
+    }
+
+    #[test]
+    fn identical_terminal_replay_is_inert_after_alert_dedupe_window() {
+        let terminal =
+            EventMetadata::new(EventSource::StructuredSession, 100, 42, 1_700_000_000_000);
+
+        // Wall-clock time is intentionally not part of source ordering. Even if
+        // the same file record is replayed after the one-second alert window,
+        // it remains the same observation and cannot trigger side effects again.
+        assert!(is_superseded(Some(&terminal), &terminal));
     }
 
     #[test]

@@ -150,7 +150,7 @@ export function NotificationSettingsPanel() {
       const result = await testLocalNotification(channel);
       const label = LOCAL_CHANNELS.find((item) => item.id === channel)?.label ?? "Local alert";
       setStatus(
-        result === "delivered"
+        result === "delivered" || result === "queued"
           ? `${label} test sent.`
           : result === "permissionDenied"
             ? `${label} needs system notification permission.`

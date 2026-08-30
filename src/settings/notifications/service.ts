@@ -42,7 +42,11 @@ export type LocalNotificationSettingsWire = {
   events: NotificationEvent[];
 };
 
-export type LocalNotificationTestResult = "delivered" | "permissionDenied" | "unavailable";
+export type LocalNotificationTestResult =
+  | "delivered"
+  | "queued"
+  | "permissionDenied"
+  | "unavailable";
 
 export function openNotificationSettings(): Promise<void> {
   return invoke<void>("open_notification_settings");

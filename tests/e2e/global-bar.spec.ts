@@ -109,3 +109,16 @@ test("a local alert emphasizes only its named Stove without changing layout", as
   await expect(bar.locator(`[data-stove-id="${first.id}"]`)).not.toHaveClass(/stove-burner-wrap--alert/);
   await expect(bar).toHaveJSProperty("clientHeight", originalHeight);
 });
+
+test("reduced motion keeps local alert emphasis static", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto(process.env.COOKBENCH_E2E_URL ?? "http://127.0.0.1:1420");
+  const driver = await e2eDriver(page);
+  const stove = stoveFixture(0);
+  await driver.replaceStoves([stove]);
+  await driver.flash(stove.id);
+
+  const burner = page.locator(`[data-stove-id="${stove.id}"] .stove-burner`);
+  await expect(burner).toHaveCSS("animation-name", "none");
+  await expect(burner).not.toHaveCSS("box-shadow", "none");
+});
