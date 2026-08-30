@@ -7,7 +7,8 @@ use std::{
 use cookbench_core::{
     domain::{EventMetadata, EventSource, HarnessId, HostIdentity, StoveIdentity, StoveState},
     persistence::{
-        ClearCursor, PersistedConfig, PersistedState, RetainedStove, RetainedStovePresentation,
+        ArchiveReason, ArchivedSession, ClearCursor, PersistedConfig, PersistedState,
+        PinnedSession, RetainedStove, RetainedStovePresentation, SessionRecord,
     },
 };
 use cookbench_desktop_lib::{
@@ -46,6 +47,25 @@ fn event(sequence: u64, timestamp_ms: u64) -> EventMetadata {
     EventMetadata::new(EventSource::StructuredSession, 100, sequence, timestamp_ms)
 }
 
+fn session(state: StoveState) -> SessionRecord {
+    session_with_id("session-42", state)
+}
+
+fn session_with_id(native_session_id: &str, state: StoveState) -> SessionRecord {
+    SessionRecord::new(
+        StoveIdentity::new(
+            HostIdentity::local("test-host"),
+            HarnessId::Codex,
+            native_session_id,
+        ),
+        Some(format!("/safe/{native_session_id}.jsonl")),
+        800,
+        RetainedStovePresentation::new("cookbench", "/safe/cookbench"),
+        state,
+    )
+    .expect("valid session")
+}
+
 #[test]
 fn pre_release_replay_cache_is_migrated_without_losing_clear_cursors() {
     let directory = TestDirectory::new();
@@ -54,6 +74,9 @@ fn pre_release_replay_cache_is_migrated_without_losing_clear_cursors() {
         version: 1,
         retained: vec![RetainedStove::new(locator(), 800)],
         clear_cursors: vec![ClearCursor::new(locator(), 7, 700)],
+        pinned: Vec::new(),
+        archived: Vec::new(),
+        tracked: Vec::new(),
     };
     fs::write(
         persistence.state_path(),
@@ -152,11 +175,15 @@ fn manual_clear_survives_restart_and_stale_replay_stays_hidden() {
         .persist_transition(&mut state, locator(), StoveState::Cooked, &event(8, 800))
         .unwrap();
     persistence
+        .pin_session(&mut state, session(StoveState::Cooked), 850)
+        .unwrap();
+    persistence
         .clear_cooked(&mut state, locator(), &event(9, 900))
         .unwrap();
 
     let restarted = DesktopPersistence::in_app_data(&directory.0).load();
     assert!(restarted.state.retained.is_empty());
+    assert!(restarted.state.pinned.is_empty());
     assert!(restarted.state.is_hidden(&locator(), &event(9, 900)));
     assert!(persistence
         .merge_retained_with_discovery(&restarted.state, &[])
@@ -228,4 +255,254 @@ fn newer_native_observation_supersedes_retained_completion() {
         }],
     );
     assert!(merged.is_empty());
+}
+
+#[test]
+fn v2_state_is_bumped_without_losing_existing_data() {
+    let directory = TestDirectory::new();
+    let persistence = DesktopPersistence::in_app_data(&directory.0);
+    fs::write(
+        persistence.state_path(),
+        r#"{"version":2,"retained":[],"clear_cursors":[]}"#,
+    )
+    .unwrap();
+
+    let loaded = persistence.load();
+    assert!(loaded.issues.is_empty());
+    assert_eq!(loaded.state.version, PersistedState::CURRENT_VERSION);
+    assert!(loaded.state.pinned.is_empty());
+    assert!(loaded.state.archived.is_empty());
+}
+
+#[test]
+fn manual_archive_removes_pin_and_restore_can_repin() {
+    let directory = TestDirectory::new();
+    let persistence = DesktopPersistence::in_app_data(&directory.0);
+    let mut state = PersistedState::default();
+    assert!(persistence
+        .pin_session(&mut state, session(StoveState::Cooking), 900)
+        .unwrap());
+    assert!(persistence.is_pinned(&state, &locator()));
+
+    assert!(persistence
+        .archive_session(
+            &mut state,
+            session(StoveState::Cooking),
+            1_000,
+            ArchiveReason::Manual,
+        )
+        .unwrap());
+    assert!(!persistence.is_pinned(&state, &locator()));
+    assert!(persistence.is_archived(&state, &locator()));
+    assert_eq!(
+        persistence.archive_snapshot(&state)[0].reason,
+        ArchiveReason::Manual
+    );
+
+    let restored = persistence
+        .restore_session(&mut state, &locator(), true, 1_100)
+        .unwrap()
+        .expect("archived session restored");
+    assert_eq!(restored.reason, ArchiveReason::Manual);
+    assert!(persistence.is_pinned(&state, &locator()));
+    assert!(!persistence.is_archived(&state, &locator()));
+}
+
+#[test]
+fn tracked_session_is_removed_when_archived_and_restored_when_active() {
+    let directory = TestDirectory::new();
+    let persistence = DesktopPersistence::in_app_data(&directory.0);
+    let mut state = PersistedState::default();
+    assert!(persistence
+        .track_session(&mut state, session(StoveState::NeedsHuman))
+        .unwrap());
+    assert_eq!(state.tracked.len(), 1);
+    assert!(persistence
+        .archive_session(
+            &mut state,
+            session(StoveState::NeedsHuman),
+            1_000,
+            ArchiveReason::Expired,
+        )
+        .unwrap());
+    assert!(state.tracked.is_empty());
+    persistence
+        .restore_session(&mut state, &locator(), false, 1_100)
+        .unwrap();
+    assert_eq!(state.tracked.len(), 1);
+}
+
+#[test]
+fn pinned_session_is_restored_as_one_pinned_stove_after_restart() {
+    let directory = TestDirectory::new();
+    let persistence = DesktopPersistence::in_app_data(&directory.0);
+    let mut state = PersistedState::default();
+    persistence
+        .pin_session(&mut state, session(StoveState::Cooking), 900)
+        .unwrap();
+
+    let app_state = AppState::default();
+    app_state.initialize_persistence(&directory.0);
+    let snapshot = app_state.stoves.snapshot();
+
+    assert_eq!(snapshot.stoves.len(), 1);
+    assert_eq!(snapshot.stoves[0].state, StoveStateWire::Cooking);
+    assert!(snapshot.stoves[0].pinned);
+}
+
+#[test]
+fn stale_tracked_session_moves_to_archive_during_startup() {
+    let directory = TestDirectory::new();
+    let persistence = DesktopPersistence::in_app_data(&directory.0);
+    let mut state = PersistedState::default();
+    persistence
+        .track_session(&mut state, session(StoveState::Failed))
+        .unwrap();
+
+    let app_state = AppState::default();
+    app_state.initialize_persistence(&directory.0);
+
+    assert!(app_state.stoves.snapshot().stoves.is_empty());
+    let archived = app_state.archived_sessions();
+    assert_eq!(archived.len(), 1);
+    assert_eq!(archived[0].last_state, StoveStateWire::Failed);
+}
+
+#[test]
+fn expired_inventory_is_imported_atomically_without_overriding_pins() {
+    let directory = TestDirectory::new();
+    let persistence = DesktopPersistence::in_app_data(&directory.0);
+    let mut state = PersistedState::default();
+    persistence
+        .pin_session(&mut state, session(StoveState::Cooking), 900)
+        .unwrap();
+    let other = SessionRecord::new(
+        StoveIdentity::new(
+            HostIdentity::local("test-host"),
+            HarnessId::ClaudeCode,
+            "expired-session",
+        ),
+        Some("/safe/expired.jsonl".into()),
+        100,
+        RetainedStovePresentation::new("expired", "/safe/expired"),
+        StoveState::Disconnected,
+    )
+    .unwrap();
+
+    assert_eq!(
+        persistence
+            .archive_expired_sessions(&mut state, [session(StoveState::Cooking), other], 1_000)
+            .unwrap(),
+        1
+    );
+    assert!(persistence.is_pinned(&state, &locator()));
+    assert_eq!(state.archived.len(), 1);
+    assert_eq!(
+        state.archived[0].session.locator.native_session_id,
+        "expired-session"
+    );
+}
+
+#[test]
+fn expired_inventory_does_not_resurrect_a_cleared_session() {
+    let directory = TestDirectory::new();
+    let persistence = DesktopPersistence::in_app_data(&directory.0);
+    let mut state = PersistedState::default();
+    persistence
+        .clear_cooked(&mut state, locator(), &event(9, 900))
+        .unwrap();
+    let mut expired = session(StoveState::Disconnected);
+    expired.observed_at_ms = 800;
+
+    assert_eq!(
+        persistence
+            .archive_expired_sessions(&mut state, [expired], 1_000)
+            .unwrap(),
+        0
+    );
+    assert!(state.archived.is_empty());
+}
+
+#[test]
+fn full_pin_set_rejects_a_new_pin_without_mutating_other_session_records() {
+    let directory = TestDirectory::new();
+    let persistence = DesktopPersistence::in_app_data(&directory.0);
+    let target = session(StoveState::Cooking);
+    let mut state = PersistedState {
+        pinned: (0..1_024)
+            .map(|index| PinnedSession {
+                session: session_with_id(&format!("pinned-{index}"), StoveState::Cooking),
+                pinned_at_ms: 900,
+            })
+            .collect(),
+        archived: vec![ArchivedSession {
+            session: target.clone(),
+            archived_at_ms: 950,
+            reason: ArchiveReason::Manual,
+        }],
+        tracked: vec![target.clone()],
+        ..PersistedState::default()
+    };
+    let before = state.clone();
+
+    assert!(!persistence.pin_session(&mut state, target, 1_000).unwrap());
+    assert_eq!(state, before);
+}
+
+#[test]
+fn full_manual_archive_rejects_a_new_entry_without_dropping_pin_or_tracking() {
+    let directory = TestDirectory::new();
+    let persistence = DesktopPersistence::in_app_data(&directory.0);
+    let target = session(StoveState::Failed);
+    let mut state = PersistedState {
+        pinned: vec![PinnedSession {
+            session: target.clone(),
+            pinned_at_ms: 900,
+        }],
+        archived: (0..4_096)
+            .map(|index| ArchivedSession {
+                session: session_with_id(&format!("archived-{index}"), StoveState::Disconnected),
+                archived_at_ms: index,
+                reason: ArchiveReason::Manual,
+            })
+            .collect(),
+        tracked: vec![target.clone()],
+        ..PersistedState::default()
+    };
+    let before = state.clone();
+
+    assert!(!persistence
+        .archive_session(&mut state, target, 1_000, ArchiveReason::Manual)
+        .unwrap());
+    assert_eq!(state, before);
+}
+
+#[test]
+fn failed_archive_writes_leave_restore_and_inventory_state_unchanged() {
+    let directory = TestDirectory::new();
+    let blocked_parent = directory.0.join("not-a-directory");
+    fs::write(&blocked_parent, b"block atomic state writes").unwrap();
+    let persistence = DesktopPersistence::in_app_data(&blocked_parent);
+
+    let target = session(StoveState::Cooking);
+    let mut restore_state = PersistedState {
+        archived: vec![ArchivedSession {
+            session: target.clone(),
+            archived_at_ms: 900,
+            reason: ArchiveReason::Manual,
+        }],
+        ..PersistedState::default()
+    };
+    let restore_before = restore_state.clone();
+    assert!(persistence
+        .restore_session(&mut restore_state, &target.locator, false, 1_000)
+        .is_err());
+    assert_eq!(restore_state, restore_before);
+
+    let mut inventory_state = PersistedState::default();
+    let inventory_before = inventory_state.clone();
+    assert!(persistence
+        .archive_expired_sessions(&mut inventory_state, [target], 1_000)
+        .is_err());
+    assert_eq!(inventory_state, inventory_before);
 }

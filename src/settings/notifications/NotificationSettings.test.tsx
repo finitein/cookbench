@@ -34,6 +34,17 @@ describe("NotificationSettings", () => {
     expect(screen.queryByText("secret://Cookbench/telegram")).not.toBeInTheDocument();
   });
 
+  it("keeps archive recovery in its own Settings tab", async () => {
+    render(<NotificationSettingsPanel />);
+
+    const archive = screen.getByRole("tab", { name: "Archive" });
+    expect(screen.getByRole("tab", { name: "General" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(archive);
+    await waitFor(() => expect(archive).toHaveAttribute("aria-selected", "true"));
+    expect(screen.getByRole("heading", { name: "Archive" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Notifications" })).not.toBeInTheDocument();
+  });
+
   it("runs a test only for an enabled channel", async () => {
     const onTest = vi.fn(async () => {});
     render(<NotificationSettings destinations={[{ destination: "slack", enabled: true, secretReference: null }]} onChange={() => {}} onTest={onTest} />);

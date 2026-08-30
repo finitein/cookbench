@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::Path,
     sync::{Mutex, RwLock},
     time::{SystemTime, UNIX_EPOCH},
@@ -12,7 +12,10 @@ use cookbench_core::{
     },
     locator::SessionLocator,
     notifications::{DestinationId, NotificationContext, NotificationEventKind},
-    persistence::{PersistedConfig, PersistedState, RetainedStovePresentation},
+    persistence::{
+        ArchiveReason, ArchivedSession, PersistedConfig, PersistedState, RetainedStovePresentation,
+        SessionRecord,
+    },
     state_machine,
 };
 use serde::{Deserialize, Serialize};
@@ -56,6 +59,7 @@ struct StoreInner {
     entries: HashMap<String, StoredStove>,
     locators: HashMap<String, SessionLocator>,
     source_cursors: HashMap<String, HashMap<EventSource, EventMetadata>>,
+    pinned: HashSet<String>,
 }
 
 struct StoredStove {
@@ -79,6 +83,29 @@ pub struct StoveSnapshot {
     pub stoves: Vec<StoveWire>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArchivedSessionWire {
+    pub id: String,
+    pub harness: HarnessWire,
+    pub host: HostWire,
+    pub project_label: String,
+    pub project_root_display: String,
+    pub session_identity: String,
+    pub last_state: StoveStateWire,
+    pub reason: ArchiveReasonWire,
+    pub archived_at_ms: u64,
+    pub source_available: bool,
+    pub pinned: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ArchiveReasonWire {
+    Expired,
+    Manual,
+}
+
 /// Bounded local presentation summaries. These fields are deliberately not a
 /// transcript cache: adapters may only provide concise session metadata.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -89,6 +116,12 @@ pub struct StoveSummary {
     pub current_action: Option<String>,
     pub next_action: Option<String>,
     pub elapsed_ms: Option<u64>,
+    /// Native session file metadata used only for the 48-hour visibility rule.
+    /// It is never serialized to the frontend.
+    pub source_modified_at_ms: Option<u64>,
+    /// Local receipt time for sources without filesystem metadata, including
+    /// SSH. It is kept out of the frontend wire and used only for expiry.
+    pub last_observed_at_ms: Option<u64>,
 }
 
 impl StoveSummary {
@@ -109,7 +142,19 @@ impl StoveSummary {
             current_action: current_action.map(bounded),
             next_action: next_action.map(bounded),
             elapsed_ms,
+            source_modified_at_ms: None,
+            last_observed_at_ms: None,
         }
+    }
+
+    pub fn with_source_modified_at_ms(mut self, modified_at_ms: Option<u64>) -> Self {
+        self.source_modified_at_ms = modified_at_ms;
+        self
+    }
+
+    pub fn with_last_observed_at_ms(mut self, observed_at_ms: Option<u64>) -> Self {
+        self.last_observed_at_ms = observed_at_ms;
+        self
     }
 
     fn for_project(project: &ProjectIdentity) -> Self {
@@ -143,6 +188,7 @@ pub struct StoveWire {
     pub progress: Option<ProgressWire>,
     pub locator_capability: LocatorCapability,
     pub retained_completion: bool,
+    pub pinned: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -210,8 +256,29 @@ impl std::error::Error for StoreError {}
 impl AppState {
     pub fn initialize_persistence(&self, app_data_directory: &Path) {
         let service = DesktopPersistence::in_app_data(app_data_directory);
-        let loaded = service.load();
+        let mut loaded = service.load();
+        let cutoff = current_time_ms().saturating_sub(SESSION_VISIBILITY_MS);
+        let pinned_identities = loaded
+            .state
+            .pinned
+            .iter()
+            .map(|pinned| pinned.session.locator.clone())
+            .collect::<HashSet<_>>();
+        for tracked in loaded.state.tracked.clone() {
+            if tracked.last_state != StoveState::Cooked
+                && tracked.observed_at_ms < cutoff
+                && !pinned_identities.contains(&tracked.locator)
+            {
+                let _ = service.archive_session(
+                    &mut loaded.state,
+                    tracked,
+                    current_time_ms(),
+                    ArchiveReason::Expired,
+                );
+            }
+        }
         let retained = loaded.state.retained.clone();
+        let pinned = loaded.state.pinned.clone();
         *self
             .persistence
             .lock()
@@ -257,6 +324,29 @@ impl AppState {
                 ),
             );
         }
+        for pinned_session in pinned {
+            if pinned_session.session.is_valid() {
+                self.restore_session_record(&pinned_session.session, true);
+            }
+        }
+    }
+
+    pub fn pinned_local_paths(&self) -> Vec<std::path::PathBuf> {
+        self.persistence
+            .lock()
+            .expect("desktop persistence lock poisoned")
+            .as_ref()
+            .map(|runtime| {
+                runtime
+                    .state
+                    .pinned
+                    .iter()
+                    .filter(|entry| entry.session.locator.host.kind == HostKind::Local)
+                    .filter_map(|entry| entry.session.native_locator.as_ref())
+                    .map(std::path::PathBuf::from)
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     pub fn persisted_config(&self) -> PersistedConfig {
@@ -284,6 +374,298 @@ impl AppState {
             .service
             .save_config(&runtime.config)
             .map_err(|error| error.to_string())
+    }
+
+    pub fn set_pinned_and_emit<R: tauri::Runtime>(
+        &self,
+        app: &tauri::AppHandle<R>,
+        requested_stove_id: &str,
+        pinned: bool,
+    ) -> Result<(), AppStateError> {
+        let _serial = self.apply_lock.lock().expect("stove apply lock poisoned");
+        let record = self.session_record_for(requested_stove_id)?;
+        {
+            let mut persistence = self
+                .persistence
+                .lock()
+                .expect("desktop persistence lock poisoned");
+            let runtime = persistence
+                .as_mut()
+                .ok_or_else(|| AppStateError::Persistence("persistence is unavailable".into()))?;
+            if pinned {
+                if !runtime
+                    .service
+                    .pin_session(&mut runtime.state, record.clone(), current_time_ms())
+                    .map_err(|error| AppStateError::Persistence(error.to_string()))?
+                {
+                    return Err(AppStateError::Persistence(
+                        "the pinned session list is full".into(),
+                    ));
+                }
+            } else {
+                runtime
+                    .service
+                    .unpin_session(&mut runtime.state, &record.locator)
+                    .map_err(|error| AppStateError::Persistence(error.to_string()))?;
+                if record.last_state != StoveState::Cooked {
+                    runtime
+                        .service
+                        .track_session(&mut runtime.state, record.clone())
+                        .map_err(|error| AppStateError::Persistence(error.to_string()))?;
+                }
+            }
+        }
+        let change = self
+            .stoves
+            .set_pinned(requested_stove_id, pinned)
+            .ok_or(AppStateError::UnknownStove)?;
+        crate::events::emit_stove_change(app, change).map_err(AppStateError::Emit)?;
+        crate::platform::publish_optional_gnome_snapshot(&self.stoves.snapshot());
+        drop(_serial);
+        if !pinned {
+            self.reconcile_expired_and_emit(app)?;
+        }
+        Ok(())
+    }
+
+    pub fn archive_stove_and_emit<R: tauri::Runtime>(
+        &self,
+        app: &tauri::AppHandle<R>,
+        stove_id: &str,
+    ) -> Result<(), AppStateError> {
+        self.archive_stove_with_reason(app, stove_id, ArchiveReason::Manual)
+    }
+
+    pub fn archived_sessions(&self) -> Vec<ArchivedSessionWire> {
+        let persistence = self
+            .persistence
+            .lock()
+            .expect("desktop persistence lock poisoned");
+        let Some(runtime) = persistence.as_ref() else {
+            return Vec::new();
+        };
+        runtime
+            .service
+            .archive_snapshot(&runtime.state)
+            .iter()
+            .filter(|archived| archived.session.is_valid())
+            .map(ArchivedSessionWire::from_archived)
+            .collect()
+    }
+
+    pub fn import_expired_sessions(
+        &self,
+        sessions: Vec<SessionRecord>,
+    ) -> Result<usize, AppStateError> {
+        let _serial = self.apply_lock.lock().expect("stove apply lock poisoned");
+        let mut persistence = self
+            .persistence
+            .lock()
+            .expect("desktop persistence lock poisoned");
+        let runtime = persistence
+            .as_mut()
+            .ok_or_else(|| AppStateError::Persistence("persistence is unavailable".into()))?;
+        runtime
+            .service
+            .archive_expired_sessions(&mut runtime.state, sessions, current_time_ms())
+            .map_err(|error| AppStateError::Persistence(error.to_string()))
+    }
+
+    pub fn restore_archived_and_emit<R: tauri::Runtime>(
+        &self,
+        app: &tauri::AppHandle<R>,
+        requested_stove_id: &str,
+    ) -> Result<(), AppStateError> {
+        let _serial = self.apply_lock.lock().expect("stove apply lock poisoned");
+        let archived = {
+            let persistence = self
+                .persistence
+                .lock()
+                .expect("desktop persistence lock poisoned");
+            let runtime = persistence
+                .as_ref()
+                .ok_or_else(|| AppStateError::Persistence("persistence is unavailable".into()))?;
+            runtime
+                .service
+                .archive_snapshot(&runtime.state)
+                .into_iter()
+                .find(|entry| stove_id(&entry.session.locator) == requested_stove_id)
+                .ok_or(AppStateError::UnknownStove)?
+        };
+        if !source_available(&archived) {
+            return Err(AppStateError::Persistence(
+                "the native session source is unavailable".into(),
+            ));
+        }
+        let should_pin = archived.session.observed_at_ms
+            < current_time_ms().saturating_sub(SESSION_VISIBILITY_MS);
+        {
+            let mut persistence = self
+                .persistence
+                .lock()
+                .expect("desktop persistence lock poisoned");
+            let runtime = persistence
+                .as_mut()
+                .ok_or_else(|| AppStateError::Persistence("persistence is unavailable".into()))?;
+            runtime
+                .service
+                .restore_session(
+                    &mut runtime.state,
+                    &archived.session.locator,
+                    should_pin,
+                    current_time_ms(),
+                )
+                .map_err(|error| AppStateError::Persistence(error.to_string()))?
+                .ok_or(AppStateError::UnknownStove)?;
+        }
+        let change = self.restore_session_record(&archived.session, should_pin);
+        if let Some(change) = change {
+            crate::events::emit_stove_change(app, change).map_err(AppStateError::Emit)?;
+        }
+        crate::platform::publish_optional_gnome_snapshot(&self.stoves.snapshot());
+        Ok(())
+    }
+
+    pub fn reconcile_expired_and_emit<R: tauri::Runtime>(
+        &self,
+        app: &tauri::AppHandle<R>,
+    ) -> Result<(), AppStateError> {
+        let cutoff = current_time_ms().saturating_sub(SESSION_VISIBILITY_MS);
+        for stove_id in self.stoves.expiration_candidates(cutoff) {
+            self.archive_stove_with_reason(app, &stove_id, ArchiveReason::Expired)?;
+        }
+        Ok(())
+    }
+
+    fn archive_stove_with_reason<R: tauri::Runtime>(
+        &self,
+        app: &tauri::AppHandle<R>,
+        stove_id: &str,
+        reason: ArchiveReason,
+    ) -> Result<(), AppStateError> {
+        let _serial = self.apply_lock.lock().expect("stove apply lock poisoned");
+        let stove = self
+            .stoves
+            .core_stove(stove_id)
+            .ok_or(AppStateError::UnknownStove)?;
+        if reason == ArchiveReason::Expired && self.stoves.is_pinned(stove_id) {
+            return Ok(());
+        }
+        if stove.state == StoveState::Cooked {
+            return Err(AppStateError::CannotArchiveCooked);
+        }
+        let record = self.session_record_for(stove_id)?;
+        {
+            let mut persistence = self
+                .persistence
+                .lock()
+                .expect("desktop persistence lock poisoned");
+            let runtime = persistence
+                .as_mut()
+                .ok_or_else(|| AppStateError::Persistence("persistence is unavailable".into()))?;
+            if !runtime
+                .service
+                .archive_session(&mut runtime.state, record, current_time_ms(), reason)
+                .map_err(|error| AppStateError::Persistence(error.to_string()))?
+            {
+                return Err(AppStateError::Persistence(
+                    "the session archive is full".into(),
+                ));
+            }
+        }
+        if let Some(change) = self.stoves.remove_presentation(stove_id) {
+            crate::events::emit_stove_change(app, change).map_err(AppStateError::Emit)?;
+        }
+        if let Some(remote) = app.try_state::<crate::remote::runtime::RemoteRuntimeState>() {
+            remote.forget(stove.identity);
+        }
+        if let Some(windows) =
+            app.try_state::<crate::commands::windows::TauriWindowCommandService>()
+        {
+            let _ = windows.clear_stove(stove_id);
+            let _ = crate::commands::windows::persist_layouts(self, &windows);
+        }
+        crate::platform::publish_optional_gnome_snapshot(&self.stoves.snapshot());
+        Ok(())
+    }
+
+    fn session_record_for(&self, stove_id: &str) -> Result<SessionRecord, AppStateError> {
+        let stove = self
+            .stoves
+            .core_stove(stove_id)
+            .ok_or(AppStateError::UnknownStove)?;
+        let summary = self
+            .stoves
+            .summary_for_identity(&stove.identity)
+            .unwrap_or_else(|| StoveSummary::for_project(&stove.project));
+        let native_locator = self
+            .stoves
+            .locator_for(stove_id)
+            .and_then(|locator| locator.native_locator);
+        SessionRecord::new(
+            stove.identity,
+            native_locator,
+            latest_observed_at(&summary)
+                .or_else(|| {
+                    stove
+                        .last_event
+                        .as_ref()
+                        .and_then(|event| comparable_epoch(event.timestamp_ms))
+                })
+                .unwrap_or_else(current_time_ms),
+            RetainedStovePresentation::new(summary.project_label, summary.project_root_display),
+            stove.state,
+        )
+        .ok_or_else(|| AppStateError::Persistence("the native session locator is unsafe".into()))
+    }
+
+    fn restore_session_record(&self, record: &SessionRecord, pinned: bool) -> Option<StoveChange> {
+        let project_root = if record.presentation.project_root_display.is_empty() {
+            "(restored session)".to_owned()
+        } else {
+            record.presentation.project_root_display.clone()
+        };
+        let project_label = if record.presentation.project_label.is_empty() {
+            "Restored session".to_owned()
+        } else {
+            record.presentation.project_label.clone()
+        };
+        let project = ProjectIdentity::new(record.locator.host.clone(), project_root.clone());
+        let locator = SessionLocator {
+            native_locator: record.native_locator.clone(),
+            working_directory: Some(project_root.clone()),
+            native_session_id: record.locator.native_session_id.clone(),
+            ..SessionLocator::default()
+        };
+        let mut change = self
+            .stoves
+            .apply_observation(
+                record.locator.clone(),
+                project,
+                if record.native_locator.is_some() {
+                    LocatorCapability::Available
+                } else {
+                    LocatorCapability::Unavailable
+                },
+                Some(locator),
+                Some(
+                    StoveSummary::new(project_label, project_root, None, None, None, None)
+                        .with_source_modified_at_ms(Some(record.observed_at_ms))
+                        .with_last_observed_at_ms(Some(record.observed_at_ms)),
+                ),
+                StoveEvent::new(
+                    event_kind_for_state(record.last_state),
+                    EventMetadata::new(EventSource::Inference, 100, 0, record.observed_at_ms),
+                ),
+            )
+            .ok();
+        if pinned {
+            change = self
+                .stoves
+                .set_pinned(&stove_id(&record.locator), true)
+                .or(change);
+        }
+        change
     }
 
     /// Records one adapter observation, then broadcasts its revisioned result.
@@ -362,7 +744,7 @@ impl AppState {
         project: ProjectIdentity,
         locator_capability: LocatorCapability,
         locator: Option<SessionLocator>,
-        summary: Option<StoveSummary>,
+        mut summary: Option<StoveSummary>,
         mut event: StoveEvent,
         side_effects: bool,
     ) -> Result<(), AppStateError> {
@@ -373,6 +755,9 @@ impl AppState {
                 .lock()
                 .expect("desktop persistence lock poisoned");
             if let Some(runtime) = persistence.as_ref() {
+                if runtime.service.is_archived(&runtime.state, &identity) {
+                    return Ok(());
+                }
                 if !matches!(event.kind, EventKind::ClearRequested)
                     && runtime.state.is_hidden(&identity, &event.metadata)
                 {
@@ -413,6 +798,12 @@ impl AppState {
             .and_then(|stove| progress_percent(stove.progress.as_ref()));
         let observed_kind = event.kind.clone();
         let metadata = event.metadata.clone();
+        if summary.is_none() {
+            summary = self.stoves.summary_for_identity(&identity_for_persistence);
+        }
+        if let Some(summary) = summary.as_mut() {
+            summary.last_observed_at_ms = Some(current_time_ms());
+        }
         let change = self.stoves.apply_observation(
             identity,
             project,
@@ -436,17 +827,59 @@ impl AppState {
                         .stoves
                         .summary_for_identity(&identity_for_persistence)
                         .unwrap_or_else(|| StoveSummary::for_project(&stove.project));
+                    let observed_at_ms =
+                        latest_observed_at(&summary).unwrap_or_else(current_time_ms);
                     let presentation = RetainedStovePresentation::new(
                         summary.project_label,
                         summary.project_root_display,
                     );
                     let _ = runtime.service.persist_transition_with_presentation(
                         &mut runtime.state,
-                        identity_for_persistence,
+                        identity_for_persistence.clone(),
                         stove.state,
                         &metadata,
-                        presentation,
+                        presentation.clone(),
                     );
+                    if stove.state == StoveState::Cooked {
+                        let _ = runtime
+                            .service
+                            .remove_tracked(&mut runtime.state, &identity_for_persistence);
+                    } else if let Some(record) = SessionRecord::new(
+                        identity_for_persistence.clone(),
+                        self.stoves
+                            .locator_for(&stove_id(&identity_for_persistence))
+                            .and_then(|locator| locator.native_locator),
+                        observed_at_ms,
+                        presentation,
+                        stove.state,
+                    ) {
+                        if runtime
+                            .service
+                            .is_pinned(&runtime.state, &identity_for_persistence)
+                        {
+                            if let Some(pinned) =
+                                runtime.state.pinned.iter_mut().find(|pinned| {
+                                    pinned.session.locator == identity_for_persistence
+                                })
+                            {
+                                let same_metadata = pinned.session.native_locator
+                                    == record.native_locator
+                                    && pinned.session.presentation == record.presentation
+                                    && pinned.session.last_state == record.last_state;
+                                if !same_metadata
+                                    || record
+                                        .observed_at_ms
+                                        .saturating_sub(pinned.session.observed_at_ms)
+                                        >= 60_000
+                                {
+                                    pinned.session = record;
+                                    let _ = runtime.service.save_state(&runtime.state);
+                                }
+                            }
+                        } else {
+                            let _ = runtime.service.track_session(&mut runtime.state, record);
+                        }
+                    }
                 }
             }
         }
@@ -595,6 +1028,7 @@ pub enum AppStateError {
     Emit(tauri::Error),
     Persistence(String),
     UnknownStove,
+    CannotArchiveCooked,
 }
 
 impl std::fmt::Display for AppStateError {
@@ -604,6 +1038,7 @@ impl std::fmt::Display for AppStateError {
             Self::Emit(error) => error.fmt(f),
             Self::Persistence(error) => f.write_str(error),
             Self::UnknownStove => f.write_str("Cookbench does not have that Stove"),
+            Self::CannotArchiveCooked => f.write_str("Cooked Stoves use Clear instead of Archive"),
         }
     }
 }
@@ -666,6 +1101,7 @@ impl StoveStore {
                         &entry.stove,
                         entry.locator_capability,
                         &entry.summary,
+                        inner.pinned.contains(&id),
                     ),
                 ));
             }
@@ -710,6 +1146,7 @@ impl StoveStore {
         if next.state == StoveState::Removed {
             inner.locators.remove(&id);
             inner.source_cursors.remove(&id);
+            inner.pinned.remove(&id);
             return Ok(StoveChange::remove(revision, id));
         }
 
@@ -733,7 +1170,8 @@ impl StoveStore {
             existing_locator
         };
         let summary = summary.unwrap_or(existing_summary);
-        let wire = StoveWire::from_stored(&id, &next, capability, &summary);
+        let wire =
+            StoveWire::from_stored(&id, &next, capability, &summary, inner.pinned.contains(&id));
         inner.entries.insert(
             id,
             StoredStove {
@@ -753,6 +1191,64 @@ impl StoveStore {
             .locators
             .get(stove_id)
             .cloned()
+    }
+
+    pub fn set_pinned(&self, stove_id: &str, pinned: bool) -> Option<StoveChange> {
+        let mut inner = self.inner.write().expect("stove store lock poisoned");
+        if !inner.entries.contains_key(stove_id) {
+            return None;
+        }
+        if pinned {
+            inner.pinned.insert(stove_id.to_owned());
+        } else {
+            inner.pinned.remove(stove_id);
+        }
+        inner.revision = inner.revision.saturating_add(1);
+        let revision = inner.revision;
+        let entry = inner.entries.get(stove_id).expect("entry checked above");
+        Some(StoveChange::upsert(
+            revision,
+            StoveWire::from_stored(
+                stove_id,
+                &entry.stove,
+                entry.locator_capability,
+                &entry.summary,
+                pinned,
+            ),
+        ))
+    }
+
+    fn is_pinned(&self, stove_id: &str) -> bool {
+        self.inner
+            .read()
+            .expect("stove store lock poisoned")
+            .pinned
+            .contains(stove_id)
+    }
+
+    pub fn remove_presentation(&self, stove_id: &str) -> Option<StoveChange> {
+        let mut inner = self.inner.write().expect("stove store lock poisoned");
+        inner.entries.remove(stove_id)?;
+        inner.locators.remove(stove_id);
+        inner.source_cursors.remove(stove_id);
+        inner.pinned.remove(stove_id);
+        inner.revision = inner.revision.saturating_add(1);
+        Some(StoveChange::remove(inner.revision, stove_id.to_owned()))
+    }
+
+    fn expiration_candidates(&self, cutoff_ms: u64) -> Vec<String> {
+        let inner = self.inner.read().expect("stove store lock poisoned");
+        inner
+            .entries
+            .iter()
+            .filter(|(id, entry)| {
+                entry.stove.state != StoveState::Cooked
+                    && !inner.pinned.contains(*id)
+                    && latest_observed_at(&entry.summary)
+                        .is_some_and(|observed| observed < cutoff_ms)
+            })
+            .map(|(id, _)| id.clone())
+            .collect()
     }
 
     pub fn contains_identity(&self, identity: &StoveIdentity) -> bool {
@@ -827,6 +1323,7 @@ impl StoveStore {
                         &entry.stove,
                         entry.locator_capability,
                         &entry.summary,
+                        inner.pinned.contains(id),
                     )
                 })
                 .collect(),
@@ -887,6 +1384,7 @@ impl StoveWire {
         stove: &Stove,
         locator_capability: LocatorCapability,
         summary: &StoveSummary,
+        pinned: bool,
     ) -> Self {
         let progress = stove.progress.as_ref().and_then(|progress| {
             let provenance = match progress.source {
@@ -915,6 +1413,28 @@ impl StoveWire {
             progress,
             locator_capability,
             retained_completion: stove.state == StoveState::Cooked,
+            pinned,
+        }
+    }
+}
+
+impl ArchivedSessionWire {
+    fn from_archived(archived: &ArchivedSession) -> Self {
+        Self {
+            id: stove_id(&archived.session.locator),
+            harness: harness_wire(&archived.session.locator.harness),
+            host: host_wire(&archived.session.locator.host),
+            project_label: archived.session.presentation.project_label.clone(),
+            project_root_display: archived.session.presentation.project_root_display.clone(),
+            session_identity: compact_session_identity(&archived.session.locator.native_session_id),
+            last_state: state_wire(archived.session.last_state),
+            reason: match archived.reason {
+                ArchiveReason::Expired => ArchiveReasonWire::Expired,
+                ArchiveReason::Manual => ArchiveReasonWire::Manual,
+            },
+            archived_at_ms: archived.archived_at_ms,
+            source_available: source_available(archived),
+            pinned: false,
         }
     }
 }
@@ -1027,6 +1547,60 @@ fn current_time_ms() -> u64 {
         .unwrap_or(u64::MAX)
 }
 
+const SESSION_VISIBILITY_MS: u64 = 2 * 24 * 60 * 60 * 1_000;
+
+fn latest_observed_at(summary: &StoveSummary) -> Option<u64> {
+    summary
+        .source_modified_at_ms
+        .into_iter()
+        .chain(summary.last_observed_at_ms)
+        .max()
+}
+
+fn comparable_epoch(timestamp_ms: u64) -> Option<u64> {
+    (timestamp_ms >= MIN_COMPARABLE_EPOCH_MS).then_some(timestamp_ms)
+}
+
+fn event_kind_for_state(state: StoveState) -> EventKind {
+    match state {
+        StoveState::Starting | StoveState::Removed => EventKind::SessionDiscovered,
+        StoveState::Planning => EventKind::PlanUpdated {
+            completed: 0,
+            total: 1,
+        },
+        StoveState::Cooking => EventKind::ToolStarted,
+        StoveState::NeedsHuman => EventKind::QuestionAsked,
+        StoveState::Cooked => EventKind::TurnCompleted,
+        StoveState::Failed => EventKind::SessionFailed,
+        StoveState::Disconnected => EventKind::ConnectionLost,
+    }
+}
+
+fn source_available(archived: &ArchivedSession) -> bool {
+    match archived.session.locator.host.kind {
+        HostKind::Ssh => true,
+        HostKind::Local => archived
+            .session
+            .native_locator
+            .as_ref()
+            .is_some_and(|path| Path::new(path).is_file()),
+    }
+}
+
+fn compact_session_identity(native_session_id: &str) -> String {
+    if native_session_id.len() >= 4
+        && native_session_id.len() <= SessionLocator::MAX_TEXT_BYTES
+        && native_session_id
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
+    {
+        let start = native_session_id.len().saturating_sub(8);
+        format!("#{}", &native_session_id[start..])
+    } else {
+        "#session".to_owned()
+    }
+}
+
 fn notification_event(
     kind: &EventKind,
     effective_state: StoveState,
@@ -1084,11 +1658,16 @@ fn crossed_milestone(previous: Option<u8>, current: Option<u8>) -> Option<u8> {
 #[cfg(test)]
 mod notification_tests {
     use cookbench_core::{
-        domain::{EventKind, StoveState},
+        domain::{
+            EventKind, EventMetadata, EventSource, HarnessId, HostIdentity, ProjectIdentity,
+            StoveEvent, StoveIdentity, StoveState,
+        },
         notifications::NotificationEventKind,
     };
 
-    use super::{crossed_milestone, notification_event};
+    use super::{
+        crossed_milestone, notification_event, LocatorCapability, StoveStore, StoveSummary,
+    };
 
     #[test]
     fn notification_projection_includes_milestones_and_manual_clear() {
@@ -1110,5 +1689,60 @@ mod notification_tests {
             notification_event(&EventKind::PermissionRequested, StoveState::Cooking),
             None
         );
+    }
+
+    #[test]
+    fn expiry_uses_local_receipt_time_instead_of_a_remote_sequence_timestamp() {
+        let host = HostIdentity::ssh("remote-host");
+        let identity = StoveIdentity::new(host.clone(), HarnessId::Codex, "remote-session");
+        let project = ProjectIdentity::new(host, "/remote/project");
+        let store = StoveStore::default();
+        store
+            .apply_with_summary(
+                identity,
+                project.clone(),
+                LocatorCapability::Unavailable,
+                Some(StoveSummary::for_project(&project).with_last_observed_at_ms(Some(100))),
+                StoveEvent::new(
+                    EventKind::ToolStarted,
+                    EventMetadata::new(
+                        EventSource::StructuredSession,
+                        100,
+                        1,
+                        1_700_000_000_000_000,
+                    ),
+                ),
+            )
+            .unwrap();
+
+        assert_eq!(store.expiration_candidates(200).len(), 1);
+
+        let recent_store = StoveStore::default();
+        recent_store
+            .apply_with_summary(
+                StoveIdentity::new(
+                    HostIdentity::ssh("remote-host"),
+                    HarnessId::ClaudeCode,
+                    "recent-remote-session",
+                ),
+                project.clone(),
+                LocatorCapability::Unavailable,
+                Some(
+                    StoveSummary::for_project(&project)
+                        .with_source_modified_at_ms(Some(50))
+                        .with_last_observed_at_ms(Some(300)),
+                ),
+                StoveEvent::new(
+                    EventKind::ToolStarted,
+                    EventMetadata::new(
+                        EventSource::StructuredSession,
+                        100,
+                        1,
+                        1_700_000_000_000_000,
+                    ),
+                ),
+            )
+            .unwrap();
+        assert!(recent_store.expiration_candidates(200).is_empty());
     }
 }

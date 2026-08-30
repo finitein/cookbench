@@ -75,6 +75,7 @@ fn snapshot_wire_is_sanitized_and_includes_required_presentation_metadata() {
     );
     assert_eq!(stove.locator_capability, LocatorCapability::Available);
     assert!(stove.retained_completion);
+    assert!(!stove.pinned);
 
     let json = serde_json::to_string(&snapshot).unwrap();
     assert!(json.contains("\"projectLabel\""));
@@ -90,6 +91,56 @@ fn snapshot_wire_is_sanitized_and_includes_required_presentation_metadata() {
     ] {
         assert!(!json.contains(forbidden), "wire payload leaked {forbidden}");
     }
+}
+
+#[test]
+fn pin_state_is_presentation_metadata_and_survives_lifecycle_updates() {
+    let store = StoveStore::default();
+    store
+        .apply(
+            identity(),
+            project(),
+            LocatorCapability::Unavailable,
+            event(EventKind::ToolStarted, 1),
+        )
+        .unwrap();
+
+    let pinned = store
+        .set_pinned("local:test-host:codex:session-1", true)
+        .unwrap();
+    assert!(pinned.stove.unwrap().pinned);
+
+    store
+        .apply(
+            identity(),
+            project(),
+            LocatorCapability::Unavailable,
+            event(EventKind::TurnCompleted, 2),
+        )
+        .unwrap();
+    assert!(store.snapshot().stoves[0].pinned);
+}
+
+#[test]
+fn archiving_removes_only_the_cookbench_presentation() {
+    let store = StoveStore::default();
+    store
+        .apply(
+            identity(),
+            project(),
+            LocatorCapability::Unavailable,
+            event(EventKind::ToolStarted, 1),
+        )
+        .unwrap();
+
+    let removed = store
+        .remove_presentation("local:test-host:codex:session-1")
+        .expect("visible Stove");
+    assert_eq!(
+        removed.removed_stove_id.as_deref(),
+        Some("local:test-host:codex:session-1")
+    );
+    assert!(store.snapshot().stoves.is_empty());
 }
 
 #[test]

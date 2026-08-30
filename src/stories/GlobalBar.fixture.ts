@@ -26,6 +26,7 @@ export function makeStove(index: number, overrides: Partial<StoveWire> = {}): St
     progress: state === "cooking" ? { completed: 2, total: 5, provenance: "structuredSession" } : null,
     locatorCapability: "available",
     retainedCompletion: state === "cooked",
+    pinned: false,
     ...overrides,
   };
 

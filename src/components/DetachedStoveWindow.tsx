@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import type { StoveWire } from "../types/stove";
 import { createPositionPersistence, detachedStoveTransport, startDetachedWindowDrag } from "../services/detachedStoves";
 import { DetachedStoveBar } from "./DetachedStoveBar";
+import { archiveStove, setStovePinned } from "../services/stoves";
 
 export type DetachedStoveWindowProps = {
   stove: StoveWire;
@@ -41,6 +42,8 @@ export function DetachedStoveWindow({ stove, onActivate }: DetachedStoveWindowPr
         onClose={(current) => { void detachedStoveTransport.close(current.id); }}
         onStartDrag={() => { void startDetachedWindowDrag(); }}
         onClear={stove.retainedCompletion ? (current) => { void detachedStoveTransport.clear(current.id); } : undefined}
+        onPin={(current) => { void setStovePinned(current.id, !current.pinned); }}
+        onArchive={stove.retainedCompletion ? undefined : (current) => { void archiveStove(current.id); }}
       />
     </main>
   );

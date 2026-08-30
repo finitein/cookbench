@@ -11,6 +11,8 @@ export type GlobalBarProps = {
   onActivateStove?: (stove: StoveWire) => void;
   onDetachStove?: (stove: StoveWire) => void;
   onClearStove?: (stove: StoveWire) => void;
+  onPinStove?: (stove: StoveWire) => void;
+  onArchiveStove?: (stove: StoveWire) => void;
   onOpenSettings?: () => void;
   hoverDetailsEnabled?: boolean;
 };
@@ -51,6 +53,8 @@ export function GlobalBar({
   onActivateStove,
   onDetachStove,
   onClearStove,
+  onPinStove,
+  onArchiveStove,
   onOpenSettings,
   hoverDetailsEnabled = false,
 }: GlobalBarProps) {
@@ -107,6 +111,8 @@ export function GlobalBar({
                     onActivate={onActivateStove}
                     onDetach={onDetachStove}
                     onClear={onClearStove}
+                    onPin={onPinStove}
+                    onArchive={onArchiveStove}
                     previousState={priorStates.get(stove.id)}
                     isInitialSnapshot={!priorStates.has(stove.id)}
                     tooltipId={hoverDetailsEnabled ? "global-bar-tooltip" : undefined}

@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { StoveChange, StoveSnapshot, StoveWire } from "../types/stove";
+import type { ArchivedSessionWire, StoveChange, StoveSnapshot, StoveWire } from "../types/stove";
 
 export const STOVE_CHANGED_EVENT = "cookbench://stove-changed";
 
@@ -16,6 +16,22 @@ export const tauriStoveTransport: StoveTransport = {
 
 export function clearCookedStove(stoveId: string): Promise<void> {
   return invoke<void>("clear_cooked_stove", { stoveId });
+}
+
+export function setStovePinned(stoveId: string, pinned: boolean): Promise<void> {
+  return invoke<void>("set_stove_pinned", { stoveId, pinned });
+}
+
+export function archiveStove(stoveId: string): Promise<void> {
+  return invoke<void>("archive_stove", { stoveId });
+}
+
+export function getArchivedSessions(): Promise<ArchivedSessionWire[]> {
+  return invoke<ArchivedSessionWire[]>("get_archived_sessions");
+}
+
+export function restoreArchivedSession(stoveId: string): Promise<void> {
+  return invoke<void>("restore_archived_session", { stoveId });
 }
 
 /** Maintains a local revisioned view. A revision gap never gets guessed. */

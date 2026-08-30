@@ -11,6 +11,7 @@ const stove = {
   progress: null,
   locatorCapability: "available",
   retainedCompletion: true,
+  pinned: false,
 } satisfies StoveWire;
 
 describe("detached Stove routing", () => {

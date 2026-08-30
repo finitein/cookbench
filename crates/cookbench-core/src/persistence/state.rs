@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::domain::{EventMetadata, StoveIdentity};
+use crate::domain::{EventMetadata, StoveIdentity, StoveState};
 
 use super::Versioned;
 
@@ -58,6 +58,84 @@ impl RetainedStovePresentation {
     }
 }
 
+/// A deliberately small reference to a native session. It is sufficient to
+/// rediscover a pinned or archived Stove, but intentionally excludes every
+/// piece of conversation and task content.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct SessionRecord {
+    pub locator: StoveIdentity,
+    #[serde(default)]
+    pub native_locator: Option<String>,
+    pub observed_at_ms: u64,
+    #[serde(default)]
+    pub presentation: RetainedStovePresentation,
+    pub last_state: StoveState,
+}
+
+impl SessionRecord {
+    pub const MAX_NATIVE_LOCATOR_BYTES: usize = 4_096;
+
+    pub fn new(
+        locator: StoveIdentity,
+        native_locator: Option<String>,
+        observed_at_ms: u64,
+        presentation: RetainedStovePresentation,
+        last_state: StoveState,
+    ) -> Option<Self> {
+        if last_state == StoveState::Removed {
+            return None;
+        }
+        let native_locator = sanitize_native_locator(native_locator)?;
+        Some(Self {
+            locator,
+            native_locator,
+            observed_at_ms,
+            presentation,
+            last_state,
+        })
+    }
+
+    /// Reject control characters and implausibly large locators instead of
+    /// persisting data that cannot safely be used as a native file reference.
+    pub fn is_valid(&self) -> bool {
+        self.last_state != StoveState::Removed
+            && sanitize_native_locator(self.native_locator.clone()).is_some()
+    }
+}
+
+fn sanitize_native_locator(value: Option<String>) -> Option<Option<String>> {
+    match value {
+        Some(value)
+            if value.is_empty()
+                || value.len() > SessionRecord::MAX_NATIVE_LOCATOR_BYTES
+                || value.chars().any(char::is_control) =>
+        {
+            None
+        }
+        Some(value) => Some(Some(value)),
+        None => Some(None),
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PinnedSession {
+    pub session: SessionRecord,
+    pub pinned_at_ms: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum ArchiveReason {
+    Expired,
+    Manual,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ArchivedSession {
+    pub session: SessionRecord,
+    pub archived_at_ms: u64,
+    pub reason: ArchiveReason,
+}
+
 fn sanitize_display_text(mut value: String) -> String {
     value.retain(|character| !character.is_control());
     if value.len() > RetainedStovePresentation::MAX_TEXT_BYTES {
@@ -104,16 +182,27 @@ pub struct PersistedState {
     pub retained: Vec<RetainedStove>,
     #[serde(default)]
     pub clear_cursors: Vec<ClearCursor>,
+    #[serde(default)]
+    pub pinned: Vec<PinnedSession>,
+    #[serde(default)]
+    pub archived: Vec<ArchivedSession>,
+    /// Last-known metadata for active non-Cooked sessions. This lets the
+    /// desktop archive expired sessions without reopening native transcripts.
+    #[serde(default)]
+    pub tracked: Vec<SessionRecord>,
 }
 
 impl PersistedState {
-    pub const CURRENT_VERSION: u32 = 2;
+    pub const CURRENT_VERSION: u32 = 3;
 
     pub fn with_retained(retained: Vec<RetainedStove>) -> Self {
         Self {
             version: Self::CURRENT_VERSION,
             retained,
             clear_cursors: Vec::new(),
+            pinned: Vec::new(),
+            archived: Vec::new(),
+            tracked: Vec::new(),
         }
     }
 
@@ -130,6 +219,9 @@ impl Default for PersistedState {
             version: Self::CURRENT_VERSION,
             retained: Vec::new(),
             clear_cursors: Vec::new(),
+            pinned: Vec::new(),
+            archived: Vec::new(),
+            tracked: Vec::new(),
         }
     }
 }

@@ -5,13 +5,13 @@ use std::{
         atomic::{AtomicU64, Ordering},
         Arc, Mutex,
     },
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use cookbench_core::domain::{EventKind, HostIdentity, ProjectIdentity, StoveEvent, StoveIdentity};
 use cookbench_desktop_lib::runtime::{
-    LocalObservationConfig, LocalObservationRuntime, ObservationOrigin, ObservationSink,
-    ObservationSummary,
+    start, LocalObservationConfig, LocalObservationRuntime, LocalSourceStatusState,
+    ObservationOrigin, ObservationSink, ObservationSummary,
 };
 
 #[derive(Default)]
@@ -40,6 +40,24 @@ impl ObservationSink for Sink {
             .lock()
             .unwrap()
             .push((identity, project, locator, event));
+    }
+}
+
+#[derive(Default)]
+struct SummarySink(Mutex<Vec<ObservationSummary>>);
+
+impl ObservationSink for SummarySink {
+    fn apply(
+        &self,
+        _: StoveIdentity,
+        _: ProjectIdentity,
+        _: cookbench_core::locator::SessionLocator,
+        _: Option<String>,
+        summary: ObservationSummary,
+        _: ObservationOrigin,
+        _: StoveEvent,
+    ) {
+        self.0.lock().unwrap().push(summary);
     }
 }
 
@@ -102,6 +120,7 @@ fn reconstructs_three_native_harnesses_then_observes_appended_lifecycle_records(
         pi_roots: vec![pi_root.clone()],
         startup_min_modified: SystemTime::UNIX_EPOCH,
         startup_candidate_limit: 16,
+        pinned_local_paths: Vec::new(),
     };
     let mut runtime = LocalObservationRuntime::new(config, sink.clone());
     runtime.bootstrap();
@@ -194,6 +213,7 @@ fn runtime_does_not_register_codex_subagent_session_files() {
         pi_roots: vec![root.join("pi")],
         startup_min_modified: SystemTime::UNIX_EPOCH,
         startup_candidate_limit: 16,
+        pinned_local_paths: vec![subagent_session],
     };
     let mut runtime = LocalObservationRuntime::new(config, sink.clone());
     runtime.bootstrap();
@@ -230,6 +250,7 @@ fn preserves_distinct_native_locators_for_sessions_in_the_same_project() {
         pi_roots: vec![root.join("pi")],
         startup_min_modified: SystemTime::UNIX_EPOCH,
         startup_candidate_limit: 16,
+        pinned_local_paths: Vec::new(),
     };
     let mut runtime = LocalObservationRuntime::new(config, sink.clone());
     runtime.bootstrap();
@@ -296,6 +317,7 @@ fn newer_subagents_do_not_consume_the_root_session_candidate_limit() {
         pi_roots: vec![root.join("pi")],
         startup_min_modified: SystemTime::UNIX_EPOCH,
         startup_candidate_limit: 2,
+        pinned_local_paths: Vec::new(),
     };
     let mut runtime = LocalObservationRuntime::new(config, sink.clone());
     runtime.bootstrap();
@@ -344,6 +366,7 @@ fn filters_one_thousand_stale_paths_before_adapter_body_parsing() {
         pi_roots: vec![pi_root],
         startup_min_modified: SystemTime::now() - Duration::from_secs(60),
         startup_candidate_limit: 16,
+        pinned_local_paths: Vec::new(),
     };
     let mut runtime = LocalObservationRuntime::new(config, sink);
     runtime.bootstrap();
@@ -364,6 +387,7 @@ fn rescan_discovers_a_harness_root_created_after_cookbench_started() {
         pi_roots: vec![root.join("pi-missing")],
         startup_min_modified: SystemTime::UNIX_EPOCH,
         startup_candidate_limit: 16,
+        pinned_local_paths: Vec::new(),
     };
     let mut runtime = LocalObservationRuntime::new(config, sink.clone());
     runtime.bootstrap();
@@ -383,5 +407,257 @@ fn rescan_discovers_a_harness_root_created_after_cookbench_started() {
         .unwrap()
         .iter()
         .any(|(_, _, _, event)| matches!(event.kind, EventKind::SessionDiscovered)));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn pinned_old_session_is_discovered_without_widening_normal_discovery() {
+    let root = temp_root();
+    let codex_root = root.join("codex");
+    let pinned = codex_root.join("pinned.jsonl");
+    let ordinary = codex_root.join("ordinary.jsonl");
+    write(
+        &pinned,
+        "{\"type\":\"session_meta\",\"payload\":{\"id\":\"pinned-session\",\"cwd\":\"/synthetic/pinned\"}}\n",
+    );
+    write(
+        &ordinary,
+        "{\"type\":\"session_meta\",\"payload\":{\"id\":\"ordinary-session\",\"cwd\":\"/synthetic/ordinary\"}}\n",
+    );
+    let stale = UNIX_EPOCH + Duration::from_secs(10);
+    for path in [&pinned, &ordinary] {
+        File::options()
+            .write(true)
+            .open(path)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(stale))
+            .unwrap();
+    }
+
+    let sink = Arc::new(Sink::default());
+    let config = LocalObservationConfig {
+        host: HostIdentity::local("synthetic-host"),
+        codex_root: codex_root.clone(),
+        claude_root: root.join("claude"),
+        pi_roots: vec![root.join("pi")],
+        startup_min_modified: SystemTime::now() - Duration::from_secs(60),
+        startup_candidate_limit: 16,
+        pinned_local_paths: vec![pinned],
+    };
+    let mut runtime = LocalObservationRuntime::new(config, sink.clone());
+    runtime.bootstrap();
+
+    assert_eq!(runtime.session_count(), 1);
+    let identities = sink
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|(identity, _, _, _)| identity.native_session_id.clone())
+        .collect::<Vec<_>>();
+    assert!(
+        identities
+            .iter()
+            .all(|identity| identity == "pinned-session"),
+        "unexpected identities: {identities:?}"
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn a_restored_old_session_can_join_the_running_observer() {
+    let root = temp_root();
+    let codex_root = root.join("codex");
+    let pinned = codex_root.join("restored.jsonl");
+    write(
+        &pinned,
+        "{\"type\":\"session_meta\",\"payload\":{\"id\":\"restored-session\",\"cwd\":\"/synthetic/restored\"}}\n",
+    );
+    File::options()
+        .write(true)
+        .open(&pinned)
+        .unwrap()
+        .set_times(FileTimes::new().set_modified(UNIX_EPOCH + Duration::from_secs(10)))
+        .unwrap();
+
+    let sink = Arc::new(Sink::default());
+    let config = LocalObservationConfig {
+        host: HostIdentity::local("synthetic-host"),
+        codex_root,
+        claude_root: root.join("claude"),
+        pi_roots: vec![root.join("pi")],
+        startup_min_modified: SystemTime::now() - Duration::from_secs(60),
+        startup_candidate_limit: 16,
+        pinned_local_paths: Vec::new(),
+    };
+    let handle = start(config, sink.clone(), LocalSourceStatusState::default());
+    assert!(handle.add_pinned_path(pinned));
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while Instant::now() < deadline
+        && !sink
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(identity, _, _, _)| identity.native_session_id == "restored-session")
+    {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    handle.cancel();
+
+    assert!(sink
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|(identity, _, _, _)| { identity.native_session_id == "restored-session" }));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn restoring_an_already_watched_session_replays_events_seen_while_archived() {
+    let root = temp_root();
+    let codex_root = root.join("codex");
+    let session = codex_root.join("restored-watched.jsonl");
+    write(
+        &session,
+        "{\"type\":\"session_meta\",\"payload\":{\"id\":\"restored-watched\",\"cwd\":\"/synthetic/restored\"}}\n{\"type\":\"user_message\"}\n",
+    );
+
+    let sink = Arc::new(Sink::default());
+    let config = LocalObservationConfig {
+        host: HostIdentity::local("synthetic-host"),
+        codex_root,
+        claude_root: root.join("claude"),
+        pi_roots: vec![root.join("pi")],
+        startup_min_modified: SystemTime::UNIX_EPOCH,
+        startup_candidate_limit: 16,
+        pinned_local_paths: Vec::new(),
+    };
+    let handle = start(config, sink.clone(), LocalSourceStatusState::default());
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while Instant::now() < deadline
+        && !sink
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(_, _, _, event)| matches!(event.kind, EventKind::UserPromptSubmitted))
+    {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+
+    append(&session, "{\"type\":\"turn_completed\"}\n");
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while Instant::now() < deadline
+        && !sink
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(_, _, _, event)| matches!(event.kind, EventKind::TurnCompleted))
+    {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    sink.0.lock().unwrap().clear();
+
+    assert!(handle.refresh_path(session));
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while Instant::now() < deadline
+        && !sink
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(_, _, _, event)| matches!(event.kind, EventKind::TurnCompleted))
+    {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    handle.cancel();
+
+    assert!(sink
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|(_, _, _, event)| matches!(event.kind, EventKind::TurnCompleted)));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn invalid_pinned_paths_are_ignored_without_expanding_file_access() {
+    let root = temp_root();
+    let codex_root = root.join("codex");
+    let outside = root.join("outside.jsonl");
+    let valid = codex_root.join("valid.jsonl");
+    write(
+        &outside,
+        r#"{"type":"session_meta","payload":{"id":"outside","cwd":"/synthetic/outside"}}"#,
+    );
+    write(
+        &valid,
+        r#"{"type":"session_meta","payload":{"id":"valid","cwd":"/synthetic/valid"}}"#,
+    );
+    let stale = UNIX_EPOCH + Duration::from_secs(10);
+    for path in [&outside, &valid] {
+        File::options()
+            .write(true)
+            .open(path)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(stale))
+            .unwrap();
+    }
+    let sink = Arc::new(Sink::default());
+    let config = LocalObservationConfig {
+        host: HostIdentity::local("synthetic-host"),
+        codex_root,
+        claude_root: root.join("claude"),
+        pi_roots: vec![root.join("pi")],
+        startup_min_modified: SystemTime::now() - Duration::from_secs(60),
+        startup_candidate_limit: 16,
+        pinned_local_paths: vec![outside, root.join("missing.jsonl"), root.join("bad.txt")],
+    };
+    let mut runtime = LocalObservationRuntime::new(config, sink);
+    runtime.bootstrap();
+
+    assert_eq!(runtime.session_count(), 0);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn observation_summary_includes_source_mtime_without_reading_extra_records() {
+    let root = temp_root();
+    let codex_root = root.join("codex");
+    let session = codex_root.join("session.jsonl");
+    write(
+        &session,
+        r#"{"type":"session_meta","payload":{"id":"mtime-session","cwd":"/synthetic/mtime"}}"#,
+    );
+    let modified = UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+    File::options()
+        .write(true)
+        .open(&session)
+        .unwrap()
+        .set_times(FileTimes::new().set_modified(modified))
+        .unwrap();
+    let sink = Arc::new(SummarySink::default());
+    let config = LocalObservationConfig {
+        host: HostIdentity::local("synthetic-host"),
+        codex_root,
+        claude_root: root.join("claude"),
+        pi_roots: vec![root.join("pi")],
+        startup_min_modified: SystemTime::UNIX_EPOCH,
+        startup_candidate_limit: 16,
+        pinned_local_paths: Vec::new(),
+    };
+    let mut runtime = LocalObservationRuntime::new(config, sink.clone());
+    runtime.bootstrap();
+
+    assert!(sink
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|summary| { summary.source_modified_at_ms == Some(1_700_000_000_000) }));
     fs::remove_dir_all(root).unwrap();
 }

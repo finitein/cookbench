@@ -43,6 +43,22 @@ export interface StoveWire {
   progress: ProgressWire | null;
   locatorCapability: "available" | "unavailable";
   retainedCompletion: boolean;
+  pinned: boolean;
+}
+
+/** Safe archive metadata only; native session content is never sent to the UI. */
+export interface ArchivedSessionWire {
+  id: string;
+  harness: HarnessWire;
+  host: HostWire;
+  projectLabel?: string;
+  projectRootDisplay?: string;
+  sessionIdentity: string;
+  lastState: StoveState;
+  reason: "expired" | "manual";
+  archivedAtMs: number;
+  sourceAvailable: boolean;
+  pinned: boolean;
 }
 
 export interface StoveSnapshot {

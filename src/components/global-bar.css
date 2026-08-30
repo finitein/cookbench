@@ -241,7 +241,9 @@
 .stove-burner__control:focus-visible { opacity: 1; }
 .stove-burner__control:focus-visible { outline: 2px solid #316f98; outline-offset: 1px; }
 .stove-burner__control--detach { left: 1px; }
-.stove-burner__control--clear { right: 1px; }
+.stove-burner__control--pin { left: 21px; }
+.stove-burner__control--clear,
+.stove-burner__control--archive { right: 1px; }
 .stove-burner__control span { position: relative; display: block; width: 9px; height: 9px; }
 .stove-burner__control--detach span { border: 1px solid currentColor; border-radius: 1px; }
 .stove-burner__control--detach span::after {
@@ -267,6 +269,38 @@
   transform: rotate(45deg);
 }
 .stove-burner__control--clear span::after { transform: rotate(-45deg); }
+.stove-burner__control--archive span::before,
+.stove-burner__control--archive span::after {
+  position: absolute;
+  top: 4px;
+  left: 0;
+  width: 9px;
+  height: 1px;
+  background: currentColor;
+  content: "";
+  transform: rotate(45deg);
+}
+.stove-burner__control--archive span::after { transform: rotate(-45deg); }
+.stove-burner__control--pin span {
+  width: 7px;
+  height: 9px;
+  border: 1px solid currentColor;
+  border-bottom: 0;
+  border-radius: 2px 2px 0 0;
+}
+.stove-burner__control--pin span::after {
+  position: absolute;
+  bottom: -3px;
+  left: 1px;
+  width: 3px;
+  height: 3px;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  background: #fff;
+  content: "";
+  transform: rotate(45deg);
+}
+.stove-burner__control--pin[title="Unpin"] { color: #007cab; opacity: 1; }
 
 .stove-burner__ring { display: grid; place-items: center; }
 

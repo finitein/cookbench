@@ -17,4 +17,7 @@ pub use layout::{
     DetachedStoveLayout, MonitorIdentity, MonitorWorkArea, RelativePosition,
     RestoredDetachedStoveLayout, WindowPosition, WindowSize,
 };
-pub use state::{ClearCursor, PersistedState, RetainedStove, RetainedStovePresentation};
+pub use state::{
+    ArchiveReason, ArchivedSession, ClearCursor, PersistedState, PinnedSession, RetainedStove,
+    RetainedStovePresentation, SessionRecord,
+};

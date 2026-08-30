@@ -25,6 +25,14 @@
 }
 
 .detached-stove-bar .stove-burner-wrap { width: 82px; }
+.detached-stove-bar .stove-burner__control--pin {
+  top: 55px;
+  left: -34px;
+}
+.detached-stove-bar .stove-burner__control--archive {
+  top: 55px;
+  right: -34px;
+}
 
 .detached-stove-bar__harness {
   position: absolute;

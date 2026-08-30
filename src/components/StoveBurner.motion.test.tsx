@@ -19,6 +19,7 @@ const cookedStove: StoveWire = {
   progress: null,
   locatorCapability: "available",
   retainedCompletion: true,
+  pinned: false,
 };
 
 describe("StoveBurner completion presentation", () => {

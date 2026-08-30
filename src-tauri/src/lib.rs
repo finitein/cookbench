@@ -14,7 +14,14 @@ pub mod runtime;
 pub mod secrets;
 pub mod window_registry;
 
-use std::sync::{Arc, Mutex};
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
+    thread,
+    time::Duration,
+};
 
 use cookbench_core::{
     domain::{HostIdentity, ProjectIdentity, StoveEvent, StoveIdentity},
@@ -56,7 +63,8 @@ impl runtime::ObservationSink for TauriObservationSink {
             summary.current_action,
             summary.next_action,
             summary.elapsed_ms,
-        );
+        )
+        .with_source_modified_at_ms(summary.source_modified_at_ms);
         let state = self.app.state::<app_state::AppState>();
         let _ = match origin {
             runtime::ObservationOrigin::Replay => state.apply_replay_observation_and_emit(
@@ -81,8 +89,62 @@ impl runtime::ObservationSink for TauriObservationSink {
     }
 }
 
-struct LocalRuntimeState(Mutex<Option<runtime::RuntimeHandle>>);
+pub(crate) struct LocalRuntimeState(Mutex<Option<runtime::RuntimeHandle>>);
+
+impl LocalRuntimeState {
+    pub(crate) fn add_pinned_path(&self, path: std::path::PathBuf) -> bool {
+        self.0
+            .lock()
+            .expect("local runtime lock poisoned")
+            .as_ref()
+            .is_some_and(|runtime| runtime.add_pinned_path(path))
+    }
+
+    pub(crate) fn refresh_path(&self, path: std::path::PathBuf) -> bool {
+        self.0
+            .lock()
+            .expect("local runtime lock poisoned")
+            .as_ref()
+            .is_some_and(|runtime| runtime.refresh_path(path))
+    }
+}
 struct HookRuntimeState(Mutex<Option<hook_spool::HookSpoolHandle>>);
+struct ExpiryRuntimeState(Mutex<Option<ExpiryRuntimeHandle>>);
+
+struct ExpiryRuntimeHandle {
+    cancelled: Arc<AtomicBool>,
+    join: Option<thread::JoinHandle<()>>,
+}
+
+impl ExpiryRuntimeHandle {
+    fn cancel(mut self) {
+        self.cancelled.store(true, Ordering::Release);
+        if let Some(join) = self.join.take() {
+            let _ = join.join();
+        }
+    }
+}
+
+fn start_expiry_runtime(app: tauri::AppHandle) -> ExpiryRuntimeHandle {
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let thread_cancelled = Arc::clone(&cancelled);
+    let join = thread::spawn(move || {
+        while !thread_cancelled.load(Ordering::Acquire) {
+            for _ in 0..600 {
+                if thread_cancelled.load(Ordering::Acquire) {
+                    return;
+                }
+                thread::sleep(Duration::from_millis(100));
+            }
+            let state = app.state::<app_state::AppState>();
+            let _ = state.reconcile_expired_and_emit(&app);
+        }
+    });
+    ExpiryRuntimeHandle {
+        cancelled,
+        join: Some(join),
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -109,9 +171,14 @@ pub fn run() {
         .manage(runtime::LocalSourceStatusState::default())
         .manage(LocalRuntimeState(Mutex::new(None)))
         .manage(HookRuntimeState(Mutex::new(None)))
+        .manage(ExpiryRuntimeState(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
             commands::stoves::get_stoves_snapshot,
             commands::stoves::clear_cooked_stove,
+            commands::stoves::set_stove_pinned,
+            commands::stoves::archive_stove,
+            commands::stoves::get_archived_sessions,
+            commands::stoves::restore_archived_session,
             commands::windows::detach_stove,
             commands::windows::clear_detached_stove,
             commands::windows::close_detached_bar,
@@ -174,8 +241,9 @@ pub fn run() {
             let observer = Arc::new(TauriObservationSink {
                 app: app.handle().clone(),
             });
-            let local_config =
+            let mut local_config =
                 runtime::LocalObservationConfig::from_environment(HostIdentity::local("local"));
+            local_config.pinned_local_paths = state.pinned_local_paths();
             let local_status = app
                 .state::<runtime::LocalSourceStatusState>()
                 .inner()
@@ -186,6 +254,11 @@ pub fn run() {
                 .0
                 .lock()
                 .expect("local runtime lock poisoned") = Some(handle);
+            *app.state::<ExpiryRuntimeState>()
+                .0
+                .lock()
+                .expect("expiry runtime lock poisoned") =
+                Some(start_expiry_runtime(app.handle().clone()));
 
             let hook_directory = app_data.join("hook-spool");
             if let Ok(spool) =
@@ -270,6 +343,15 @@ pub fn run() {
                 .0
                 .lock()
                 .expect("hook runtime lock poisoned")
+                .take()
+            {
+                handle.cancel();
+            }
+            if let Some(handle) = app
+                .state::<ExpiryRuntimeState>()
+                .0
+                .lock()
+                .expect("expiry runtime lock poisoned")
                 .take()
             {
                 handle.cancel();

@@ -13,6 +13,7 @@ import { RemoteSourcesPanel } from "../remote/RemoteSourcesPanel";
 import { DisplaySettingsPanel } from "../display/DisplaySettingsPanel";
 import { SourcesStatusPanel } from "../sources/SourcesStatusPanel";
 import { HookHealthPanel } from "../hooks/HookHealthPanel";
+import { ArchiveSettingsPanel } from "../archive/ArchiveSettingsPanel";
 
 const LABELS: Record<NotificationDestination, string> = {
   telegram: "Telegram",
@@ -36,6 +37,7 @@ const EVENTS: Array<{ id: NotificationEvent; label: string }> = [
 ];
 
 export function NotificationSettingsPanel() {
+  const [tab, setTab] = useState<"general" | "archive">("general");
   const [destinations, setDestinations] = useState<NotificationDestinationWire[]>([]);
   const [secrets, setSecrets] = useState<Partial<Record<NotificationDestination, string>>>({});
   const [busy, setBusy] = useState<NotificationDestination | null>(null);
@@ -100,6 +102,11 @@ export function NotificationSettingsPanel() {
             <h1>Settings</h1>
           </div>
         </header>
+        <div className="notification-settings__tabs" role="tablist" aria-label="Settings sections">
+          <button type="button" role="tab" aria-selected={tab === "general"} onClick={() => setTab("general")}>General</button>
+          <button type="button" role="tab" aria-selected={tab === "archive"} onClick={() => setTab("archive")}>Archive</button>
+        </div>
+        {tab === "archive" ? <ArchiveSettingsPanel /> : <>
         <DisplaySettingsPanel />
         <section aria-labelledby="notification-settings-title">
           <div className="notification-settings__section-heading">
@@ -189,6 +196,7 @@ export function NotificationSettingsPanel() {
         <SourcesStatusPanel />
         <HookHealthPanel />
         <RemoteSourcesPanel />
+        </>}
       </div>
     </main>
   );

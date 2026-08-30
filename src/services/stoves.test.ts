@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { StoveSync, subscribeToStoves, type StoveTransport } from "./stoves";
+const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
+vi.mock("@tauri-apps/api/core", () => ({ invoke }));
+import { archiveStove, clearCookedStove, getArchivedSessions, restoreArchivedSession, setStovePinned, StoveSync, subscribeToStoves, type StoveTransport } from "./stoves";
 import type { StoveSnapshot, StoveWire } from "../types/stove";
 
 const stove: StoveWire = {
@@ -17,6 +19,7 @@ const stove: StoveWire = {
   progress: { completed: 2, total: 2, provenance: "structuredSession" },
   locatorCapability: "available",
   retainedCompletion: true,
+  pinned: false,
 };
 
 describe("StoveSync", () => {
@@ -61,5 +64,22 @@ describe("StoveSync", () => {
     expect(transport.snapshot).toHaveBeenCalledOnce();
     expect(received).toEqual([{ revision: 56, stoves: [stove] }]);
     expect(() => unlisten()).not.toThrow();
+  });
+});
+
+describe("stove commands", () => {
+  it("uses only Stove ids for pin, archive, and restore commands", async () => {
+    invoke.mockResolvedValue(undefined);
+    await clearCookedStove(stove.id);
+    await setStovePinned(stove.id, true);
+    await archiveStove(stove.id);
+    await getArchivedSessions();
+    await restoreArchivedSession(stove.id);
+
+    expect(invoke).toHaveBeenNthCalledWith(1, "clear_cooked_stove", { stoveId: stove.id });
+    expect(invoke).toHaveBeenNthCalledWith(2, "set_stove_pinned", { stoveId: stove.id, pinned: true });
+    expect(invoke).toHaveBeenNthCalledWith(3, "archive_stove", { stoveId: stove.id });
+    expect(invoke).toHaveBeenNthCalledWith(4, "get_archived_sessions");
+    expect(invoke).toHaveBeenNthCalledWith(5, "restore_archived_session", { stoveId: stove.id });
   });
 });

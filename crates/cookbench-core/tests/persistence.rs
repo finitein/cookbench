@@ -7,10 +7,11 @@ use std::{
 };
 
 use cookbench_core::{
-    domain::{EventMetadata, EventSource, HarnessId, HostIdentity, StoveIdentity},
+    domain::{EventMetadata, EventSource, HarnessId, HostIdentity, StoveIdentity, StoveState},
     persistence::{
-        AtomicJsonFile, ClearCursor, GlobalBarPlacement, PersistedConfig, PersistedState,
-        RetainedStove,
+        ArchiveReason, ArchivedSession, AtomicJsonFile, ClearCursor, GlobalBarPlacement,
+        PersistedConfig, PersistedState, PinnedSession, RetainedStove, RetainedStovePresentation,
+        SessionRecord,
     },
 };
 
@@ -51,6 +52,17 @@ fn locator() -> StoveIdentity {
 
 fn retained(completed_at_ms: u64) -> RetainedStove {
     RetainedStove::new(locator(), completed_at_ms)
+}
+
+fn session_record() -> SessionRecord {
+    SessionRecord::new(
+        locator(),
+        Some("/safe/session.jsonl".to_owned()),
+        42,
+        RetainedStovePresentation::new("cookbench", "/safe/cookbench"),
+        StoveState::Cooking,
+    )
+    .expect("safe session record")
 }
 
 #[test]
@@ -147,6 +159,9 @@ fn newer_prompt_relights_the_same_cleared_native_session() {
         version: PersistedState::CURRENT_VERSION,
         retained: Vec::new(),
         clear_cursors: vec![ClearCursor::new(locator(), 10, 10_000)],
+        pinned: Vec::new(),
+        archived: Vec::new(),
+        tracked: Vec::new(),
     };
 
     let newer_prompt = EventMetadata::new(EventSource::StructuredSession, 100, 11, 11_000);
@@ -224,6 +239,57 @@ fn config_never_serializes_credential_values() {
         GlobalBarPlacement::TopCenter
     );
     assert!(config.preferences.always_on_top);
+}
+
+#[test]
+fn v2_state_defaults_new_session_collections() {
+    let v2 = r#"{"version":2,"retained":[],"clear_cursors":[]}"#;
+    let state: PersistedState = serde_json::from_str(v2).unwrap();
+    assert!(state.pinned.is_empty());
+    assert!(state.archived.is_empty());
+    assert!(state.tracked.is_empty());
+}
+
+#[test]
+fn session_records_keep_only_safe_metadata() {
+    let record = session_record();
+    let state = PersistedState {
+        version: PersistedState::CURRENT_VERSION,
+        retained: Vec::new(),
+        clear_cursors: Vec::new(),
+        pinned: vec![PinnedSession {
+            session: record.clone(),
+            pinned_at_ms: 50,
+        }],
+        archived: vec![ArchivedSession {
+            session: record,
+            archived_at_ms: 51,
+            reason: ArchiveReason::Manual,
+        }],
+        tracked: Vec::new(),
+    };
+    let encoded = serde_json::to_string(&state).unwrap();
+    for forbidden in [
+        "prompt",
+        "transcript",
+        "command",
+        "output",
+        "task",
+        "activity",
+    ] {
+        assert!(
+            !encoded.contains(forbidden),
+            "persisted state exposed {forbidden}"
+        );
+    }
+    assert!(SessionRecord::new(
+        locator(),
+        Some("bad\nlocator".to_owned()),
+        1,
+        RetainedStovePresentation::default(),
+        StoveState::Starting,
+    )
+    .is_none());
 }
 
 #[test]

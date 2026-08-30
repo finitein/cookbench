@@ -497,7 +497,7 @@ pub fn record_detached_stove_position(
     Ok(updated)
 }
 
-pub(super) fn persist_layouts(
+pub(crate) fn persist_layouts(
     app_state: &crate::app_state::AppState,
     windows: &TauriWindowCommandService,
 ) -> Result<(), String> {

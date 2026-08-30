@@ -10,6 +10,8 @@ export type StoveBurnerProps = {
   onActivate?: (stove: StoveWire) => void;
   onDetach?: (stove: StoveWire) => void;
   onClear?: (stove: StoveWire) => void;
+  onPin?: (stove: StoveWire) => void;
+  onArchive?: (stove: StoveWire) => void;
   previousState?: StoveMotionState;
   isInitialSnapshot?: boolean;
   motionPreferences?: StoveMotionPreferences;
@@ -24,6 +26,8 @@ export function StoveBurner({
   onActivate,
   onDetach,
   onClear,
+  onPin,
+  onArchive,
   previousState,
   isInitialSnapshot,
   motionPreferences,
@@ -83,6 +87,18 @@ export function StoveBurner({
           <span aria-hidden="true" />
         </button>
       ) : null}
+      {onPin ? (
+        <button
+          className="stove-burner__control stove-burner__control--pin"
+          type="button"
+          aria-pressed={stove.pinned}
+          aria-label={`${stove.pinned ? "Unpin" : "Pin"} ${stove.harness.label} Stove`}
+          title={stove.pinned ? "Unpin" : "Pin"}
+          onClick={() => onPin(stove)}
+        >
+          <span aria-hidden="true" />
+        </button>
+      ) : null}
       {onClear && stove.retainedCompletion ? (
         <button
           className="stove-burner__control stove-burner__control--clear"
@@ -90,6 +106,17 @@ export function StoveBurner({
           aria-label={`Clear ${stove.harness.label} Stove`}
           title={`Clear ${stove.harness.label} Stove`}
           onClick={() => onClear(stove)}
+        >
+          <span aria-hidden="true" />
+        </button>
+      ) : null}
+      {onArchive && !stove.retainedCompletion ? (
+        <button
+          className="stove-burner__control stove-burner__control--archive"
+          type="button"
+          aria-label={`Delete ${stove.harness.label} Stove`}
+          title="Delete"
+          onClick={() => onArchive(stove)}
         >
           <span aria-hidden="true" />
         </button>

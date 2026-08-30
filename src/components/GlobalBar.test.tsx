@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { StoveWire } from "../types/stove";
 import { globalBarFixture, makeStove } from "../stories/GlobalBar.fixture";
@@ -139,7 +139,7 @@ describe("GlobalBar", () => {
     expect(activated).toBe(stove);
   });
 
-  it("offers independent detach, clear, and settings commands", () => {
+  it("offers independent pin, delete or clear, detach, and settings commands", () => {
     const stove = makeStove(0, { state: "cooked", retainedCompletion: true });
     const actions: string[] = [];
     render(
@@ -147,14 +147,28 @@ describe("GlobalBar", () => {
         stoves={[stove]}
         onDetachStove={() => actions.push("detach")}
         onClearStove={() => actions.push("clear")}
+        onPinStove={() => actions.push("pin")}
+        onArchiveStove={() => actions.push("delete")}
         onOpenSettings={() => actions.push("settings")}
       />,
     );
 
     screen.getByRole("button", { name: "Detach Codex Stove" }).click();
+    screen.getByRole("button", { name: "Pin Codex Stove" }).click();
     screen.getByRole("button", { name: "Clear Codex Stove" }).click();
     screen.getByRole("button", { name: "Open Cookbench settings" }).click();
-    expect(actions).toEqual(["detach", "clear", "settings"]);
+    expect(screen.queryByRole("button", { name: "Delete Codex Stove" })).not.toBeInTheDocument();
+    expect(actions).toEqual(["detach", "pin", "clear", "settings"]);
+  });
+
+  it("uses Delete rather than Clear for any non-Cooked Stove", () => {
+    const stove = makeStove(0, { state: "cooking", retainedCompletion: false });
+    const archive = vi.fn();
+    render(<GlobalBar stoves={[stove]} onArchiveStove={archive} onClearStove={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete Codex Stove" }));
+    expect(archive).toHaveBeenCalledWith(stove);
+    expect(screen.queryByRole("button", { name: "Clear Codex Stove" })).not.toBeInTheDocument();
   });
 
   it("plays the completion presentation only for a live transition into Cooked", () => {

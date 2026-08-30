@@ -9,7 +9,7 @@ import { useGlobalBarWindow } from "./hooks/useGlobalBarWindow";
 import { useStoves } from "./hooks/useStoves";
 import { detachedStoveTransport } from "./services/detachedStoves";
 import { activateStove, type LocatorActivationResult } from "./services/locator";
-import { clearCookedStove } from "./services/stoves";
+import { archiveStove, clearCookedStove, setStovePinned } from "./services/stoves";
 import { NotificationSettingsPanel } from "./settings/notifications/NotificationSettingsPanel";
 import { openNotificationSettings } from "./settings/notifications/service";
 import type { StoveWire } from "./types/stove";
@@ -43,6 +43,8 @@ export default function App() {
         onActivateStove={activate}
         onDetachStove={(stove) => { void detachedStoveTransport.detach(stove.id); }}
         onClearStove={(stove) => { void clearCookedStove(stove.id); }}
+        onPinStove={(stove) => { void setStovePinned(stove.id, !stove.pinned); }}
+        onArchiveStove={(stove) => { void archiveStove(stove.id); }}
         onOpenSettings={() => { void openNotificationSettings(); }}
         hoverDetailsEnabled={displaySettings?.hoverDetailsEnabled ?? false}
       />

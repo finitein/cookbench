@@ -4,12 +4,15 @@
 //! content-free lifecycle events. It never launches, controls, or configures a
 //! harness, and it retains neither transcript records nor a session database.
 
+pub mod archive_inventory;
+
 use std::{
     collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
+        mpsc::{self, SyncSender},
         Arc, RwLock,
     },
     thread,
@@ -33,6 +36,7 @@ use serde::Serialize;
 const MAX_PRESENTATION_TEXT_BYTES: usize = 160;
 const MIN_EPOCH_TIMESTAMP_MS: u64 = 1_000_000_000_000;
 const STARTUP_DISCOVERY_AGE: Duration = Duration::from_secs(2 * 24 * 60 * 60);
+const MAX_PINNED_LOCAL_PATHS: usize = 1_024;
 
 /// A bounded, content-free projection for hover and notification surfaces.
 /// Values are derived from structured session metadata and normalized event
@@ -43,6 +47,9 @@ pub struct ObservationSummary {
     pub current_action: Option<String>,
     pub next_action: Option<String>,
     pub elapsed_ms: Option<u64>,
+    /// Filesystem metadata only. This is intentionally not derived from a
+    /// native session record, so expiry decisions do not need transcript data.
+    pub source_modified_at_ms: Option<u64>,
 }
 
 impl ObservationSummary {
@@ -53,7 +60,13 @@ impl ObservationSummary {
             current_action: Some(current_action.to_owned()),
             next_action: Some(next_action.to_owned()),
             elapsed_ms: elapsed_from_event(event.metadata.timestamp_ms, now_ms),
+            source_modified_at_ms: None,
         }
+    }
+
+    fn with_source_modified_at_ms(mut self, source_modified_at_ms: Option<u64>) -> Self {
+        self.source_modified_at_ms = source_modified_at_ms;
+        self
     }
 }
 
@@ -103,6 +116,10 @@ pub struct LocalObservationConfig {
     pub pi_roots: Vec<PathBuf>,
     pub startup_min_modified: SystemTime,
     pub startup_candidate_limit: usize,
+    /// Explicit local session files that remain observable after the normal
+    /// startup discovery window. Callers must pass only persistence-backed
+    /// references; the runtime validates containment and readability again.
+    pub pinned_local_paths: Vec<PathBuf>,
 }
 
 impl LocalObservationConfig {
@@ -120,6 +137,7 @@ impl LocalObservationConfig {
                 .checked_sub(STARTUP_DISCOVERY_AGE)
                 .unwrap_or(SystemTime::UNIX_EPOCH),
             startup_candidate_limit: 64,
+            pinned_local_paths: Vec::new(),
         }
     }
 }
@@ -278,6 +296,7 @@ struct WatchedSession {
     parser: ParserKind,
     tailer: JsonlTailer,
     sequence: u64,
+    source_modified_at_ms: Option<u64>,
 }
 
 const REPLAY_WINDOW_BYTES: u64 = 1024 * 1024;
@@ -376,6 +395,7 @@ impl<S: ObservationSink> LocalObservationRuntime<S> {
         let Some(session) = self.sessions.get_mut(&lookup) else {
             return false;
         };
+        session.source_modified_at_ms = source_modified_at_ms(&lookup);
         let records = match session.tailer.poll() {
             Ok(records) => records,
             Err(_) => return false,
@@ -397,7 +417,8 @@ impl<S: ObservationSink> LocalObservationRuntime<S> {
                         session.title.as_deref(),
                         &event,
                         current_time_ms(),
-                    ),
+                    )
+                    .with_source_modified_at_ms(session.source_modified_at_ms),
                     origin,
                     event,
                 );
@@ -450,6 +471,7 @@ impl<S: ObservationSink> LocalObservationRuntime<S> {
         for session in sessions {
             self.register_session(kind, session);
         }
+        self.register_pinned_paths(kind);
         let discovered = self
             .sessions
             .values()
@@ -468,6 +490,41 @@ impl<S: ObservationSink> LocalObservationRuntime<S> {
         }
         if let Some(session) = session_from_path(kind, &self.config, path) {
             self.register_session(kind, session);
+        }
+    }
+
+    /// Register old sessions only when they were explicitly pinned by the
+    /// caller and still satisfy the same root and parser trust boundary as
+    /// ordinary discovery.
+    fn register_pinned_paths(&mut self, kind: ParserKind) {
+        let paths = self
+            .config
+            .pinned_local_paths
+            .iter()
+            .take(MAX_PINNED_LOCAL_PATHS)
+            .filter_map(|path| validated_pinned_path(kind, &self.config, path))
+            .collect::<Vec<_>>();
+        for path in paths {
+            if let Some(session) = session_from_path(kind, &self.config, &path) {
+                self.register_session(kind, session);
+            }
+        }
+    }
+
+    /// Rebuilds one already-trusted watcher from the bounded native suffix.
+    /// Archive restoration uses this to recover events that were observed
+    /// while the Stove presentation was deliberately suppressed.
+    fn refresh_path(&mut self, path: &Path) {
+        for kind in [ParserKind::Codex, ParserKind::Claude, ParserKind::Pi] {
+            let Some(path) = validated_pinned_path(kind, &self.config, path) else {
+                continue;
+            };
+            let Some(session) = session_from_path(kind, &self.config, &path) else {
+                return;
+            };
+            self.sessions.remove(&path);
+            self.register_session(kind, session);
+            return;
         }
     }
 
@@ -506,7 +563,8 @@ impl<S: ObservationSink> LocalObservationRuntime<S> {
                 session.title.as_deref(),
                 &discovered,
                 current_time_ms(),
-            ),
+            )
+            .with_source_modified_at_ms(source_modified_at_ms(&path)),
             ObservationOrigin::Replay,
             discovered,
         );
@@ -520,6 +578,7 @@ impl<S: ObservationSink> LocalObservationRuntime<S> {
                 parser: kind,
                 tailer,
                 sequence,
+                source_modified_at_ms: source_modified_at_ms(&path),
             },
         );
         self.replay_recent(&path);
@@ -529,8 +588,27 @@ impl<S: ObservationSink> LocalObservationRuntime<S> {
 pub struct RuntimeHandle {
     cancelled: Arc<AtomicBool>,
     join: Option<thread::JoinHandle<()>>,
+    commands: SyncSender<RuntimeCommand>,
 }
+
+enum RuntimeCommand {
+    AddPinnedPath(PathBuf),
+    RefreshPath(PathBuf),
+}
+
 impl RuntimeHandle {
+    pub fn add_pinned_path(&self, path: PathBuf) -> bool {
+        self.commands
+            .try_send(RuntimeCommand::AddPinnedPath(path))
+            .is_ok()
+    }
+
+    pub fn refresh_path(&self, path: PathBuf) -> bool {
+        self.commands
+            .try_send(RuntimeCommand::RefreshPath(path))
+            .is_ok()
+    }
+
     pub fn cancel(mut self) {
         self.cancelled.store(true, Ordering::Release);
         if let Some(join) = self.join.take() {
@@ -554,10 +632,32 @@ pub fn start<S: ObservationSink>(
 ) -> RuntimeHandle {
     let cancelled = Arc::new(AtomicBool::new(false));
     let stop = cancelled.clone();
+    let (commands, pending_commands) = mpsc::sync_channel(64);
     let join = thread::spawn(move || {
         let mut runtime = LocalObservationRuntime::new_with_status(config, sink, status);
         runtime.bootstrap();
         while !stop.load(Ordering::Acquire) {
+            let mut added = false;
+            let mut refresh_paths = Vec::new();
+            while let Ok(command) = pending_commands.try_recv() {
+                match command {
+                    RuntimeCommand::AddPinnedPath(path) => {
+                        if runtime.config.pinned_local_paths.len() < MAX_PINNED_LOCAL_PATHS
+                            && !runtime.config.pinned_local_paths.contains(&path)
+                        {
+                            runtime.config.pinned_local_paths.push(path);
+                            added = true;
+                        }
+                    }
+                    RuntimeCommand::RefreshPath(path) => refresh_paths.push(path),
+                }
+            }
+            if added {
+                runtime.refresh_all();
+            }
+            for path in refresh_paths {
+                runtime.refresh_path(&path);
+            }
             runtime.tick();
             thread::sleep(Duration::from_millis(50));
         }
@@ -565,6 +665,7 @@ pub fn start<S: ObservationSink>(
     RuntimeHandle {
         cancelled,
         join: Some(join),
+        commands,
     }
 }
 
@@ -755,6 +856,46 @@ fn modified_at_path(path: &Path) -> Option<SystemTime> {
 
 fn is_recent_path(path: &Path, minimum: SystemTime) -> bool {
     modified_at_path(path).is_some_and(|modified| modified >= minimum)
+}
+
+/// Returns a source file's modification time in epoch milliseconds without
+/// opening or parsing its contents. Missing or unsupported metadata is simply
+/// reported as `None`.
+pub fn source_modified_at_ms(path: &Path) -> Option<u64> {
+    modified_at_path(path)?
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .ok()?
+        .as_millis()
+        .try_into()
+        .ok()
+}
+
+fn validated_pinned_path(
+    kind: ParserKind,
+    config: &LocalObservationConfig,
+    path: &Path,
+) -> Option<PathBuf> {
+    if !path
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("jsonl"))
+    {
+        return None;
+    }
+    let metadata = fs::metadata(path).ok()?;
+    if !metadata.is_file() {
+        return None;
+    }
+    // Opening verifies the runtime can read the file before an adapter is ever
+    // asked to inspect it. Canonical containment prevents pinned state from
+    // becoming an arbitrary file-read capability.
+    fs::File::open(path).ok()?;
+    let canonical_path = fs::canonicalize(path).ok()?;
+    let under_matching_root = roots_for_kind(kind, config).into_iter().any(|root| {
+        fs::canonicalize(root)
+            .ok()
+            .is_some_and(|canonical_root| canonical_path.starts_with(canonical_root))
+    });
+    under_matching_root.then_some(canonical_path)
 }
 
 pub fn current_time_ms() -> u64 {

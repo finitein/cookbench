@@ -18,6 +18,7 @@ const stove: StoveWire = {
   progress: { completed: 3, total: 8, provenance: "structuredSession" },
   locatorCapability: "available",
   retainedCompletion: false,
+  pinned: false,
 };
 
 describe("DetachedStoveBar", () => {
@@ -46,6 +47,17 @@ describe("DetachedStoveBar", () => {
     expect(onActivate).toHaveBeenCalledWith(stove);
     expect(onClose).toHaveBeenCalledWith(stove);
     expect(onClear).toHaveBeenCalledWith(stove);
+  });
+
+  it("keeps pin and delete available in the detached view for a live Stove", () => {
+    const onPin = vi.fn();
+    const onArchive = vi.fn();
+    render(<DetachedStoveBar stove={stove} onPin={onPin} onArchive={onArchive} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Pin Codex Stove" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete Codex Stove" }));
+    expect(onPin).toHaveBeenCalledWith(stove);
+    expect(onArchive).toHaveBeenCalledWith(stove);
   });
 
   it("does not render a clear control when manual clearing is unavailable", () => {
