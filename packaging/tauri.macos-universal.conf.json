@@ -1,0 +1,11 @@
+{
+  "build": {
+    "beforeBuildCommand": "pnpm build && bash scripts/release/prepare-macos-universal-sidecars.sh"
+  },
+  "bundle": {
+    "externalBin": [
+      "binaries/cookbench-bridge",
+      "binaries/cookbench-hook"
+    ]
+  }
+}

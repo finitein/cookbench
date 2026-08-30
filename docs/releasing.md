@@ -32,9 +32,23 @@ or font assets are present.
   libayatana-appindicator, libsecret/Secret Service, and FUSE/AppImage runtime
   expectations in the release notes.
 
-The release workflow creates a draft prerelease. A human release owner reviews
-signatures, notarization, package-smoke output, SHA-256 checksums, and the honest
-platform matrix before publication.
+The tag workflow creates an unsigned draft prerelease by default. A stable
+workflow dispatch fails before building unless every macOS signing/notarization
+secret and Windows signing/timestamp secret is present. A human release owner
+reviews signatures, notarization, package-smoke output, SHA-256 checksums, the
+first-party SPDX artifact manifest, and the honest platform matrix before
+publication.
+
+Every release job checks out the resolved version tag and verifies its commit
+SHA before building. Configure the `release-signing` GitHub environment with
+required reviewers and place signing/notarization secrets behind that
+environment; only the final draft-publication job receives `contents: write`.
+
+The workflow produces registry submission material only after a stable signed
+build: a fixed-checksum Homebrew Cask, fixed-checksum winget manifests, and APT
+repository metadata. It does not publish to those registries or pretend that
+`brew`, `winget`, or `apt` commands work before external review, signing, and
+hosting are complete. See `packaging/README.md`.
 
 ## Permissions and Secrets
 
@@ -45,9 +59,8 @@ Secret Service and must be tested only with synthetic sandbox destinations.
 
 ## Integration Locations
 
-- Codex and Claude hooks: follow `docs/integrations/hooks.md`; uninstall must
-  preserve unrelated hook entries.
-- Pi extension: use `integrations/pi/cookbench.ts` from the original Pi tool.
+- Codex, Claude, and Pi hooks: use Hook Health in Cookbench Settings and follow
+  `docs/integrations/hooks.md`; uninstall must preserve unrelated hook entries.
 - GNOME presentation extension: follow
   `docs/integrations/gnome-extension.md` and verify clean removal.
 - SSH bridge: distribute the helper built for each supported remote target;

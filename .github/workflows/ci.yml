@@ -40,6 +40,7 @@ jobs:
       - run: cargo test --workspace
       - run: pnpm lint
       - run: pnpm test --run
+      - run: node --test tests/release/release-contract.test.mjs
       - run: node --test gnome-extension/tests/protocol.test.mjs
       - run: pnpm build
       - run: cargo build --workspace

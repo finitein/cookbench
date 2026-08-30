@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "artifacts": [
+    {
+      "platform": "macOS",
+      "runner": "macos-14",
+      "target": "universal-apple-darwin",
+      "packages": ["app", "dmg"],
+      "publishGate": "Developer ID signature plus notarization and stapling"
+    },
+    {
+      "platform": "Windows",
+      "runner": "windows-2022",
+      "target": "x86_64-pc-windows-msvc",
+      "packages": ["msi"],
+      "publishGate": "Authenticode signature with RFC 3161 timestamp"
+    },
+    {
+      "platform": "Ubuntu",
+      "runner": "ubuntu-22.04",
+      "target": "x86_64-unknown-linux-gnu",
+      "packages": ["deb", "appimage"],
+      "publishGate": "Package smoke plus checksum; repository publication needs separate APT signing"
+    }
+  ]
+}

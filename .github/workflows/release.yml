@@ -2,47 +2,117 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing vX.Y.Z tag to package; defaults to the selected ref only when it is a tag."
+        required: false
+        type: string
+      channel:
+        description: "Release channel; stable requires signing and notarization secrets."
+        required: true
+        default: prerelease
+        type: choice
+        options: [prerelease, stable]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  bundle:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-14
-            target: aarch64-apple-darwin
-            args: --target aarch64-apple-darwin --config src-tauri/tauri.bundle.conf.json
-          - os: macos-14
-            target: x86_64-apple-darwin
-            args: --target x86_64-apple-darwin --config src-tauri/tauri.bundle.conf.json
-          - os: windows-2022
-            target: x86_64-pc-windows-msvc
-            args: --target x86_64-pc-windows-msvc --config src-tauri/tauri.bundle.conf.json
-          - os: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            args: --target x86_64-unknown-linux-gnu --config src-tauri/tauri.bundle.conf.json
-    runs-on: ${{ matrix.os }}
-    env:
-      COOKBENCH_TARGET: ${{ matrix.target }}
+  release_context:
+    runs-on: ubuntu-22.04
+    outputs:
+      channel: ${{ steps.context.outputs.channel }}
+      tag: ${{ steps.context.outputs.tag }}
+      version: ${{ steps.context.outputs.version }}
+      base_url: ${{ steps.context.outputs.base_url }}
+      commit_sha: ${{ steps.context.outputs.commit_sha }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+      - id: context
+        shell: bash
+        env:
+          REQUESTED_TAG: ${{ inputs.tag }}
+          DEFAULT_TAG: ${{ github.ref_name }}
+          REQUESTED_CHANNEL: ${{ inputs.channel }}
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          TAG="${REQUESTED_TAG:-$DEFAULT_TAG}"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Release tag is not a supported version tag" >&2
+            exit 1
+          fi
+          if [[ "$TAG" != "v$VERSION" ]]; then
+            echo "Tag $TAG does not match package version v$VERSION" >&2
+            exit 1
+          fi
+          TAG_SHA="$(git rev-parse --verify "refs/tags/$TAG^{commit}")"
+          HEAD_SHA="$(git rev-parse HEAD)"
+          if [[ "$HEAD_SHA" != "$TAG_SHA" ]]; then
+            echo "Checked-out commit does not match the requested release tag" >&2
+            exit 1
+          fi
+          CHANNEL="${REQUESTED_CHANNEL:-prerelease}"
+          printf 'version=%s\ntag=%s\nchannel=%s\nbase_url=https://github.com/%s/releases/download/%s\ncommit_sha=%s\n' \
+            "$VERSION" "$TAG" "$CHANNEL" "$GITHUB_REPOSITORY" "$TAG" "$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+  release_channel_gate:
+    needs: release_context
+    runs-on: ubuntu-22.04
+    environment: release-signing
+    env:
+      RELEASE_CHANNEL: ${{ needs.release_context.outputs.channel }}
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      WINDOWS_SIGNING_CERTIFICATE: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE }}
+      WINDOWS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
+      WINDOWS_SIGNING_TIMESTAMP_URL: ${{ secrets.WINDOWS_SIGNING_TIMESTAMP_URL }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release_context.outputs.tag }}
+      - name: Verify resolved release commit
+        env:
+          EXPECTED_SHA: ${{ needs.release_context.outputs.commit_sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - run: bash scripts/release/check-release-channel.sh
+
+  macos_universal:
+    needs: [release_context, release_channel_gate]
+    runs-on: macos-14
+    environment: release-signing
+    env:
+      VERSION: ${{ needs.release_context.outputs.version }}
+      RELEASE_CHANNEL: ${{ needs.release_context.outputs.channel }}
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release_context.outputs.tag }}
+      - name: Verify resolved release commit
+        env:
+          EXPECTED_SHA: ${{ needs.release_context.outputs.commit_sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
       - uses: actions/setup-node@v7
         with:
           node-version: 22
           package-manager-cache: false
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
-      - name: Install Ubuntu desktop dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential curl file libayatana-appindicator3-dev libssl-dev librsvg2-dev libwebkit2gtk-4.1-dev libxdo-dev patchelf wget
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
       - name: Install frontend dependencies and generate platform icons
         shell: bash
         run: |
@@ -50,23 +120,184 @@ jobs:
           corepack prepare pnpm@10.34.5 --activate
           pnpm install --frozen-lockfile
           pnpm tauri icon docs/visual-prototype/assets/cookbench-mark.svg
-      - id: tauri
-        uses: tauri-apps/tauri-action@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: Cookbench ${{ github.ref_name }}
-          releaseBody: See docs/installing.md and the release checklist before installation.
-          releaseDraft: true
-          prerelease: true
-          args: ${{ matrix.args }}
+      - name: Build macOS universal app and DMG
+        shell: bash
+        run: pnpm tauri build --ci --target universal-apple-darwin --config packaging/tauri.macos-universal.conf.json --bundles app,dmg
       - name: Audit package contents
         shell: bash
-        run: bash scripts/package-smoke.sh "target/${{ matrix.target }}/release/bundle"
+        run: bash scripts/package-smoke.sh target/universal-apple-darwin/release/bundle
+      - name: Verify formal signing and notarization
+        shell: bash
+        run: bash scripts/release/verify-macos-signing.sh target/universal-apple-darwin/release/bundle
+      - name: Stage immutable artifact names
+        shell: bash
+        run: bash scripts/release/stage-artifacts.sh macos target/universal-apple-darwin/release/bundle release-artifacts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-macos-universal
+          path: release-artifacts
+          if-no-files-found: error
+
+  windows_x64:
+    needs: [release_context, release_channel_gate]
+    runs-on: windows-2022
+    environment: release-signing
+    env:
+      VERSION: ${{ needs.release_context.outputs.version }}
+      RELEASE_CHANNEL: ${{ needs.release_context.outputs.channel }}
+      COOKBENCH_TARGET: x86_64-pc-windows-msvc
+      WINDOWS_SIGNING_CERTIFICATE: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE }}
+      WINDOWS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
+      WINDOWS_SIGNING_TIMESTAMP_URL: ${{ secrets.WINDOWS_SIGNING_TIMESTAMP_URL }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release_context.outputs.tag }}
+      - name: Verify resolved release commit
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ needs.release_context.outputs.commit_sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - name: Install frontend dependencies and generate platform icons
+        shell: bash
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.34.5 --activate
+          pnpm install --frozen-lockfile
+          pnpm tauri icon docs/visual-prototype/assets/cookbench-mark.svg
+      - name: Build Windows x64 MSI
+        shell: bash
+        run: pnpm tauri build --ci --target x86_64-pc-windows-msvc --config src-tauri/tauri.bundle.conf.json --bundles msi
+      - name: Sign and validate formal MSI
+        shell: pwsh
+        run: ./scripts/release/sign-windows.ps1 -BundleRoot target/x86_64-pc-windows-msvc/release/bundle
+      - name: Audit package contents
+        shell: bash
+        run: bash scripts/package-smoke.sh target/x86_64-pc-windows-msvc/release/bundle
+      - name: Stage immutable artifact names
+        shell: bash
+        run: bash scripts/release/stage-artifacts.sh windows target/x86_64-pc-windows-msvc/release/bundle release-artifacts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows-x64
+          path: release-artifacts
+          if-no-files-found: error
+
+  ubuntu_amd64:
+    needs: [release_context, release_channel_gate]
+    runs-on: ubuntu-22.04
+    env:
+      VERSION: ${{ needs.release_context.outputs.version }}
+      RELEASE_CHANNEL: ${{ needs.release_context.outputs.channel }}
+      COOKBENCH_TARGET: x86_64-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release_context.outputs.tag }}
+      - name: Verify resolved release commit
+        env:
+          EXPECTED_SHA: ${{ needs.release_context.outputs.commit_sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+      - name: Install Ubuntu desktop dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential file libayatana-appindicator3-dev libssl-dev librsvg2-dev libwebkit2gtk-4.1-dev libxdo-dev patchelf
+      - name: Install frontend dependencies and generate platform icons
+        shell: bash
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.34.5 --activate
+          pnpm install --frozen-lockfile
+          pnpm tauri icon docs/visual-prototype/assets/cookbench-mark.svg
+      - name: Build Ubuntu DEB and AppImage
+        shell: bash
+        run: pnpm tauri build --ci --target x86_64-unknown-linux-gnu --config src-tauri/tauri.bundle.conf.json --bundles deb,appimage
+      - name: Audit package contents
+        shell: bash
+        run: bash scripts/package-smoke.sh target/x86_64-unknown-linux-gnu/release/bundle
+      - name: Stage immutable artifact names
+        shell: bash
+        run: bash scripts/release/stage-artifacts.sh linux target/x86_64-unknown-linux-gnu/release/bundle release-artifacts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-ubuntu-amd64
+          path: release-artifacts
+          if-no-files-found: error
+
+  release_metadata:
+    needs: [release_context, macos_universal, windows_x64, ubuntu_amd64]
+    runs-on: ubuntu-22.04
+    env:
+      VERSION: ${{ needs.release_context.outputs.version }}
+      RELEASE_CHANNEL: ${{ needs.release_context.outputs.channel }}
+      RELEASE_BASE_URL: ${{ needs.release_context.outputs.base_url }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release_context.outputs.tag }}
+      - name: Verify resolved release commit
+        env:
+          EXPECTED_SHA: ${{ needs.release_context.outputs.commit_sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release/artifacts
+          merge-multiple: true
+      - name: Generate SHA-256 checksums, manifest, and first-party SPDX SBOM
+        shell: bash
+        run: |
+          mkdir -p release/metadata
+          (cd release/artifacts && sha256sum * > ../metadata/SHA256SUMS)
+          node scripts/release/build-manifest.mjs --artifacts release/artifacts --output release/metadata --version "$VERSION" --channel "$RELEASE_CHANNEL"
+      - name: Generate registry submission metadata for signed stable releases
+        if: env.RELEASE_CHANNEL == 'stable'
+        shell: bash
+        run: node scripts/release/generate-registry-metadata.mjs --manifest release/metadata/release-manifest.json --output release/registry --base-url "$RELEASE_BASE_URL" --apt-base-url "https://packages.cookbench.app/apt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-metadata
+          path: release
+          if-no-files-found: error
+
+  publish_draft:
+    needs: [release_context, release_metadata]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ needs.release_context.outputs.tag }}
+      RELEASE_CHANNEL: ${{ needs.release_context.outputs.channel }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-metadata
+          path: release
+      - name: Create a reviewable GitHub draft without claiming public registry availability
+        shell: bash
+        run: |
+          cat > release-notes.md <<'EOF'
+          This is a reviewable Cookbench release draft.
+
+          Registry installation commands are not public until the generated Homebrew, winget, and signed APT metadata have been reviewed and merged by their respective publishers. Verify checksums, signatures, notarization, and the platform checklist before publishing.
+          EOF
+          args=("$TAG" release/artifacts/* release/metadata/* --draft --title "Cookbench $TAG" --notes-file release-notes.md)
+          if [[ "$RELEASE_CHANNEL" == "prerelease" ]]; then
+            args+=(--prerelease)
+          fi
+          gh release create "${args[@]}"
