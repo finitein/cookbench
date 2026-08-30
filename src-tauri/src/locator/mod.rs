@@ -949,7 +949,19 @@ mod driver_tests {
 
     #[test]
     fn bounded_runner_kills_a_timed_out_driver() {
-        let result = run_bounded_for("/bin/sleep", &["1".to_owned()], Duration::from_millis(5));
+        #[cfg(windows)]
+        let (program, args) = (
+            "powershell.exe",
+            vec![
+                "-NoProfile".to_owned(),
+                "-Command".to_owned(),
+                "Start-Sleep -Seconds 1".to_owned(),
+            ],
+        );
+        #[cfg(not(windows))]
+        let (program, args) = ("/bin/sleep", vec!["1".to_owned()]);
+
+        let result = run_bounded_for(program, &args, Duration::from_millis(5));
         assert_eq!(result.unwrap_err(), JumpOutcome::TimedOut);
     }
 

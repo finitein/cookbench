@@ -856,6 +856,7 @@ fn ensure_managed_helper(packaged: &Path, managed: &Path) -> Result<(), HookErro
             ));
         }
         destination.sync_all()?;
+        drop(destination);
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -1093,7 +1094,7 @@ mod tests {
         let handler = &installed["hooks"]["Stop"][1]["hooks"][0];
         assert!(handler["command"]
             .as_str()
-            .is_some_and(|command| command.ends_with("cookbench-hook")));
+            .is_some_and(|command| command.ends_with(hook_executable_name())));
         assert_eq!(
             handler["args"],
             serde_json::json!(["--harness", "claude-code"])
@@ -1292,7 +1293,9 @@ mod tests {
         apply_pi_with_helper(HookAction::Install, &path, &helper).unwrap();
         let extension = fs::read_to_string(&path).unwrap();
         assert!(extension.contains("agent_end"));
-        assert!(extension.contains(helper.to_string_lossy().as_ref()));
+        assert!(
+            extension.contains(&serde_json::to_string(helper.to_string_lossy().as_ref()).unwrap())
+        );
         assert!(!extension.contains("event.prompt"));
         assert!(!extension.contains("event.args"));
         assert!(pi_status_with_helper(&path, &helper).can_uninstall);
