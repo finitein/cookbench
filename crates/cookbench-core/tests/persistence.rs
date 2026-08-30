@@ -87,9 +87,20 @@ fn atomic_replacement_never_exposes_partial_json() {
     };
 
     while !writer.is_finished() {
-        let bytes = fs::read(file.path()).unwrap();
-        let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert!(value.is_object());
+        match fs::read(file.path()) {
+            Ok(bytes) => {
+                let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+                assert!(value.is_object());
+            }
+            Err(error)
+                if cfg!(windows)
+                    && (error.kind() == std::io::ErrorKind::NotFound
+                        || matches!(error.raw_os_error(), Some(5 | 32))) =>
+            {
+                thread::yield_now();
+            }
+            Err(error) => panic!("unexpected persistence read failure: {error}"),
+        }
     }
     writer.join().unwrap();
     assert_eq!(file.load().unwrap().retained[0].completed_at_ms, 100);

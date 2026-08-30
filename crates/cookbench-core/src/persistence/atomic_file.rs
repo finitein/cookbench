@@ -187,20 +187,32 @@ fn replace_file(temporary_path: &Path, destination: &Path) -> io::Result<()> {
     let temporary_path = wide(temporary_path);
     // ReplaceFileW preserves the old destination until Windows has installed the
     // completed replacement; remove-and-rename would expose a missing file.
-    let replaced = unsafe {
-        ReplaceFileW(
-            destination.as_ptr(),
-            temporary_path.as_ptr(),
-            std::ptr::null(),
-            0,
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-        )
-    };
-    if replaced == 0 {
-        return Err(io::Error::last_os_error());
+    // Windows can transiently deny replacement while an indexer or reader has
+    // the destination open, so follow the platform guidance and retry briefly.
+    for attempt in 0..64 {
+        let replaced = unsafe {
+            ReplaceFileW(
+                destination.as_ptr(),
+                temporary_path.as_ptr(),
+                std::ptr::null(),
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        if replaced != 0 {
+            return Ok(());
+        }
+
+        let error = io::Error::last_os_error();
+        let retryable = matches!(error.raw_os_error(), Some(5 | 32 | 1175));
+        if !retryable || attempt == 63 {
+            return Err(error);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(2));
     }
-    Ok(())
+
+    unreachable!("bounded Windows replacement loop always returns")
 }
 
 #[cfg(unix)]
