@@ -8,6 +8,7 @@ use std::{
 
 use cookbench_core::{
     domain::{EventMetadata, EventSource, HarnessId, HostIdentity, StoveIdentity, StoveState},
+    notifications::NotificationEventKind,
     persistence::{
         ArchiveReason, ArchivedSession, AtomicJsonFile, ClearCursor, GlobalBarPlacement,
         PersistedConfig, PersistedState, PinnedSession, RetainedStove, RetainedStovePresentation,
@@ -239,6 +240,61 @@ fn config_never_serializes_credential_values() {
         GlobalBarPlacement::TopCenter
     );
     assert!(config.preferences.always_on_top);
+}
+
+#[test]
+fn legacy_config_defaults_local_notifications_to_sound_and_approved_events() {
+    let config: PersistedConfig = serde_json::from_str(
+        r#"{"version":1,"preferences":{"always_on_top":true,"notifications_enabled":false}}"#,
+    )
+    .unwrap();
+
+    let local = config.preferences.local_notifications;
+    assert!(local.sound);
+    assert!(!local.system_banner);
+    assert!(!local.bar_flash);
+    assert!(!local.system_attention);
+    assert_eq!(
+        local.events,
+        vec![
+            NotificationEventKind::NeedsHuman,
+            NotificationEventKind::Cooked,
+            NotificationEventKind::Failed,
+            NotificationEventKind::Disconnected,
+        ]
+    );
+}
+
+#[test]
+fn local_notification_preferences_round_trip_custom_channels_and_deduplicated_events() {
+    let config: PersistedConfig = serde_json::from_str(
+        r#"{
+            "version": 1,
+            "preferences": {
+                "local_notifications": {
+                    "sound": false,
+                    "system_banner": true,
+                    "bar_flash": true,
+                    "system_attention": true,
+                    "events": ["Cooked", "Failed", "Cooked", "SessionAppeared", "Failed"]
+                }
+            }
+        }"#,
+    )
+    .unwrap();
+
+    assert_eq!(
+        config.preferences.local_notifications.events,
+        vec![
+            NotificationEventKind::SessionAppeared,
+            NotificationEventKind::Cooked,
+            NotificationEventKind::Failed,
+        ]
+    );
+
+    let restored: PersistedConfig =
+        serde_json::from_value(serde_json::to_value(&config).unwrap()).unwrap();
+    assert_eq!(restored, config);
 }
 
 #[test]

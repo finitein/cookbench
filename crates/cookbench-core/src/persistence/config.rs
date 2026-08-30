@@ -1,4 +1,6 @@
-use serde::{de, Deserialize, Deserializer, Serialize};
+use std::collections::BTreeSet;
+
+use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::domain::HarnessId;
 use crate::notifications::NotificationEventKind;
@@ -85,6 +87,47 @@ const fn default_true() -> bool {
     true
 }
 
+const LOCAL_NOTIFICATION_EVENT_LIMIT: usize = 10;
+
+fn default_local_notification_events() -> Vec<NotificationEventKind> {
+    vec![
+        NotificationEventKind::NeedsHuman,
+        NotificationEventKind::Cooked,
+        NotificationEventKind::Failed,
+        NotificationEventKind::Disconnected,
+    ]
+}
+
+fn normalize_local_notification_events(
+    events: impl IntoIterator<Item = NotificationEventKind>,
+) -> Vec<NotificationEventKind> {
+    events
+        .into_iter()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .take(LOCAL_NOTIFICATION_EVENT_LIMIT)
+        .collect()
+}
+
+fn deserialize_local_notification_events<'de, D>(
+    deserializer: D,
+) -> Result<Vec<NotificationEventKind>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Vec::<NotificationEventKind>::deserialize(deserializer).map(normalize_local_notification_events)
+}
+
+fn serialize_local_notification_events<S>(
+    events: &[NotificationEventKind],
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    normalize_local_notification_events(events.iter().copied()).serialize(serializer)
+}
+
 impl Default for BarLayout {
     fn default() -> Self {
         Self {
@@ -105,6 +148,8 @@ pub struct UserPreferences {
     pub always_on_top: bool,
     #[serde(default)]
     pub notifications_enabled: bool,
+    #[serde(default)]
+    pub local_notifications: LocalNotificationPreferences,
 }
 
 impl Default for UserPreferences {
@@ -112,6 +157,50 @@ impl Default for UserPreferences {
         Self {
             always_on_top: true,
             notifications_enabled: false,
+            local_notifications: LocalNotificationPreferences::default(),
+        }
+    }
+}
+
+/// User-selected channels for local-only desktop alerts. These preferences
+/// carry no Agent or session content and are intentionally independent from
+/// outbound destination notifications.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct LocalNotificationPreferences {
+    #[serde(default = "default_true")]
+    pub sound: bool,
+    #[serde(default)]
+    pub system_banner: bool,
+    #[serde(default)]
+    pub bar_flash: bool,
+    #[serde(default)]
+    pub system_attention: bool,
+    #[serde(
+        default = "default_local_notification_events",
+        deserialize_with = "deserialize_local_notification_events",
+        serialize_with = "serialize_local_notification_events"
+    )]
+    pub events: Vec<NotificationEventKind>,
+}
+
+impl LocalNotificationPreferences {
+    pub const MAX_EVENTS: usize = LOCAL_NOTIFICATION_EVENT_LIMIT;
+
+    pub fn normalize_events(
+        events: impl IntoIterator<Item = NotificationEventKind>,
+    ) -> Vec<NotificationEventKind> {
+        normalize_local_notification_events(events)
+    }
+}
+
+impl Default for LocalNotificationPreferences {
+    fn default() -> Self {
+        Self {
+            sound: true,
+            system_banner: false,
+            bar_flash: false,
+            system_attention: false,
+            events: default_local_notification_events(),
         }
     }
 }
