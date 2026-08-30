@@ -23,6 +23,15 @@ fn run_hook(spool: Option<&Path>, input: &[u8]) -> std::process::Output {
 }
 
 fn run_hook_with_args(spool: Option<&Path>, input: &[u8], args: &[&str]) -> std::process::Output {
+    run_hook_with_args_and_env(spool, input, args, &[])
+}
+
+fn run_hook_with_args_and_env(
+    spool: Option<&Path>,
+    input: &[u8],
+    args: &[&str],
+    environment: &[(&str, &str)],
+) -> std::process::Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_cookbench-hook"));
     command
         .args(args)
@@ -34,6 +43,7 @@ fn run_hook_with_args(spool: Option<&Path>, input: &[u8], args: &[&str]) -> std:
     } else {
         command.env_remove(SPOOL_ENV);
     }
+    command.envs(environment.iter().copied());
 
     let mut child = command.spawn().expect("hook binary should start");
     child
@@ -87,8 +97,31 @@ fn accepts_generated_codex_and_claude_helper_argv() {
     assert_eq!(claude_envelope["event"]["session_id"], "session-claude");
     let serialized = claude_envelope.to_string();
     assert!(!serialized.contains("synthetic command"));
-    assert!(!serialized.contains("transcript"));
+    assert!(serialized.contains("/synthetic/transcript.jsonl"));
+    assert!(!serialized.contains("tool_input"));
     fs::remove_dir_all(claude_spool).expect("temp directory should be removed");
+}
+
+#[test]
+fn accepts_generated_pi_extension_events_without_retaining_agent_content() {
+    let spool = unique_temp_dir("pi-extension");
+    let output = run_hook_with_args_and_env(
+        Some(&spool),
+        br#"{"session_id":"session-pi","transcript_path":"/safe/pi-session.jsonl","cwd":"/safe/project","event_type":"turn_completed","message":"synthetic content that must be discarded"}"#,
+        &["--harness", "pi"],
+        &[("ZELLIJ_SESSION_NAME", "work"), ("ZELLIJ_PANE_ID", "7")],
+    );
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let envelope = only_envelope(&spool);
+    assert_eq!(envelope["event"]["event_type"], "turn_completed");
+    assert_eq!(envelope["event"]["session_id"], "session-pi");
+    assert_eq!(envelope["event"]["locator"]["terminal"], "zellij");
+    assert!(!envelope.to_string().contains("synthetic content"));
+    fs::remove_dir_all(spool).expect("temp directory should be removed");
 }
 
 #[test]
@@ -148,12 +181,38 @@ fn writes_a_sanitized_atomic_envelope() {
     let envelope: serde_json::Value =
         serde_json::from_slice(&fs::read(&entries[0]).expect("envelope should be readable"))
             .expect("envelope should be valid JSON");
-    assert_eq!(envelope["schema_version"], 1);
+    assert_eq!(envelope["schema_version"], 2);
     assert_eq!(envelope["source"], "hook");
     assert_eq!(envelope["event"]["event_type"], "tool_started");
     assert_eq!(envelope["event"]["session_id"], "session-42");
     assert!(envelope.get("prompt").is_none());
 
+    fs::remove_dir_all(spool).expect("temp directory should be removed");
+}
+
+#[test]
+fn projects_only_allowlisted_terminal_environment_metadata() {
+    let spool = unique_temp_dir("locator-environment");
+    let output = run_hook_with_args_and_env(
+        Some(&spool),
+        br#"{"session_id":"session-claude","transcript_path":"/safe/session.jsonl","cwd":"/safe/project","hook_event_name":"Stop","prompt":"ignored by native projection"}"#,
+        &["--harness", "claude-code"],
+        &[
+            ("WEZTERM_PANE", "12"),
+            ("WEZTERM_UNIX_SOCKET", "/tmp/wezterm.sock"),
+            ("CMUX_SOCKET_PASSWORD", "must-not-serialize"),
+            ("UNRELATED_SECRET", "also-must-not-serialize"),
+        ],
+    );
+    assert!(output.status.success());
+    let serialized = only_envelope(&spool).to_string();
+    assert!(serialized.contains("/safe/session.jsonl"));
+    assert!(serialized.contains("/safe/project"));
+    assert!(serialized.contains("wezterm"));
+    assert!(serialized.contains("/tmp/wezterm.sock"));
+    assert!(!serialized.contains("CMUX_SOCKET_PASSWORD"));
+    assert!(!serialized.contains("must-not-serialize"));
+    assert!(!serialized.contains("also-must-not-serialize"));
     fs::remove_dir_all(spool).expect("temp directory should be removed");
 }
 

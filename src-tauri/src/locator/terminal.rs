@@ -1,13 +1,22 @@
-use std::{collections::HashMap, path::Path, process::Command};
+use std::{
+    collections::HashMap,
+    path::Path,
+    time::{Duration, Instant},
+};
 
 use cookbench_core::{
     domain::HarnessId,
     locator::{HostApplication, SessionLocator, TerminalKind},
 };
 
+#[cfg(target_os = "macos")]
+use super::run_bounded_for;
+
 const MAX_PROCESSES: usize = 4_096;
 const MAX_ANCESTORS: usize = 64;
 const MAX_HARNESS_PROCESSES: usize = 16;
+#[cfg(target_os = "macos")]
+const PROCESS_DISCOVERY_DEADLINE: Duration = Duration::from_millis(1_500);
 
 /// Content-free process metadata used to correlate a running harness with its
 /// terminal. Command arguments are deliberately not collected or retained.
@@ -168,10 +177,12 @@ fn normalize_path(path: &str) -> &str {
 
 #[cfg(target_os = "macos")]
 fn observe_processes(harness: &HarnessId) -> Vec<ObservedProcess> {
-    let Ok(output) = Command::new("/bin/ps")
-        .args(["-Ao", "pid=,ppid=,tty=,comm="])
-        .output()
-    else {
+    let deadline = Instant::now() + PROCESS_DISCOVERY_DEADLINE;
+    let args = ["-Ao", "pid=,ppid=,tty=,comm="]
+        .into_iter()
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    let Ok(output) = run_bounded_for("/bin/ps", &args, Duration::from_millis(500)) else {
         return Vec::new();
     };
     if !output.status.success() || output.stdout.len() > 2 * 1024 * 1024 {
@@ -190,11 +201,16 @@ fn observe_processes(harness: &HarnessId) -> Vec<ObservedProcess> {
         .map(|process| process.process_id)
         .collect::<Vec<_>>();
     for process_id in candidate_ids {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            break;
+        }
         if let Some(process) = processes
             .iter_mut()
             .find(|process| process.process_id == process_id)
         {
-            process.working_directory = working_directory(process_id);
+            process.working_directory =
+                working_directory(process_id, remaining.min(Duration::from_millis(250)));
         }
     }
     processes
@@ -224,11 +240,16 @@ fn parse_process_line(line: &str) -> Option<ObservedProcess> {
 }
 
 #[cfg(target_os = "macos")]
-fn working_directory(process_id: u32) -> Option<String> {
-    let output = Command::new("/usr/sbin/lsof")
-        .args(["-a", "-p", &process_id.to_string(), "-d", "cwd", "-Fn"])
-        .output()
-        .ok()?;
+fn working_directory(process_id: u32, timeout: Duration) -> Option<String> {
+    let args = [
+        "-a".to_owned(),
+        "-p".to_owned(),
+        process_id.to_string(),
+        "-d".to_owned(),
+        "cwd".to_owned(),
+        "-Fn".to_owned(),
+    ];
+    let output = run_bounded_for("/usr/sbin/lsof", &args, timeout).ok()?;
     if !output.status.success() || output.stdout.len() > 16 * 1024 {
         return None;
     }

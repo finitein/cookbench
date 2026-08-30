@@ -1,8 +1,10 @@
 pub mod app_state;
 pub mod commands;
+pub mod desktop_shell;
 pub mod diagnostics;
 pub mod events;
 pub mod hook_spool;
+pub mod hooks;
 pub mod locator;
 pub mod notifications;
 pub mod persistence;
@@ -29,21 +31,20 @@ impl runtime::ObservationSink for TauriObservationSink {
         &self,
         identity: StoveIdentity,
         project: ProjectIdentity,
-        _native_locator: String,
-        host_application: Option<cookbench_core::locator::HostApplication>,
+        mut locator: SessionLocator,
         _title: Option<String>,
         summary: runtime::ObservationSummary,
         origin: runtime::ObservationOrigin,
         event: StoveEvent,
     ) {
-        let locator = SessionLocator {
-            host_application,
-            working_directory: std::path::Path::new(&project.canonical_root)
-                .is_absolute()
-                .then(|| project.canonical_root.clone()),
-            native_session_id: identity.native_session_id.clone(),
-            ..SessionLocator::default()
-        };
+        if locator.working_directory.is_none()
+            && std::path::Path::new(&project.canonical_root).is_absolute()
+        {
+            locator.working_directory = Some(project.canonical_root.clone());
+        }
+        if locator.native_session_id.is_empty() {
+            locator.native_session_id = identity.native_session_id.clone();
+        }
         let summary = app_state::StoveSummary::new(
             project
                 .canonical_root
@@ -97,6 +98,11 @@ pub fn run() {
         .expect("Cookbench outbound HTTPS client failed to initialize");
 
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .manage(app_state::AppState::default())
         .manage(notification_runtime)
         .manage(remote::runtime::RemoteRuntimeState::default())
@@ -124,6 +130,10 @@ pub fn run() {
             commands::remote::configure_remote_source,
             commands::remote::remove_remote_source,
             commands::sources::get_local_source_status,
+            commands::hooks::get_hook_status,
+            commands::hooks::manage_hook,
+            commands::desktop_shell::get_launch_at_login,
+            commands::desktop_shell::set_launch_at_login,
         ])
         .setup(|app| {
             let app_data = app.path().app_data_dir()?;
@@ -184,12 +194,32 @@ pub fn run() {
                 let hook_app = app.handle().clone();
                 let consumer = Arc::new(move |observation: hook_spool::HookObservation| {
                     let state = hook_app.state::<app_state::AppState>();
+                    // Hooks enrich authoritative native sessions; they never
+                    // create Stoves on their own. This also prevents Codex
+                    // child-agent notify events from bypassing adapter filters.
+                    if !state.stoves.contains_identity(&observation.identity) {
+                        return;
+                    }
+                    let locator = observation.locator;
+                    let project = locator
+                        .as_ref()
+                        .and_then(|locator| locator.working_directory.as_ref())
+                        .filter(|root| std::path::Path::new(root).is_absolute())
+                        .map(|root| {
+                            ProjectIdentity::new(observation.identity.host.clone(), root.clone())
+                        })
+                        .unwrap_or(observation.project);
+                    let capability = if locator.is_some() {
+                        app_state::LocatorCapability::Available
+                    } else {
+                        app_state::LocatorCapability::Unavailable
+                    };
                     let _ = state.apply_observation_and_emit(
                         &hook_app,
                         observation.identity,
-                        observation.project,
-                        app_state::LocatorCapability::Unavailable,
-                        None,
+                        project,
+                        capability,
+                        locator,
                         None,
                         observation.event,
                     );
@@ -216,6 +246,17 @@ pub fn run() {
                 layout.global_bar_position.as_ref(),
             ) {
                 eprintln!("Cookbench could not restore global Bar display preferences: {error}");
+            }
+            match desktop_shell::runtime::install(app) {
+                Ok(Some(diagnostic)) => {
+                    eprintln!("Cookbench desktop integration: {}", diagnostic.message);
+                }
+                Ok(None) => {}
+                Err(_) => {
+                    eprintln!(
+                        "Cookbench desktop integration is unavailable; the Bar remains usable"
+                    );
+                }
             }
             Ok(())
         })

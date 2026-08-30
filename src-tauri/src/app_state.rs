@@ -719,7 +719,9 @@ impl StoveStore {
             .or_default()
             .insert(raw_metadata.source, raw_metadata);
 
-        let valid_locator = locator.filter(|locator| locator.validate().is_ok());
+        let valid_locator = locator
+            .filter(|locator| locator.validate().is_ok())
+            .map(|locator| merge_locator(inner.locators.get(&id), locator));
         if let Some(locator) = valid_locator {
             inner.locators.insert(id.clone(), locator);
         }
@@ -751,6 +753,14 @@ impl StoveStore {
             .locators
             .get(stove_id)
             .cloned()
+    }
+
+    pub fn contains_identity(&self, identity: &StoveIdentity) -> bool {
+        self.inner
+            .read()
+            .expect("stove store lock poisoned")
+            .entries
+            .contains_key(&stove_id(identity))
     }
 
     pub fn core_stove(&self, stove_id: &str) -> Option<Stove> {
@@ -821,6 +831,53 @@ impl StoveStore {
                 })
                 .collect(),
         }
+    }
+}
+
+fn merge_locator(existing: Option<&SessionLocator>, incoming: SessionLocator) -> SessionLocator {
+    let Some(existing) = existing else {
+        return incoming;
+    };
+    SessionLocator {
+        native_locator: incoming
+            .native_locator
+            .or_else(|| existing.native_locator.clone()),
+        process_id: incoming.process_id.or(existing.process_id),
+        parent_process_id: incoming.parent_process_id.or(existing.parent_process_id),
+        process_started_at_ms: incoming
+            .process_started_at_ms
+            .or(existing.process_started_at_ms),
+        working_directory: incoming
+            .working_directory
+            .or_else(|| existing.working_directory.clone()),
+        host_application: incoming
+            .host_application
+            .or_else(|| existing.host_application.clone()),
+        terminal: incoming.terminal.or_else(|| existing.terminal.clone()),
+        tty: incoming.tty.or_else(|| existing.tty.clone()),
+        tmux_pane: incoming.tmux_pane.or_else(|| existing.tmux_pane.clone()),
+        tmux_inner_pane: incoming
+            .tmux_inner_pane
+            .or_else(|| existing.tmux_inner_pane.clone()),
+        tmux_outer_client_tty: incoming
+            .tmux_outer_client_tty
+            .or_else(|| existing.tmux_outer_client_tty.clone()),
+        terminal_window_id: incoming
+            .terminal_window_id
+            .or_else(|| existing.terminal_window_id.clone()),
+        terminal_session_id: incoming
+            .terminal_session_id
+            .or_else(|| existing.terminal_session_id.clone()),
+        terminal_pane_id: incoming
+            .terminal_pane_id
+            .or_else(|| existing.terminal_pane_id.clone()),
+        terminal_control_endpoint: incoming
+            .terminal_control_endpoint
+            .or_else(|| existing.terminal_control_endpoint.clone()),
+        ide_workspace: incoming
+            .ide_workspace
+            .or_else(|| existing.ide_workspace.clone()),
+        native_session_id: incoming.native_session_id,
     }
 }
 

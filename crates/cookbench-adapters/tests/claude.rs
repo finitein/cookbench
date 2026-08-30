@@ -2,7 +2,8 @@ use std::{fs, path::PathBuf};
 
 use cookbench_adapters::{
     claude::{
-        decode_project_path, encode_project_path, install_hooks, parse_record, uninstall_hooks,
+        decode_project_path, encode_project_path, install_hooks, install_hooks_with_command,
+        parse_record, uninstall_all_cookbench_hooks, uninstall_hooks, uninstall_hooks_with_command,
         ClaudeAdapter,
     },
     io::TailLimits,
@@ -163,6 +164,53 @@ fn hook_transforms_preserve_existing_entries_and_uninstall_deterministically() {
             .unwrap()
             .configuration,
         original
+    );
+}
+
+#[test]
+fn hook_transform_uses_exec_form_for_an_absolute_packaged_helper() {
+    let original = json!({"unrelated": true});
+    let helper = "/Applications/Cookbench.app/Contents/MacOS/cookbench-hook";
+    let args = ["--harness", "claude-code"];
+
+    let installed = install_hooks_with_command(&original, helper, &args).unwrap();
+    let hook = &installed.configuration["hooks"]["Stop"][0]["hooks"][0];
+    assert_eq!(hook["command"], helper);
+    assert_eq!(hook["args"], json!(args));
+    assert_eq!(
+        install_hooks_with_command(&installed.configuration, helper, &args)
+            .unwrap()
+            .configuration,
+        installed.configuration
+    );
+
+    let removed = uninstall_hooks_with_command(&installed.configuration, helper, &args).unwrap();
+    assert_eq!(removed.configuration, original);
+}
+
+#[test]
+fn repair_removes_prior_absolute_cookbench_helpers_without_touching_other_hooks() {
+    let original = json!({
+        "hooks": {
+            "Stop": [
+                {"matcher":"*", "hooks":[{"type":"command", "command":"/old/AppImage/path/cookbench-hook", "args":["--harness", "claude-code"], "timeout":10}], "description":"old Cookbench helper"},
+                {"matcher":"*", "hooks":[{"type":"command", "command":"other-helper"}]}
+            ]
+        }
+    });
+
+    let removed = uninstall_all_cookbench_hooks(&original).unwrap();
+    assert!(removed.changed);
+    assert_eq!(
+        removed.configuration["hooks"]["Stop"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        removed.configuration["hooks"]["Stop"][0]["hooks"][0]["command"],
+        "other-helper"
     );
 }
 

@@ -45,9 +45,29 @@ never interrupts the host workflow.
 
 Run `cookbench-hook --self-test` to exercise a synthetic envelope write and
 report its elapsed milliseconds. The command creates no persistent state.
+The Settings window can preview, install, repair, and uninstall only
+Cookbench-owned integrations. Codex uses an argv-form `notify` callback,
+Claude Code uses exec-form hooks with a separate argument vector, and Pi uses a
+single Cookbench-owned extension file under `~/.pi/agent/extensions/`. Existing
+unrelated callbacks, hook groups, and extension files are preserved; conflicts
+are reported instead of overwritten. Each mutation creates a timestamped
+backup. On install or repair, Cookbench atomically refreshes the packaged
+helper into its stable per-user app-data `bin` directory and points the harness
+at that managed copy rather than assuming it is globally available on `PATH`.
+This keeps hooks valid when an AppImage is remounted at a different path and
+lets Hook Health report a missing or outdated helper without reading session
+content.
+
 Claude Code passes its native hook JSON over stdin. Codex `notify` passes its
-native JSON as the final command argument. The helper extracts only the native
-session ID and an allowlisted lifecycle name; transcript paths, prompts, tool
-inputs, tool responses, commands, and notification text are discarded before
-the spool write. It prints no JSON and returns no control decision to either
-tool.
+native JSON as the final command argument. The Pi extension subscribes only to
+session, agent, and tool lifecycle events and sends a bounded metadata-only
+object over stdin; it does not register a tool or inspect prompts, tool
+arguments, messages, or results. The helper extracts only the native session
+ID, session-file locator, working directory, allowlisted terminal selectors,
+and lifecycle name. Prompt text, tool inputs, tool responses, commands, and
+notification text are discarded before the spool write. It prints no JSON and
+returns no control decision to any harness.
+
+Hook events only enrich Stoves that native-session discovery has already
+accepted. They cannot create a Stove by themselves, so a Codex child-agent
+notification cannot bypass the native adapter's root-session filter.

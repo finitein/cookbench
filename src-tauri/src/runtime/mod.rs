@@ -27,7 +27,7 @@ use cookbench_core::diagnostics::redact_source_path;
 use cookbench_core::domain::{
     EventKind, EventMetadata, EventSource, HostIdentity, ProjectIdentity, StoveEvent, StoveIdentity,
 };
-use cookbench_core::locator::HostApplication;
+use cookbench_core::locator::SessionLocator;
 use serde::Serialize;
 
 const MAX_PRESENTATION_TEXT_BYTES: usize = 160;
@@ -129,8 +129,7 @@ pub trait ObservationSink: Send + Sync + 'static {
         &self,
         identity: StoveIdentity,
         project: ProjectIdentity,
-        locator: String,
-        host_application: Option<HostApplication>,
+        locator: SessionLocator,
         title: Option<String>,
         summary: ObservationSummary,
         origin: ObservationOrigin,
@@ -273,7 +272,7 @@ const fn label_for(kind: ParserKind) -> &'static str {
 struct WatchedSession {
     identity: StoveIdentity,
     project: ProjectIdentity,
-    host_application: Option<HostApplication>,
+    locator: SessionLocator,
     title: Option<String>,
     parser: ParserKind,
     tailer: JsonlTailer,
@@ -391,8 +390,7 @@ impl<S: ObservationSink> LocalObservationRuntime<S> {
                 self.sink.apply(
                     session.identity.clone(),
                     session.project.clone(),
-                    session.tailer.path().to_string_lossy().into_owned(),
-                    session.host_application.clone(),
+                    session.locator.clone(),
                     session.title.clone(),
                     ObservationSummary::from_event(
                         session.title.as_deref(),
@@ -501,8 +499,7 @@ impl<S: ObservationSink> LocalObservationRuntime<S> {
         self.sink.apply(
             identity.clone(),
             project.clone(),
-            session.locator.value.clone(),
-            session.host_application.clone(),
+            session.locator_identity.clone(),
             session.title.clone(),
             ObservationSummary::from_event(
                 session.title.as_deref(),
@@ -517,7 +514,7 @@ impl<S: ObservationSink> LocalObservationRuntime<S> {
             WatchedSession {
                 identity,
                 project,
-                host_application: session.host_application,
+                locator: session.locator_identity,
                 title: session.title,
                 parser: kind,
                 tailer,

@@ -1,4 +1,4 @@
-use tauri::State;
+use tauri::Manager;
 
 use crate::{
     app_state::AppState,
@@ -12,19 +12,27 @@ use crate::{
 /// only focuses a terminal/application or opens a project directory; it never
 /// launches, resumes, or controls a coding agent.
 #[tauri::command]
-pub fn activate_stove_locator(
+pub async fn activate_stove_locator(
     stove_id: String,
-    state: State<'_, AppState>,
-) -> LocatorActivationResult {
-    let Some(locator) = state.stoves.locator_for(&stove_id) else {
-        return unavailable();
+    app: tauri::AppHandle,
+) -> Result<LocatorActivationResult, String> {
+    let (locator, harness) = {
+        let state = app.state::<AppState>();
+        let Some(locator) = state.stoves.locator_for(&stove_id) else {
+            return Ok(unavailable());
+        };
+        let Some(stove) = state.stoves.core_stove(&stove_id) else {
+            return Ok(unavailable());
+        };
+        (locator, stove.identity.harness.clone())
     };
-    let Some(stove) = state.stoves.core_stove(&stove_id) else {
-        return unavailable();
-    };
-    let locator = correlate_with_running_processes(&stove.identity.harness, locator);
-
-    activate_with(&locator, &mut NativeJumpExecutor)
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let locator = correlate_with_running_processes(&harness, locator);
+        activate_with(&locator, &mut NativeJumpExecutor)
+    })
+    .await
+    .map_err(|_| "Cookbench could not complete the return attempt.".to_owned())?;
+    Ok(result)
 }
 
 fn unavailable() -> LocatorActivationResult {

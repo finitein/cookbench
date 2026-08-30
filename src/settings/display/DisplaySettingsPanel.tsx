@@ -4,6 +4,8 @@ import {
   closeDetachedBar,
   configureDisplaySettings,
   getDisplaySettings,
+  getLaunchAtLogin,
+  setLaunchAtLogin,
   type DisplaySettingsWire,
   type GlobalBarPlacement,
 } from "./service";
@@ -22,10 +24,16 @@ export function DisplaySettingsPanel() {
   const [settings, setSettings] = useState<DisplaySettingsWire | null>(null);
   const [status, setStatus] = useState("");
   const [closing, setClosing] = useState<string | null>(null);
+  const [launchAtLogin, setLaunchAtLoginState] = useState<boolean | null>(null);
 
   useEffect(() => {
     void getDisplaySettings().then(setSettings).catch(() => {
       setStatus("Display settings are unavailable.");
+    });
+    void getLaunchAtLogin().then((preference) => {
+      setLaunchAtLoginState(preference.enabled);
+    }).catch(() => {
+      setStatus("Launch at login is unavailable.");
     });
   }, []);
 
@@ -86,6 +94,32 @@ export function DisplaySettingsPanel() {
           >
             {PLACEMENTS.map((placement) => <option key={placement.value} value={placement.value}>{placement.label}</option>)}
           </select>
+        </label>
+      </section>
+      <section className="display-settings__section" aria-labelledby="desktop-behavior-title">
+        <div>
+          <h3 id="desktop-behavior-title">Desktop behavior</h3>
+          <p>Keep Cookbench available from the system tray.</p>
+        </div>
+        <label className="display-settings__toggle">
+          <input
+            type="checkbox"
+            checked={launchAtLogin ?? false}
+            disabled={launchAtLogin === null}
+            onChange={(event) => {
+              const previous = launchAtLogin;
+              const enabled = event.target.checked;
+              setLaunchAtLoginState(enabled);
+              setStatus("");
+              void setLaunchAtLogin(enabled)
+                .then((preference) => setLaunchAtLoginState(preference.enabled))
+                .catch(() => {
+                  setLaunchAtLoginState(previous);
+                  setStatus("Launch at login could not be changed.");
+                });
+            }}
+          />
+          <span>Launch Cookbench at login</span>
         </label>
       </section>
       <section className="display-settings__section" aria-labelledby="independent-bars-title">

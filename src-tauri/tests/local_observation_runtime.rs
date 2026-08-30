@@ -15,20 +15,31 @@ use cookbench_desktop_lib::runtime::{
 };
 
 #[derive(Default)]
-struct Sink(Mutex<Vec<(StoveIdentity, ProjectIdentity, StoveEvent)>>);
+struct Sink(
+    Mutex<
+        Vec<(
+            StoveIdentity,
+            ProjectIdentity,
+            cookbench_core::locator::SessionLocator,
+            StoveEvent,
+        )>,
+    >,
+);
 impl ObservationSink for Sink {
     fn apply(
         &self,
         identity: StoveIdentity,
         project: ProjectIdentity,
-        _: String,
-        _: Option<cookbench_core::locator::HostApplication>,
+        locator: cookbench_core::locator::SessionLocator,
         _: Option<String>,
         _: ObservationSummary,
         _: ObservationOrigin,
         event: StoveEvent,
     ) {
-        self.0.lock().unwrap().push((identity, project, event));
+        self.0
+            .lock()
+            .unwrap()
+            .push((identity, project, locator, event));
     }
 }
 
@@ -103,21 +114,21 @@ fn reconstructs_three_native_harnesses_then_observes_appended_lifecycle_records(
     assert_eq!(
         initial
             .iter()
-            .filter(|(_, _, event)| matches!(event.kind, EventKind::SessionDiscovered))
+            .filter(|(_, _, _, event)| matches!(event.kind, EventKind::SessionDiscovered))
             .count(),
         5
     );
     assert_eq!(
         initial
             .iter()
-            .filter(|(_, _, event)| matches!(event.kind, EventKind::TurnCompleted))
+            .filter(|(_, _, _, event)| matches!(event.kind, EventKind::TurnCompleted))
             .count(),
         3
     );
     assert!(initial
         .iter()
-        .filter(|(identity, _, _)| identity.harness == cookbench_core::domain::HarnessId::Pi)
-        .all(|(_, project, _)| project.canonical_root == "/synthetic/pi"));
+        .filter(|(identity, _, _, _)| identity.harness == cookbench_core::domain::HarnessId::Pi)
+        .all(|(_, project, _, _)| project.canonical_root == "/synthetic/pi"));
     drop(initial);
 
     append(&codex, "{\"type\":\"user_message\"}\n");
@@ -130,12 +141,12 @@ fn reconstructs_three_native_harnesses_then_observes_appended_lifecycle_records(
     assert_eq!(observed.len(), 12, "observed: {observed:?}");
     assert!(observed[9..]
         .iter()
-        .all(|(_, _, event)| matches!(event.kind, EventKind::UserPromptSubmitted)));
+        .all(|(_, _, _, event)| matches!(event.kind, EventKind::UserPromptSubmitted)));
     let wire_debug = format!(
         "{:?}",
         observed
             .iter()
-            .map(|(_, _, event)| &event.kind)
+            .map(|(_, _, _, event)| &event.kind)
             .collect::<Vec<_>>()
     );
     assert!(!wire_debug.contains("transcript"));
@@ -181,8 +192,56 @@ fn runtime_does_not_register_codex_subagent_session_files() {
     let events = sink.0.lock().unwrap();
     assert!(events
         .iter()
-        .all(|(identity, _, _)| { identity.native_session_id == "root-session" }));
+        .all(|(identity, _, _, _)| { identity.native_session_id == "root-session" }));
     drop(events);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn preserves_distinct_native_locators_for_sessions_in_the_same_project() {
+    let root = temp_root();
+    let claude_root = root.join("claude");
+    let first = claude_root.join("-synthetic-project").join("first.jsonl");
+    let second = claude_root.join("-synthetic-project").join("second.jsonl");
+    write(
+        &first,
+        "{\"type\":\"user\",\"session_name\":\"first\"}\n{\"type\":\"system\",\"subtype\":\"turn_duration\"}\n",
+    );
+    write(
+        &second,
+        "{\"type\":\"user\",\"session_name\":\"second\"}\n{\"type\":\"system\",\"subtype\":\"turn_duration\"}\n",
+    );
+
+    let sink = Arc::new(Sink::default());
+    let config = LocalObservationConfig {
+        host: HostIdentity::local("synthetic-host"),
+        codex_root: root.join("codex"),
+        claude_root,
+        pi_roots: vec![root.join("pi")],
+        startup_min_modified: SystemTime::UNIX_EPOCH,
+        startup_candidate_limit: 16,
+    };
+    let mut runtime = LocalObservationRuntime::new(config, sink.clone());
+    runtime.bootstrap();
+
+    let locators = sink
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(identity, _, _, _)| {
+            identity.harness == cookbench_core::domain::HarnessId::ClaudeCode
+        })
+        .map(|(_, _, locator, _)| locator.native_locator.clone().unwrap())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(locators.len(), 2);
+    assert!(locators
+        .iter()
+        .any(|locator| locator.ends_with("first.jsonl")));
+    assert!(locators
+        .iter()
+        .any(|locator| locator.ends_with("second.jsonl")));
+
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -237,7 +296,7 @@ fn newer_subagents_do_not_consume_the_root_session_candidate_limit() {
         .lock()
         .unwrap()
         .iter()
-        .all(|(identity, _, _)| identity.native_session_id == "root-session"));
+        .all(|(identity, _, _, _)| identity.native_session_id == "root-session"));
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -313,6 +372,6 @@ fn rescan_discovers_a_harness_root_created_after_cookbench_started() {
         .lock()
         .unwrap()
         .iter()
-        .any(|(_, _, event)| matches!(event.kind, EventKind::SessionDiscovered)));
+        .any(|(_, _, _, event)| matches!(event.kind, EventKind::SessionDiscovered)));
     fs::remove_dir_all(root).unwrap();
 }

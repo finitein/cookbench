@@ -13,7 +13,7 @@ describe("LocatorActivationNotice", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("renders a visible resume result", () => {
+  it("explains the manual return path without pretending the original surface opened", () => {
     render(
       <LocatorActivationNotice
         result={{
@@ -24,7 +24,20 @@ describe("LocatorActivationNotice", () => {
       />,
     );
 
-    expect(screen.getByRole("status")).toHaveTextContent("Resume session: opaque-session-42");
+    expect(screen.getByRole("status")).toHaveTextContent("could not open the original session");
+    expect(screen.getByRole("status")).toHaveTextContent("use this session ID in your original tool");
+    expect(screen.getByRole("status")).toHaveTextContent("opaque-session-42");
+  });
+
+  it("describes an accepted Codex deep link as an exact task request", () => {
+    render(
+      <LocatorActivationNotice
+        result={{ target: "exactThread", status: "visibleFallback", resumeSessionId: null }}
+      />,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent("Opening the matching Codex task");
+    expect(screen.getByRole("status")).not.toHaveTextContent("could not open");
   });
 
   it("does not imply an unavailable locator was focused", () => {
@@ -34,6 +47,7 @@ describe("LocatorActivationNotice", () => {
       />,
     );
 
-    expect(screen.getByRole("status")).toHaveTextContent("unavailable");
+    expect(screen.getByRole("status")).toHaveTextContent("could not open the original session");
+    expect(screen.getByRole("status")).toHaveTextContent("kept the Stove visible here");
   });
 });

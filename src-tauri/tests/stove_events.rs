@@ -2,6 +2,7 @@ use cookbench_core::domain::{
     EventKind, EventMetadata, EventSource, HarnessId, HostIdentity, ProjectIdentity, StoveEvent,
     StoveIdentity,
 };
+use cookbench_core::locator::{SessionLocator, TerminalKind};
 use cookbench_desktop_lib::{
     app_state::{LocatorCapability, StoveStore, StoveSummary},
     events::StoveChange,
@@ -89,6 +90,111 @@ fn snapshot_wire_is_sanitized_and_includes_required_presentation_metadata() {
     ] {
         assert!(!json.contains(forbidden), "wire payload leaked {forbidden}");
     }
+}
+
+#[test]
+fn preserves_per_session_native_locator_when_sessions_share_a_project() {
+    let store = StoveStore::default();
+    let first = StoveIdentity::new(
+        HostIdentity::local("test-host"),
+        HarnessId::ClaudeCode,
+        "first-session",
+    );
+    let second = StoveIdentity::new(
+        HostIdentity::local("test-host"),
+        HarnessId::ClaudeCode,
+        "second-session",
+    );
+    for (identity, native_locator) in [
+        (first.clone(), "/safe/first.jsonl"),
+        (second.clone(), "/safe/second.jsonl"),
+    ] {
+        store
+            .apply_observation(
+                identity.clone(),
+                project(),
+                LocatorCapability::Available,
+                Some(SessionLocator {
+                    native_session_id: identity.native_session_id.clone(),
+                    native_locator: Some(native_locator.to_owned()),
+                    working_directory: Some("/synthetic/project".to_owned()),
+                    ..SessionLocator::default()
+                }),
+                None,
+                event(EventKind::SessionDiscovered, 1),
+            )
+            .unwrap();
+    }
+
+    assert_eq!(
+        store
+            .locator_for("local:test-host:claudeCode:first-session")
+            .and_then(|locator| locator.native_locator),
+        Some("/safe/first.jsonl".to_owned())
+    );
+    assert_eq!(
+        store
+            .locator_for("local:test-host:claudeCode:second-session")
+            .and_then(|locator| locator.native_locator),
+        Some("/safe/second.jsonl".to_owned())
+    );
+}
+
+#[test]
+fn structured_file_updates_do_not_erase_hook_terminal_identity() {
+    let store = StoveStore::default();
+    let identity = identity();
+    assert!(!store.contains_identity(&identity));
+    store
+        .apply_observation(
+            identity.clone(),
+            project(),
+            LocatorCapability::Available,
+            Some(SessionLocator {
+                native_session_id: identity.native_session_id.clone(),
+                working_directory: Some("/synthetic/project".into()),
+                terminal: Some(TerminalKind::ITerm2),
+                tty: Some("/dev/ttys042".into()),
+                terminal_session_id: Some("w0t3p1".into()),
+                ..SessionLocator::default()
+            }),
+            None,
+            StoveEvent::new(
+                EventKind::UserPromptSubmitted,
+                EventMetadata::new(EventSource::Hook, 100, 1, 1_000),
+            ),
+        )
+        .unwrap();
+    assert!(store.contains_identity(&identity));
+    store
+        .apply_observation(
+            identity.clone(),
+            project(),
+            LocatorCapability::Available,
+            Some(SessionLocator {
+                native_session_id: identity.native_session_id.clone(),
+                native_locator: Some("/safe/session.jsonl".into()),
+                working_directory: Some("/synthetic/project".into()),
+                ..SessionLocator::default()
+            }),
+            None,
+            StoveEvent::new(
+                EventKind::ToolStarted,
+                EventMetadata::new(EventSource::StructuredSession, 100, 1, 2_000),
+            ),
+        )
+        .unwrap();
+
+    let locator = store
+        .locator_for("local:test-host:codex:session-1")
+        .expect("locator should remain available");
+    assert_eq!(
+        locator.native_locator.as_deref(),
+        Some("/safe/session.jsonl")
+    );
+    assert_eq!(locator.terminal, Some(TerminalKind::ITerm2));
+    assert_eq!(locator.tty.as_deref(), Some("/dev/ttys042"));
+    assert_eq!(locator.terminal_session_id.as_deref(), Some("w0t3p1"));
 }
 
 #[test]

@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 export type LocatorActivationTarget =
   | "exactPane"
+  | "exactThread"
   | "applicationWindow"
   | "projectDirectory"
   | "resumeInstructions"

@@ -7,13 +7,17 @@ export function LocatorActivationNotice({ result }: { result: LocatorActivationR
     return null;
   }
 
+  if (result.target === "exactThread" && result.status === "visibleFallback") {
+    return <output role="status" aria-live="polite">Opening the matching Codex task.</output>;
+  }
+
   if (result.status === "visibleFallback" && result.resumeSessionId) {
     return (
       <output role="status" aria-live="polite">
-        Original surface unavailable. Resume session: <code>{result.resumeSessionId}</code>
+        Cookbench could not open the original session. It has kept the Stove visible here; use this session ID in your original tool: <code>{result.resumeSessionId}</code>
       </output>
     );
   }
 
-  return <output role="status" aria-live="polite">Original work surface is unavailable.</output>;
+  return <output role="status" aria-live="polite">Cookbench could not open the original session. It has kept the Stove visible here.</output>;
 }

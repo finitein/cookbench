@@ -1,4 +1,6 @@
+pub mod desktop_shell;
 pub mod display;
+pub mod hooks;
 pub mod locator;
 pub mod notifications;
 pub mod remote;

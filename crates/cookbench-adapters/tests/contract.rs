@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use cookbench_adapters::{
     AdapterRegistry, FixtureAdapter, HarnessAdapter, HostSource, RegistryError, ResumeAction,
-    SessionLocatorKind,
+    SessionLocator, SessionLocatorKind,
 };
 use cookbench_core::domain::{EventKind, HostIdentity};
 use tokio::sync::mpsc;
@@ -24,6 +24,14 @@ async fn fixture_adapter_reports_each_supported_capability_and_obeys_it() {
     assert_eq!(sessions[0].host, HostIdentity::local("fixture-host"));
     assert_eq!(sessions[0].title.as_deref(), Some("Sanitized fixture task"));
     assert_eq!(sessions[0].locator.kind, SessionLocatorKind::LocalPath);
+    assert_eq!(
+        sessions[0].locator_identity.native_locator.as_deref(),
+        Some(sessions[0].locator.value.as_str())
+    );
+    assert_eq!(
+        sessions[0].locator_identity.native_session_id,
+        sessions[0].native_session_id
+    );
 
     let (sender, mut receiver) = mpsc::channel(4);
     let handle = adapter.watch(sender.into()).await.unwrap();
@@ -69,4 +77,9 @@ fn registry_rejects_duplicate_adapter_ids() {
 
     let error = registry.register(Arc::new(FixtureAdapter)).unwrap_err();
     assert!(matches!(error, RegistryError::DuplicateAdapterId(_)));
+}
+
+#[test]
+fn rejects_unsafe_native_session_locator_text() {
+    assert!(SessionLocator::new(SessionLocatorKind::LocalPath, "/safe/session\n.jsonl").is_err());
 }

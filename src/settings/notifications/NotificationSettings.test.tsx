@@ -4,6 +4,10 @@ import { describe, expect, it, vi } from "vitest";
 import { NotificationSettings } from "./NotificationSettings";
 import { NotificationSettingsPanel } from "./NotificationSettingsPanel";
 
+vi.mock("../hooks/HookHealthPanel", () => ({
+  HookHealthPanel: () => <section aria-label="Hook health integration" />,
+}));
+
 vi.mock("./service", () => ({
   configureNotificationDestination: vi.fn(),
   getNotificationSettings: vi.fn(async () => []),
@@ -17,6 +21,7 @@ describe("NotificationSettings", () => {
     await waitFor(() => expect(screen.getByRole("main", { name: "Cookbench settings" })).toBeInTheDocument());
     expect(screen.getByText("Settings", { selector: "h1" })).toBeInTheDocument();
     expect(document.querySelector(".notification-settings__surface")).toBeInTheDocument();
+    expect(screen.getByLabelText("Hook health integration")).toBeInTheDocument();
   });
 
   it("only exposes outbound destination toggles and synthetic test sends", async () => {

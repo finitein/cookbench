@@ -3,7 +3,9 @@
 //! Cookbench never retains hook payloads, transcript text, or commands.
 
 use std::{
+    collections::BTreeMap,
     fs, io,
+    io::Write,
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -17,7 +19,8 @@ use cookbench_core::domain::{
     EventKind, EventMetadata, EventSource, HarnessId, HostIdentity, ProjectIdentity, StoveEvent,
     StoveIdentity,
 };
-use serde::Deserialize;
+use cookbench_core::locator::{HostApplication, SessionLocator, TerminalKind};
+use serde::{Deserialize, Serialize};
 
 pub const MAX_ENVELOPES_PER_POLL: usize = 128;
 pub const MAX_ENVELOPE_BYTES: u64 = 16 * 1024;
@@ -26,6 +29,7 @@ pub const MAX_ENVELOPE_BYTES: u64 = 16 * 1024;
 pub struct HookObservation {
     pub identity: StoveIdentity,
     pub project: ProjectIdentity,
+    pub locator: Option<SessionLocator>,
     pub event: StoveEvent,
 }
 
@@ -77,11 +81,61 @@ impl HookSpool {
             return None;
         }
         let bytes = fs::read(path).ok()?;
-        let parsed = serde_json::from_slice::<Envelope>(&bytes)
+        let observation = serde_json::from_slice::<Envelope>(&bytes)
             .ok()
             .and_then(|envelope| envelope.into_observation(self.host.clone()));
+        if let Some(observation) = observation.as_ref() {
+            record_hook_health(
+                &self.directory,
+                &observation.identity.harness,
+                observation.event.metadata.timestamp_ms,
+            );
+        }
         let _ = fs::remove_file(path);
-        parsed
+        observation
+    }
+}
+
+/// Stores only the latest per-harness receipt time in the app-private spool.
+/// It is bounded metadata for Settings health; hook payloads remain transient.
+fn record_hook_health(directory: &Path, harness: &HarnessId, received_at_ms: u64) {
+    let path = directory.join("hook-health.json");
+    let mut ledger = fs::read(&path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<HookHealthLedger>(&bytes).ok())
+        .unwrap_or_default();
+    ledger
+        .last_event_ms
+        .insert(harness_key(harness).into(), received_at_ms);
+    let Ok(bytes) = serde_json::to_vec(&ledger) else {
+        return;
+    };
+    let temporary = directory.join(".hook-health.tmp");
+    let Ok(mut file) = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&temporary)
+    else {
+        return;
+    };
+    if file.write_all(&bytes).is_ok() && file.sync_all().is_ok() {
+        let _ = fs::rename(temporary, path);
+    }
+}
+
+#[derive(Default, Deserialize, Serialize)]
+struct HookHealthLedger {
+    #[serde(default)]
+    last_event_ms: BTreeMap<String, u64>,
+}
+
+fn harness_key(harness: &HarnessId) -> &'static str {
+    match harness {
+        HarnessId::Codex => "codex",
+        HarnessId::ClaudeCode => "claudeCode",
+        HarnessId::Pi => "pi",
+        HarnessId::Other(_) => "other",
     }
 }
 
@@ -149,6 +203,8 @@ struct EnvelopeEvent {
     sequence: Option<u64>,
     #[serde(default)]
     progress: Option<Progress>,
+    #[serde(default)]
+    locator: Option<EnvelopeLocator>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -156,10 +212,30 @@ struct Progress {
     completed: u32,
     total: u32,
 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EnvelopeLocator {
+    #[serde(default)]
+    native_locator: Option<String>,
+    #[serde(default)]
+    working_directory: Option<String>,
+    #[serde(default)]
+    process_id: Option<u32>,
+    #[serde(default)]
+    terminal: Option<String>,
+    #[serde(default)]
+    terminal_session_id: Option<String>,
+    #[serde(default)]
+    terminal_pane_id: Option<String>,
+    #[serde(default)]
+    terminal_control_endpoint: Option<String>,
+    #[serde(default)]
+    tmux_pane: Option<String>,
+}
 
 impl Envelope {
     fn into_observation(self, host: HostIdentity) -> Option<HookObservation> {
-        if self.schema_version != 1
+        if !(self.schema_version == 1 || self.schema_version == 2)
             || self.source != "hook"
             || self.event.session_id.is_empty()
             || self.event.session_id.len() > 256
@@ -196,10 +272,16 @@ impl Envelope {
             }
             _ => return None,
         };
-        let identity = StoveIdentity::new(host.clone(), harness, self.event.session_id);
+        let session_id = self.event.session_id;
+        let locator = self
+            .event
+            .locator
+            .and_then(|locator| locator.into_locator(&session_id));
+        let identity = StoveIdentity::new(host.clone(), harness, session_id);
         Some(HookObservation {
             project: ProjectIdentity::new(host, "(hook project unavailable)"),
             identity,
+            locator,
             event: StoveEvent::new(
                 kind,
                 EventMetadata::new(
@@ -210,5 +292,103 @@ impl Envelope {
                 ),
             ),
         })
+    }
+}
+
+impl EnvelopeLocator {
+    fn into_locator(self, native_session_id: &str) -> Option<SessionLocator> {
+        let locator = SessionLocator {
+            native_locator: self.native_locator,
+            process_id: self.process_id,
+            working_directory: self.working_directory,
+            host_application: self.terminal.as_deref().and_then(host_application),
+            terminal: self.terminal.as_deref().and_then(terminal_kind),
+            tmux_pane: self.tmux_pane,
+            terminal_session_id: self.terminal_session_id,
+            terminal_pane_id: self.terminal_pane_id,
+            terminal_control_endpoint: self.terminal_control_endpoint,
+            native_session_id: native_session_id.to_owned(),
+            ..SessionLocator::default()
+        };
+        locator.validate().ok().map(|_| locator)
+    }
+}
+
+fn terminal_kind(value: &str) -> Option<TerminalKind> {
+    match value {
+        "iterm2" => Some(TerminalKind::ITerm2),
+        "wezterm" => Some(TerminalKind::WezTerm),
+        "ghostty" => Some(TerminalKind::Ghostty),
+        "zellij" => Some(TerminalKind::Zellij),
+        "cmux" => Some(TerminalKind::Cmux),
+        "macos_terminal" => Some(TerminalKind::MacosTerminal),
+        "gnome_terminal" => Some(TerminalKind::GnomeTerminal),
+        "konsole" => Some(TerminalKind::Konsole),
+        "xfce_terminal" => Some(TerminalKind::XfceTerminal),
+        "terminal" => Some(TerminalKind::Other("terminal".into())),
+        _ => None,
+    }
+}
+
+fn host_application(value: &str) -> Option<HostApplication> {
+    match value {
+        "iterm2" => Some(HostApplication::ITerm2),
+        "wezterm" => Some(HostApplication::WezTerm),
+        "ghostty" => Some(HostApplication::Ghostty),
+        "zellij" => Some(HostApplication::Zellij),
+        "cmux" => Some(HostApplication::Cmux),
+        "macos_terminal" => Some(HostApplication::MacosTerminal),
+        "gnome_terminal" => Some(HostApplication::GnomeTerminal),
+        "konsole" => Some(HostApplication::Konsole),
+        "xfce_terminal" => Some(HostApplication::XfceTerminal),
+        "visual_studio_code" => Some(HostApplication::VisualStudioCode),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepts_v1_envelopes_without_locator() {
+        let envelope: Envelope = serde_json::from_str(
+            r#"{"schema_version":1,"source":"hook","received_at_ms":7,"event":{"event_type":"turn_completed","session_id":"old-session","harness":"codex"}}"#,
+        )
+        .unwrap();
+        let observation = envelope
+            .into_observation(HostIdentity::local("local"))
+            .unwrap();
+        assert_eq!(observation.locator, None);
+        assert_eq!(observation.identity.native_session_id, "old-session");
+    }
+
+    #[test]
+    fn converts_bounded_hook_locator_to_session_locator() {
+        let envelope: Envelope = serde_json::from_str(
+            r#"{"schema_version":2,"source":"hook","received_at_ms":7,"event":{"event_type":"turn_completed","session_id":"session-42","harness":"claude_code","locator":{"native_locator":"/tmp/session.jsonl","working_directory":"/tmp/project","process_id":12,"terminal":"wezterm","terminal_pane_id":"4","terminal_control_endpoint":"/tmp/wezterm.sock"}}}"#,
+        )
+        .unwrap();
+        let observation = envelope
+            .into_observation(HostIdentity::local("local"))
+            .unwrap();
+        let locator = observation.locator.unwrap();
+        assert_eq!(locator.native_session_id, "session-42");
+        assert_eq!(locator.terminal, Some(TerminalKind::WezTerm));
+        assert_eq!(locator.terminal_pane_id.as_deref(), Some("4"));
+    }
+
+    #[test]
+    fn writes_only_bounded_per_harness_health_metadata() {
+        let directory =
+            std::env::temp_dir().join(format!("cookbench-health-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&directory);
+        fs::create_dir_all(&directory).unwrap();
+        record_hook_health(&directory, &HarnessId::ClaudeCode, 42);
+        let value: serde_json::Value =
+            serde_json::from_slice(&fs::read(directory.join("hook-health.json")).unwrap()).unwrap();
+        assert_eq!(value["last_event_ms"]["claudeCode"], 42);
+        assert_eq!(value.as_object().unwrap().len(), 1);
+        let _ = fs::remove_dir_all(directory);
     }
 }

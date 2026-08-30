@@ -3,7 +3,7 @@ use std::{fmt, sync::Arc};
 use async_trait::async_trait;
 use cookbench_core::{
     domain::{HarnessId, HostIdentity, ProjectIdentity, StoveEvent, StoveIdentity},
-    locator::HostApplication,
+    locator::{HostApplication, SessionLocator as LocatorIdentity},
 };
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -47,7 +47,10 @@ impl SessionLocator {
 
     pub fn new(kind: SessionLocatorKind, value: impl Into<String>) -> Result<Self, AdapterError> {
         let value = value.into();
-        if value.is_empty() || value.len() > Self::MAX_VALUE_BYTES {
+        if value.is_empty()
+            || value.len() > Self::MAX_VALUE_BYTES
+            || value.chars().any(char::is_control)
+        {
             return Err(AdapterError::invalid_session_metadata(
                 "session locator must be non-empty and bounded",
             ));
@@ -73,6 +76,9 @@ pub struct NativeSession {
     pub project: Option<ProjectIdentity>,
     pub title: Option<String>,
     pub locator: SessionLocator,
+    /// Content-free identity consumed by focus backends. It deliberately keeps
+    /// the native locator separate from the adapter's resume suggestion.
+    pub locator_identity: LocatorIdentity,
     /// Application-level focus metadata observed from a trusted harness field.
     /// It is optional because a session file often cannot identify its host.
     pub host_application: Option<HostApplication>,
@@ -104,6 +110,17 @@ impl NativeSession {
                 "session title must be bounded",
             ));
         }
+        let working_directory = project.as_ref().and_then(|project| {
+            std::path::Path::new(&project.canonical_root)
+                .is_absolute()
+                .then(|| project.canonical_root.clone())
+        });
+        let locator_identity = LocatorIdentity {
+            native_locator: Some(locator.value.clone()),
+            working_directory,
+            native_session_id: native_session_id.clone(),
+            ..LocatorIdentity::default()
+        };
         Ok(Self {
             host,
             harness,
@@ -111,11 +128,13 @@ impl NativeSession {
             project,
             title,
             locator,
+            locator_identity,
             host_application: None,
         })
     }
 
     pub fn with_host_application(mut self, host_application: HostApplication) -> Self {
+        self.locator_identity.host_application = Some(host_application.clone());
         self.host_application = Some(host_application);
         self
     }

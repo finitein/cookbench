@@ -24,7 +24,7 @@ impl RecordingExecutor {
 impl JumpExecutor for RecordingExecutor {
     fn perform(&mut self, action: &JumpAction) -> JumpOutcome {
         self.seen.push(action.clone());
-        self.outcomes.pop().unwrap_or(JumpOutcome::Unavailable)
+        self.outcomes.pop().unwrap_or(JumpOutcome::Unsupported)
     }
 }
 
@@ -49,7 +49,7 @@ fn orders_exact_pane_then_application_then_project_then_resume() {
 }
 
 #[test]
-fn codex_desktop_focus_precedes_project_directory_fallback() {
+fn codex_thread_deep_link_precedes_application_and_project_fallbacks() {
     let locator = SessionLocator {
         host_application: Some(HostApplication::CodexDesktop),
         working_directory: Some("/workspace/cookbench".to_owned()),
@@ -60,13 +60,30 @@ fn codex_desktop_focus_precedes_project_directory_fallback() {
     assert!(matches!(
         actions_for(&locator).as_slice(),
         [
+            JumpAction::CodexDesktopThread {
+                native_session_id
+            },
             JumpAction::ApplicationWindow {
                 application: "com.openai.codex"
             },
             JumpAction::ProjectDirectory { .. },
             JumpAction::ResumeInstructions { .. },
-        ]
+        ] if native_session_id == "opaque-codex-session"
     ));
+}
+
+#[test]
+fn accepted_codex_deep_link_reports_the_exact_thread_request_without_claiming_focus() {
+    let mut locator = locator();
+    locator.host_application = Some(HostApplication::CodexDesktop);
+    locator.terminal = None;
+    locator.tmux_pane = None;
+    let mut executor = RecordingExecutor::with_outcomes([JumpOutcome::VisibleFallback]);
+
+    let result = activate_with(&locator, &mut executor);
+
+    assert_eq!(result.target, LocatorActivationTarget::ExactThread);
+    assert_eq!(result.status, LocatorActivationStatus::VisibleFallback);
 }
 
 #[test]
@@ -225,8 +242,8 @@ fn pi_project_metadata_selects_the_matching_terminal_from_multiple_pi_sessions()
 fn permission_denial_continues_to_project_directory() {
     let mut executor = RecordingExecutor::with_outcomes([
         JumpOutcome::PermissionDenied,
-        JumpOutcome::PermissionDenied,
-        JumpOutcome::Focused,
+        JumpOutcome::NotFound,
+        JumpOutcome::FocusedExact,
     ]);
 
     let result = jump_with(&locator(), &mut executor);
@@ -237,10 +254,10 @@ fn permission_denial_continues_to_project_directory() {
 #[test]
 fn elevated_target_continues_to_resume_instructions() {
     let mut executor = RecordingExecutor::with_outcomes([
-        JumpOutcome::Unavailable,
-        JumpOutcome::ElevatedTarget,
-        JumpOutcome::Unavailable,
-        JumpOutcome::Focused,
+        JumpOutcome::NotFound,
+        JumpOutcome::Unsupported,
+        JumpOutcome::VerificationFailed,
+        JumpOutcome::VisibleFallback,
     ]);
 
     let result = jump_with(&locator(), &mut executor);
@@ -286,7 +303,7 @@ fn unsafe_tmux_target_is_not_used_for_a_command() {
 
 #[test]
 fn reports_available_when_a_precise_target_is_focused() {
-    let mut executor = RecordingExecutor::with_outcomes([JumpOutcome::Focused]);
+    let mut executor = RecordingExecutor::with_outcomes([JumpOutcome::FocusedExact]);
     let result = activate_with(&locator(), &mut executor);
 
     assert_eq!(result.target, LocatorActivationTarget::ExactPane);
@@ -298,8 +315,8 @@ fn reports_available_when_a_precise_target_is_focused() {
 fn reports_visible_resume_after_permission_and_elevation_fallbacks() {
     let mut executor = RecordingExecutor::with_outcomes([
         JumpOutcome::PermissionDenied,
-        JumpOutcome::ElevatedTarget,
-        JumpOutcome::Unavailable,
+        JumpOutcome::Ambiguous,
+        JumpOutcome::VerificationFailed,
         JumpOutcome::VisibleFallback,
     ]);
     let result = activate_with(&locator(), &mut executor);
@@ -310,4 +327,118 @@ fn reports_visible_resume_after_permission_and_elevation_fallbacks() {
         result.resume_session_id.as_deref(),
         Some("opaque-session-id")
     );
+}
+
+#[test]
+fn exact_drivers_only_stop_on_a_verified_exact_focus() {
+    let mut executor =
+        RecordingExecutor::with_outcomes([JumpOutcome::TimedOut, JumpOutcome::VisibleFallback]);
+
+    let result = jump_with(&locator(), &mut executor);
+
+    assert!(matches!(
+        result.action,
+        JumpAction::ApplicationWindow { .. }
+    ));
+    assert_eq!(result.outcome, JumpOutcome::VisibleFallback);
+    assert_eq!(executor.seen.len(), 2);
+}
+
+#[test]
+fn malformed_terminal_selector_cannot_create_an_exact_action() {
+    let locator = SessionLocator {
+        host_application: Some(HostApplication::ITerm2),
+        terminal: Some(TerminalKind::ITerm2),
+        tty: Some("/dev/ttys008\nrun-unrelated-command".to_owned()),
+        native_session_id: "opaque-terminal-session".to_owned(),
+        ..SessionLocator::default()
+    };
+
+    assert!(matches!(
+        actions_for(&locator).as_slice(),
+        [JumpAction::ResumeInstructions { .. }]
+    ));
+}
+
+#[test]
+fn wezterm_requires_a_numeric_pane_selector_and_preserves_its_control_endpoint() {
+    let locator = SessionLocator {
+        terminal: Some(TerminalKind::WezTerm),
+        terminal_pane_id: Some("42".to_owned()),
+        terminal_control_endpoint: Some("/tmp/wezterm.sock".to_owned()),
+        native_session_id: "opaque-wezterm-session".to_owned(),
+        ..SessionLocator::default()
+    };
+
+    assert!(matches!(
+        actions_for(&locator).as_slice(),
+        [
+            JumpAction::ExactWezTermPane {
+                pane_id: 42,
+                control_endpoint: Some(endpoint),
+            },
+            JumpAction::ResumeInstructions { .. },
+        ] if endpoint == "/tmp/wezterm.sock"
+    ));
+
+    let invalid = SessionLocator {
+        terminal_pane_id: Some("42; unrelated-command".to_owned()),
+        ..locator
+    };
+    assert!(matches!(
+        actions_for(&invalid).as_slice(),
+        [JumpAction::ResumeInstructions { .. }]
+    ));
+}
+
+#[test]
+fn zellij_and_cmux_need_their_complete_native_selectors() {
+    let zellij = SessionLocator {
+        terminal: Some(TerminalKind::Zellij),
+        terminal_session_id: Some("workspace".to_owned()),
+        terminal_pane_id: Some("terminal_3".to_owned()),
+        native_session_id: "opaque-zellij-session".to_owned(),
+        ..SessionLocator::default()
+    };
+    assert!(matches!(
+        actions_for(&zellij).first(),
+        Some(JumpAction::ExactZellijPane { session_name, pane_id })
+            if session_name == "workspace" && pane_id == "terminal_3"
+    ));
+
+    let cmux = SessionLocator {
+        terminal: Some(TerminalKind::Cmux),
+        terminal_pane_id: Some("panel-9".to_owned()),
+        native_session_id: "opaque-cmux-session".to_owned(),
+        ..SessionLocator::default()
+    };
+    assert!(matches!(
+        actions_for(&cmux).first(),
+        Some(JumpAction::ExactCmuxPanel { panel_id, control_endpoint: None })
+            if panel_id == "panel-9"
+    ));
+
+    let incomplete = SessionLocator {
+        terminal: Some(TerminalKind::Zellij),
+        native_session_id: "opaque-zellij-session".to_owned(),
+        ..SessionLocator::default()
+    };
+    assert!(matches!(
+        actions_for(&incomplete).as_slice(),
+        [JumpAction::ResumeInstructions { .. }]
+    ));
+}
+
+#[test]
+fn ghostty_uses_a_native_identifier_without_guessing_from_tty() {
+    let locator = SessionLocator {
+        terminal: Some(TerminalKind::Ghostty),
+        terminal_pane_id: Some("terminal-8".to_owned()),
+        native_session_id: "opaque-ghostty-session".to_owned(),
+        ..SessionLocator::default()
+    };
+    assert!(matches!(
+        actions_for(&locator).first(),
+        Some(JumpAction::ExactGhosttyTerminal { terminal_id }) if terminal_id == "terminal-8"
+    ));
 }

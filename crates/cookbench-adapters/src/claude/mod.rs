@@ -12,7 +12,8 @@ pub use discovery::{
     decode_project_path, default_projects_root, discover_session, encode_project_path,
 };
 pub use hooks::{
-    install_hooks, uninstall_hooks, HookBackupIntent, HookMutation, HookMutationError,
+    install_hooks, install_hooks_with_command, uninstall_all_cookbench_hooks, uninstall_hooks,
+    uninstall_hooks_with_command, HookBackupIntent, HookMutation, HookMutationError,
 };
 pub use parser::{parse_record, ParsedRecord};
 pub use tasks::{extract_task_progress, TaskProgress};

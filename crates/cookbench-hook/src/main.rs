@@ -20,7 +20,7 @@ fn main() -> ExitCode {
         [] => run_hook(None, None),
         [flag, harness]
             if flag == "--harness"
-                && matches!(harness.as_str(), "codex" | "claude-code" | "claude") =>
+                && matches!(harness.as_str(), "codex" | "claude-code" | "claude" | "pi") =>
         {
             run_hook(Some(harness), None)
         }
