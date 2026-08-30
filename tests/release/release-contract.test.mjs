@@ -5,7 +5,8 @@ import test from "node:test";
 const root = new URL("../..", import.meta.url);
 
 async function read(relativePath) {
-  return readFile(new URL(relativePath, root), "utf8");
+  const contents = await readFile(new URL(relativePath, root), "utf8");
+  return contents.replaceAll("\r\n", "\n");
 }
 
 test("tag release builds the declared macOS, Windows, and Ubuntu artifact matrix", async () => {
