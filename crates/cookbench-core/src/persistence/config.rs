@@ -33,6 +33,10 @@ pub struct GlobalBarPosition {
 pub struct BarLayout {
     #[serde(default = "default_true")]
     pub global_bar_visible: bool,
+    /// Detailed Stove metadata stays collapsed unless the user explicitly
+    /// opts in. This keeps the overlay quiet on first launch.
+    #[serde(default)]
+    pub hover_details_enabled: bool,
     #[serde(default)]
     pub global_bar_placement: GlobalBarPlacement,
     /// The last deliberate native window size. It is unset until the user
@@ -85,6 +89,7 @@ impl Default for BarLayout {
     fn default() -> Self {
         Self {
             global_bar_visible: true,
+            hover_details_enabled: false,
             global_bar_placement: GlobalBarPlacement::default(),
             global_bar_size: None,
             global_bar_position: None,

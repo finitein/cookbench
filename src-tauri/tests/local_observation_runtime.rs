@@ -70,6 +70,16 @@ fn append(path: &PathBuf, content: &str) {
 }
 
 #[test]
+fn default_discovery_window_keeps_long_running_sessions_visible() {
+    let now = SystemTime::now();
+    let config = LocalObservationConfig::from_environment(HostIdentity::local("synthetic-host"));
+    let age = now.duration_since(config.startup_min_modified).unwrap();
+
+    assert!(age >= Duration::from_secs(13 * 24 * 60 * 60));
+    assert!(age <= Duration::from_secs(15 * 24 * 60 * 60));
+}
+
+#[test]
 fn reconstructs_three_native_harnesses_then_observes_appended_lifecycle_records() {
     let root = temp_root();
     let codex_root = root.join("codex");

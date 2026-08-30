@@ -116,7 +116,7 @@ impl LocalObservationConfig {
             claude_root: claude.projects_root().to_owned(),
             pi_roots: pi.roots().to_vec(),
             startup_min_modified: SystemTime::now()
-                .checked_sub(Duration::from_secs(24 * 60 * 60))
+                .checked_sub(Duration::from_secs(14 * 24 * 60 * 60))
                 .unwrap_or(SystemTime::UNIX_EPOCH),
             startup_candidate_limit: 64,
         }

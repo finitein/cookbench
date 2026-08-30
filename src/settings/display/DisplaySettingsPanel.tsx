@@ -37,7 +37,10 @@ export function DisplaySettingsPanel() {
     });
   }, []);
 
-  const save = (change: Partial<Pick<DisplaySettingsWire, "globalBarVisible" | "globalBarPlacement">>) => {
+  const save = (change: Partial<Pick<
+    DisplaySettingsWire,
+    "globalBarVisible" | "globalBarPlacement" | "hoverDetailsEnabled"
+  >>) => {
     if (!settings) return;
     const next = { ...settings, ...change };
     setSettings(next);
@@ -45,6 +48,7 @@ export function DisplaySettingsPanel() {
     void configureDisplaySettings({
       globalBarVisible: next.globalBarVisible,
       globalBarPlacement: next.globalBarPlacement,
+      hoverDetailsEnabled: next.hoverDetailsEnabled,
     }).then(setSettings).catch(() => {
       setSettings(settings);
       setStatus("Display settings could not be saved.");
@@ -84,6 +88,15 @@ export function DisplaySettingsPanel() {
             onChange={(event) => save({ globalBarVisible: event.target.checked })}
           />
           <span>Show global Bar</span>
+        </label>
+        <label className="display-settings__toggle">
+          <input
+            type="checkbox"
+            checked={settings?.hoverDetailsEnabled ?? false}
+            disabled={!settings || !settings.globalBarVisible}
+            onChange={(event) => save({ hoverDetailsEnabled: event.target.checked })}
+          />
+          <span>Show details on hover</span>
         </label>
         <label className="display-settings__placement">
           <span>Placement</span>

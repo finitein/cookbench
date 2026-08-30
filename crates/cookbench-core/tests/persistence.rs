@@ -218,6 +218,7 @@ fn config_never_serializes_credential_values() {
     let encoded = serde_json::to_string(&config).unwrap();
     assert!(!encoded.contains("credential_value"));
     assert!(config.layout.global_bar_visible);
+    assert!(!config.layout.hover_details_enabled);
     assert_eq!(
         config.layout.global_bar_placement,
         GlobalBarPlacement::TopCenter
@@ -233,6 +234,7 @@ fn legacy_layouts_keep_the_global_bar_visible() {
     .unwrap();
 
     assert!(config.layout.global_bar_visible);
+    assert!(!config.layout.hover_details_enabled);
     assert_eq!(
         config.layout.global_bar_placement,
         GlobalBarPlacement::TopCenter

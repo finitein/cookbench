@@ -90,6 +90,7 @@ export default function CookbenchE2EApp() {
         onDetachStove={() => undefined}
         onClearStove={() => undefined}
         onOpenSettings={() => undefined}
+        hoverDetailsEnabled
       />
       {Object.entries(placements).map(([stoveId, placement]) => {
         const stove = stoves.find((candidate) => candidate.id === stoveId);

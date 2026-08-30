@@ -33,6 +33,7 @@ export function StoveBurner({
   showHarnessMark = true,
 }: StoveBurnerProps) {
   const tooltipId = suppliedTooltipId ?? `stove-tooltip-${stove.id}`;
+  const hasTooltip = renderTooltip || Boolean(onTooltipVisibilityChange);
   const stateLabel = stoveStateLabel(stove.state);
   const sessionLabel = stove.taskTitle ?? "Current session";
   const projectLabel = stove.projectLabel ?? "Session";
@@ -51,7 +52,7 @@ export function StoveBurner({
         data-completion={motion.completion}
         data-motion={motion.completion === "none" ? "system" : motion.completion}
         type="button"
-        aria-describedby={tooltipId}
+        aria-describedby={hasTooltip ? tooltipId : undefined}
         aria-label={`${stove.harness.label}: ${stoveDisplayIdentity(stove)}, ${sessionLabel}, ${stateLabel}`}
         onClick={() => onActivate?.(stove)}
         onPointerEnter={() => onTooltipVisibilityChange?.(true, stove)}

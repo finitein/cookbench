@@ -12,6 +12,7 @@ export type GlobalBarProps = {
   onDetachStove?: (stove: StoveWire) => void;
   onClearStove?: (stove: StoveWire) => void;
   onOpenSettings?: () => void;
+  hoverDetailsEnabled?: boolean;
 };
 
 function usableBarWidth(): number {
@@ -45,17 +46,30 @@ function useBenchCapacity(): number {
   return capacity;
 }
 
-export function GlobalBar({ stoves, onActivateStove, onDetachStove, onClearStove, onOpenSettings }: GlobalBarProps) {
+export function GlobalBar({
+  stoves,
+  onActivateStove,
+  onDetachStove,
+  onClearStove,
+  onOpenSettings,
+  hoverDetailsEnabled = false,
+}: GlobalBarProps) {
   const previousStates = useRef(new Map<string, StoveState>());
   const priorStates = previousStates.current;
   const [tooltipStoveId, setTooltipStoveId] = useState<string | null>(null);
-  const tooltipStove = stoves.find((stove) => stove.id === tooltipStoveId) ?? null;
+  const tooltipStove = hoverDetailsEnabled
+    ? stoves.find((stove) => stove.id === tooltipStoveId) ?? null
+    : null;
   const benchCapacity = useBenchCapacity();
   const layout = useMemo(() => arrangeBenches(stoves, benchCapacity), [benchCapacity, stoves]);
 
   useEffect(() => {
     previousStates.current = new Map(stoves.map((stove) => [stove.id, stove.state]));
   }, [stoves]);
+
+  useEffect(() => {
+    if (!hoverDetailsEnabled) setTooltipStoveId(null);
+  }, [hoverDetailsEnabled]);
 
   return (
     <section
@@ -95,9 +109,11 @@ export function GlobalBar({ stoves, onActivateStove, onDetachStove, onClearStove
                     onClear={onClearStove}
                     previousState={priorStates.get(stove.id)}
                     isInitialSnapshot={!priorStates.has(stove.id)}
-                    tooltipId="global-bar-tooltip"
+                    tooltipId={hoverDetailsEnabled ? "global-bar-tooltip" : undefined}
                     renderTooltip={false}
-                    onTooltipVisibilityChange={(visible, value) => setTooltipStoveId((current) => visible ? value.id : current === value.id ? null : current)}
+                    onTooltipVisibilityChange={hoverDetailsEnabled
+                      ? (visible, value) => setTooltipStoveId((current) => visible ? value.id : current === value.id ? null : current)
+                      : undefined}
                   />
                 </div>
               ))}

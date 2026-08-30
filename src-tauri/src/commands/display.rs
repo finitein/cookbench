@@ -8,7 +8,7 @@ use cookbench_core::persistence::{
     RelativePosition, WindowPosition,
 };
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, LogicalSize, Manager, PhysicalPosition, State};
+use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, State};
 
 use crate::{
     app_state::AppState,
@@ -27,6 +27,7 @@ pub struct DetachedBarWire {
 pub struct DisplaySettingsWire {
     pub global_bar_visible: bool,
     pub global_bar_placement: GlobalBarPlacement,
+    pub hover_details_enabled: bool,
     pub detached_bars: Vec<DetachedBarWire>,
 }
 
@@ -35,12 +36,16 @@ pub struct DisplaySettingsWire {
 pub struct DisplaySettingsInput {
     pub global_bar_visible: bool,
     pub global_bar_placement: GlobalBarPlacement,
+    pub hover_details_enabled: bool,
 }
+
+pub const DISPLAY_SETTINGS_CHANGED_EVENT: &str = "cookbench://display-settings-changed";
 
 pub fn settings_wire(config: &PersistedConfig) -> DisplaySettingsWire {
     DisplaySettingsWire {
         global_bar_visible: config.layout.global_bar_visible,
         global_bar_placement: config.layout.global_bar_placement,
+        hover_details_enabled: config.layout.hover_details_enabled,
         detached_bars: config
             .layout
             .detached_layouts
@@ -69,6 +74,7 @@ pub fn configure_display_settings(
     state.update_persisted_config(|config| {
         config.layout.global_bar_visible = input.global_bar_visible;
         config.layout.global_bar_placement = input.global_bar_placement;
+        config.layout.hover_details_enabled = input.hover_details_enabled;
         if placement_changed {
             // Choosing a screen anchor is an explicit request to leave the
             // last free-form drag position behind.
@@ -88,7 +94,10 @@ pub fn configure_display_settings(
     windows
         .set_global_bar_visible(input.global_bar_visible)
         .map_err(|error| error.to_string())?;
-    Ok(settings_wire(&state.persisted_config()))
+    let wire = settings_wire(&state.persisted_config());
+    app.emit_to("main", DISPLAY_SETTINGS_CHANGED_EVENT, &wire)
+        .map_err(|error| error.to_string())?;
+    Ok(wire)
 }
 
 pub fn restore_global_bar_size(
@@ -314,6 +323,7 @@ mod tests {
             DisplaySettingsWire {
                 global_bar_visible: false,
                 global_bar_placement: GlobalBarPlacement::BottomRight,
+                hover_details_enabled: false,
                 detached_bars: vec![DetachedBarWire {
                     stove_id: "remote-a:session-1".into()
                 }],

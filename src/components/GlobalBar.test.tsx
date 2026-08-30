@@ -64,6 +64,16 @@ describe("GlobalBar", () => {
     expect(screen.getByTestId("stove-session-identity")).toHaveTextContent("#12345678");
   });
 
+  it("keeps hover details closed unless the user enables them", () => {
+    render(<GlobalBar stoves={[makeStove(0)]} />);
+
+    const stove = screen.getByTestId("stove");
+    fireEvent.pointerEnter(stove);
+
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    expect(stove).not.toHaveAttribute("aria-describedby");
+  });
+
   it("uses a determinate arc only for Cooking with structured progress", () => {
     render(<GlobalBar stoves={[makeStove(0, { state: "cooking" }), makeStove(3, { state: "cooking", progress: null })]} />);
 
@@ -95,7 +105,7 @@ describe("GlobalBar", () => {
 
   it("exposes local and remote host details in a focusable burner tooltip", () => {
     const remote = makeStove(0, { host: { kind: "ssh", id: "build-host" } });
-    render(<GlobalBar stoves={[remote]} />);
+    render(<GlobalBar stoves={[remote]} hoverDetailsEnabled />);
 
     expect(screen.getByLabelText("Remote host: build-host")).toBeVisible();
     fireEvent.pointerEnter(screen.getByTestId("stove"));
@@ -104,7 +114,7 @@ describe("GlobalBar", () => {
   });
 
   it("reserves an unclipped detail surface while a Stove is hovered and releases it immediately", () => {
-    render(<GlobalBar stoves={[makeStove(0)]} />);
+    render(<GlobalBar stoves={[makeStove(0)]} hoverDetailsEnabled />);
 
     const stove = screen.getByTestId("stove");
     fireEvent.pointerEnter(stove);

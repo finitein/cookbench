@@ -1,4 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+
+export const DISPLAY_SETTINGS_CHANGED_EVENT = "cookbench://display-settings-changed";
 
 export type GlobalBarPlacement =
   | "topLeft"
@@ -15,10 +18,14 @@ export type DetachedBarWire = {
 export type DisplaySettingsWire = {
   globalBarVisible: boolean;
   globalBarPlacement: GlobalBarPlacement;
+  hoverDetailsEnabled: boolean;
   detachedBars: DetachedBarWire[];
 };
 
-export type DisplaySettingsInput = Pick<DisplaySettingsWire, "globalBarVisible" | "globalBarPlacement">;
+export type DisplaySettingsInput = Pick<
+  DisplaySettingsWire,
+  "globalBarVisible" | "globalBarPlacement" | "hoverDetailsEnabled"
+>;
 
 export function getDisplaySettings(): Promise<DisplaySettingsWire> {
   return invoke<DisplaySettingsWire>("get_display_settings");
@@ -26,6 +33,16 @@ export function getDisplaySettings(): Promise<DisplaySettingsWire> {
 
 export function configureDisplaySettings(input: DisplaySettingsInput): Promise<DisplaySettingsWire> {
   return invoke<DisplaySettingsWire>("configure_display_settings", { input });
+}
+
+export async function subscribeToDisplaySettings(
+  onSettings: (settings: DisplaySettingsWire) => void,
+): Promise<UnlistenFn> {
+  const unlisten = await listen<DisplaySettingsWire>(DISPLAY_SETTINGS_CHANGED_EVENT, (event) => {
+    onSettings(event.payload);
+  }).catch((): UnlistenFn => () => {});
+  onSettings(await getDisplaySettings());
+  return unlisten;
 }
 
 /** Closes only Cookbench's detached window; it does not touch a native session. */

@@ -4,6 +4,7 @@ import { vi } from "vitest";
 
 const { useGlobalBarWindow } = vi.hoisted(() => ({ useGlobalBarWindow: vi.fn() }));
 vi.mock("./hooks/useGlobalBarWindow", () => ({ useGlobalBarWindow }));
+vi.mock("./hooks/useDisplaySettings", () => ({ useDisplaySettings: () => null }));
 
 import App from "./App";
 

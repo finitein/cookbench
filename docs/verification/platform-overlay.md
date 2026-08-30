@@ -22,6 +22,7 @@ optional presentation-only GNOME extension is installed.
 | Tauri compile and workspace tests | Passed: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, and `cargo build --workspace` | macOS development machine, 2026-08-30 |
 | Native Ubuntu ARM64 compile and workspace tests | Passed: Rust fmt, strict Clippy, full workspace tests, 79 Vitest tests, TypeScript lint, and production frontend build | Ubuntu 24.04.4 GNOME X11 host, 2026-08-30 |
 | Native Ubuntu packages | ARM64 DEB and AppImage built with executable bridge/hook sidecars; both package forms launched a Cookbench window | Ubuntu 24.04.4 GNOME X11 host, 2026-08-30 |
+| Native Ubuntu Codex/Pi discovery | Passed: a clean debug launch against the logged-in user's native roots populated the Bar from bounded metadata-first discovery; sessions between one and three days old remained visible under the 14-day startup window | Ubuntu 24.04.4 GNOME X11 host, 2026-08-30 |
 
 Automated tests prove the platform contract and compile the Tauri-backed window
 operations. The native Ubuntu run additionally proves the tested X11 compositor
@@ -40,12 +41,15 @@ honored the keep-above request. Windows still requires a native runner.
 | Ubuntu 24.04 GNOME Wayland, no extension | Not available on this machine | Not verified | Not verified | Not verified | Not verified; graphical fallback must be checked | VM or hardware required |
 | Ubuntu 24.04 GNOME Wayland, extension | Not available on this machine | Not verified | Not verified | Not verified | Not verified | VM or hardware required |
 
-The Ubuntu graphical smoke used an isolated temporary `HOME`, the logged-in
-user's existing X11 session, and software rendering because a process launched
-over SSH did not inherit direct DRM/GBM device access. The resulting process
-stayed alive with one native window and an empty application log. No native
-session content was read. AppImage validation used extract-and-run mode so the
-result does not depend on FUSE being enabled on the verification host.
+The packaging smoke used an isolated temporary `HOME`. A separate discovery
+smoke kept the real `HOME` for native session roots while isolating Cookbench's
+own XDG data/config/cache directories. That clean launch populated Codex and Pi
+Stoves and persisted hover details as disabled by default. Verification recorded
+only process/file metadata and the rendered Stove presentation; no native
+session content was copied into the repository. Both runs used the logged-in
+X11 session and software rendering because an SSH-launched process did not
+inherit direct DRM/GBM device access. AppImage validation used extract-and-run
+mode so the result does not depend on FUSE being enabled on the host.
 
 ## Manual Checklist
 

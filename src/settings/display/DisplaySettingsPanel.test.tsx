@@ -31,6 +31,7 @@ describe("DisplaySettingsPanel", () => {
     getDisplaySettings.mockResolvedValue({
       globalBarVisible: true,
       globalBarPlacement: "topCenter",
+      hoverDetailsEnabled: false,
       detachedBars: [{ stoveId: "host-a:session-1" }],
     });
     configureDisplaySettings.mockImplementation(async (input) => ({
@@ -47,6 +48,7 @@ describe("DisplaySettingsPanel", () => {
 
     expect(await screen.findByRole("heading", { name: "Display" })).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "Show global Bar" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Show details on hover" })).not.toBeChecked();
     expect(screen.getByRole("combobox", { name: "Placement" })).toHaveValue("topCenter");
     expect(screen.getByRole("button", { name: "Close independent Bar host-a:session-1" })).toBeInTheDocument();
   });
@@ -60,9 +62,26 @@ describe("DisplaySettingsPanel", () => {
       expect(configureDisplaySettings).toHaveBeenCalledWith({
         globalBarVisible: false,
         globalBarPlacement: "topCenter",
+        hoverDetailsEnabled: false,
       });
     });
     expect(screen.getByRole("button", { name: "Close independent Bar host-a:session-1" })).toBeInTheDocument();
+  });
+
+  it("keeps hover details off by default and saves an explicit opt-in", async () => {
+    render(<DisplaySettingsPanel />);
+
+    const hoverDetails = await screen.findByRole("checkbox", { name: "Show details on hover" });
+    expect(hoverDetails).not.toBeChecked();
+    fireEvent.click(hoverDetails);
+
+    await waitFor(() => {
+      expect(configureDisplaySettings).toHaveBeenCalledWith({
+        globalBarVisible: true,
+        globalBarPlacement: "topCenter",
+        hoverDetailsEnabled: true,
+      });
+    });
   });
 
   it("closes only the selected independent Bar", async () => {
