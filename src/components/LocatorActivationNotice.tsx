@@ -1,7 +1,17 @@
+import { useEffect, useState } from "react";
+
 import type { LocatorActivationResult } from "../services/locator";
 
 export function LocatorActivationNotice({ result }: { result: LocatorActivationResult | null }) {
-  if (!result) return null;
+  const [expiredResult, setExpiredResult] = useState<LocatorActivationResult | null>(null);
+
+  useEffect(() => {
+    if (!result || result.status === "focused") return;
+    const timeout = window.setTimeout(() => setExpiredResult(result), 20_000);
+    return () => window.clearTimeout(timeout);
+  }, [result]);
+
+  if (!result || result === expiredResult) return null;
 
   if (result.status === "focused") {
     return null;

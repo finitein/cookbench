@@ -1,8 +1,10 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { LocatorActivationNotice } from "./LocatorActivationNotice";
 
 describe("LocatorActivationNotice", () => {
+  afterEach(() => vi.useRealTimers());
+
   it("stays silent after a successful return", () => {
     const { container } = render(
       <LocatorActivationNotice
@@ -49,5 +51,20 @@ describe("LocatorActivationNotice", () => {
 
     expect(screen.getByRole("status")).toHaveTextContent("could not open the original session");
     expect(screen.getByRole("status")).toHaveTextContent("kept the Stove visible here");
+  });
+
+  it("removes a visible notice after twenty seconds without leaving a Bar row", () => {
+    vi.useFakeTimers();
+    const { container } = render(
+      <LocatorActivationNotice
+        result={{ target: "unavailable", status: "unavailable", resumeSessionId: null }}
+      />,
+    );
+
+    expect(screen.getByRole("status")).toBeVisible();
+    act(() => vi.advanceTimersByTime(19_999));
+    expect(screen.getByRole("status")).toBeVisible();
+    act(() => vi.advanceTimersByTime(1));
+    expect(container).toBeEmptyDOMElement();
   });
 });
