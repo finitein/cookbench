@@ -72,9 +72,7 @@ struct FileIdentity {
     #[cfg(unix)]
     inode: u64,
     #[cfg(windows)]
-    volume: Option<u32>,
-    #[cfg(windows)]
-    index: Option<u64>,
+    creation_time: u64,
     #[cfg(not(any(unix, windows)))]
     modified: Option<std::time::SystemTime>,
 }
@@ -94,8 +92,10 @@ impl FileIdentity {
         {
             use std::os::windows::fs::MetadataExt;
             Self {
-                volume: metadata.volume_serial_number(),
-                index: metadata.file_index(),
+                // Stable Rust does not yet expose the Windows volume/file
+                // index pair. NTFS creation time still detects normal atomic
+                // replacement, while cursor-vs-length handles truncation.
+                creation_time: metadata.creation_time(),
             }
         }
 
