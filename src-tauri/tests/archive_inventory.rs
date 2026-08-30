@@ -1,5 +1,5 @@
 use std::{
-    fs::{self, File, FileTimes},
+    fs::{self, FileTimes, OpenOptions},
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -28,7 +28,9 @@ fn temp_root() -> PathBuf {
 fn write_old(path: &Path, content: &str, now: SystemTime) {
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(path, content).unwrap();
-    File::open(path)
+    OpenOptions::new()
+        .write(true)
+        .open(path)
         .unwrap()
         .set_times(FileTimes::new().set_modified(now.checked_sub(AGE).unwrap()))
         .unwrap();
