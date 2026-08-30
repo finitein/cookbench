@@ -15,7 +15,7 @@ pnpm build
 pnpm test:e2e
 ```
 
-On the macOS development runner, `pnpm test:e2e` passes all twelve Chromium flows.
+On the macOS development runner, `pnpm test:e2e` passes all thirteen Chromium flows.
 The test-only driver supplies sanitized snapshots, restart, detached placement,
 clear, and outbound-notification observations in Vite `e2e` mode. A production
 build scan confirms that the driver name, storage keys, and implementation are
@@ -83,6 +83,10 @@ asset additions. Verify blur-unavailable fallback is solid and legible.
 - Notifications: use synthetic sandbox destinations for Telegram, Slack,
   Discord, Lark/Feishu, and Generic Webhook. Confirm no inbound listener,
   polling, response processing, or remote agent control is present.
+- Local alerts: verify sound-only defaults, explicit system-notification
+  permission behavior, one-Stove flash, reduced motion, and desktop attention.
+  Current native evidence and platform gaps are recorded in
+  [`local-notifications.md`](local-notifications.md).
 
 ## Performance Evidence
 
