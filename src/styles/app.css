@@ -30,6 +30,14 @@ body {
   place-items: stretch;
 }
 
+.shell--detached {
+  height: 100vh;
+  padding: 0;
+  overflow: hidden;
+  background: transparent;
+  place-items: stretch;
+}
+
 .bar {
   display: flex;
   width: min(640px, 100%);

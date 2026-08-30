@@ -1,5 +1,7 @@
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { useEffect } from "react";
 import type { StoveWire } from "../types/stove";
-import { createPositionPersistence, detachedStoveTransport } from "../services/detachedStoves";
+import { createPositionPersistence, detachedStoveTransport, startDetachedWindowDrag } from "../services/detachedStoves";
 import { DetachedStoveBar } from "./DetachedStoveBar";
 
 export type DetachedStoveWindowProps = {
@@ -32,14 +34,14 @@ export function DetachedStoveWindow({ stove, onActivate }: DetachedStoveWindowPr
   }, [stove.id]);
 
   return (
-    <main className="shell" aria-label="Cookbench detached Stove">
+    <main className="shell shell--detached" aria-label="Cookbench detached Stove">
       <DetachedStoveBar
         stove={stove}
         onActivate={onActivate}
+        onClose={(current) => { void detachedStoveTransport.close(current.id); }}
+        onStartDrag={() => { void startDetachedWindowDrag(); }}
         onClear={stove.retainedCompletion ? (current) => { void detachedStoveTransport.clear(current.id); } : undefined}
       />
     </main>
   );
 }
-import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { useEffect } from "react";

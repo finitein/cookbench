@@ -98,7 +98,7 @@ export default function CookbenchE2EApp() {
           <div
             data-testid={`detached-window-${stoveId}`}
             key={stoveId}
-            style={{ position: "fixed", left: placement.x, top: placement.y }}
+            style={{ position: "fixed", zIndex: 20, left: placement.x, top: placement.y, width: 164, height: 104 }}
           >
             <DetachedStoveBar stove={stove} />
           </div>

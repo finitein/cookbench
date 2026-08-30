@@ -3,6 +3,16 @@ import { describe, expect, it } from "vitest";
 import { LocatorActivationNotice } from "./LocatorActivationNotice";
 
 describe("LocatorActivationNotice", () => {
+  it("stays silent after a successful return", () => {
+    const { container } = render(
+      <LocatorActivationNotice
+        result={{ target: "exactPane", status: "focused", resumeSessionId: null }}
+      />,
+    );
+
+    expect(container).toBeEmptyDOMElement();
+  });
+
   it("renders a visible resume result", () => {
     render(
       <LocatorActivationNotice

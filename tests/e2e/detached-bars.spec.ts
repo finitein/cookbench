@@ -9,7 +9,23 @@ test("a detached stove is restored with the global Bar and is removed when clear
   await driver.replaceStoves([stove]);
 
   await driver.detach(stove.id);
-  await expect(page.getByLabel(/Detached Stove bar for Codex/)).toBeVisible();
+  const detached = page.getByLabel(/Detached Stove bar for Codex/);
+  await expect(detached).toBeVisible();
+  await expect(detached.locator(".detached-stove-bar__harness .harness-mark")).toHaveText("CX");
+  await expect(detached).not.toContainText("Codex");
+  await expect(detached.getByRole("button", { name: "Close detached Stove" })).toBeVisible();
+  const overflow = await detached.evaluate((element) => ({
+    x: getComputedStyle(element).overflowX,
+    y: getComputedStyle(element).overflowY,
+    width: element.scrollWidth - element.clientWidth,
+    height: element.scrollHeight - element.clientHeight,
+  }));
+  expect(overflow).toEqual({ x: "hidden", y: "hidden", width: 0, height: 0 });
+  if (process.env.COOKBENCH_CAPTURE_EVIDENCE === "1") {
+    await detached.screenshot({
+      path: "docs/verification/evidence/e2e-detached-stove.png",
+    });
+  }
   await driver.moveDetached(stove.id, 180, 120);
   await driver.restoreDetached();
   await expect(page.getByLabel(/Detached Stove bar for Codex/)).toBeVisible();

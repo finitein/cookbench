@@ -6,6 +6,7 @@
 
 pub mod linux;
 pub mod macos;
+mod terminal;
 pub mod tmux;
 pub mod vscode;
 pub mod windows;
@@ -15,11 +16,17 @@ use std::process::Command;
 use cookbench_core::locator::{HostApplication, SessionLocator, TerminalKind};
 use serde::Serialize;
 
+pub use terminal::{correlate_terminal_locator, correlate_with_running_processes, ObservedProcess};
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum JumpAction {
     ExactPane {
         program: &'static str,
         args: Vec<String>,
+    },
+    ExactTerminalTab {
+        terminal: TerminalKind,
+        tty: String,
     },
     ApplicationWindow {
         application: &'static str,
@@ -102,6 +109,7 @@ pub fn activate_with<E: JumpExecutor>(
     let JumpResult { action, outcome } = jump_with(locator, executor);
     let (target, resume_session_id) = match action {
         JumpAction::ExactPane { .. } => (LocatorActivationTarget::ExactPane, None),
+        JumpAction::ExactTerminalTab { .. } => (LocatorActivationTarget::ExactPane, None),
         JumpAction::ApplicationWindow { .. } => (LocatorActivationTarget::ApplicationWindow, None),
         JumpAction::ProjectDirectory { .. } => (LocatorActivationTarget::ProjectDirectory, None),
         JumpAction::ResumeInstructions { native_session_id } => (
@@ -132,6 +140,7 @@ impl JumpExecutor for NativeJumpExecutor {
     fn perform(&mut self, action: &JumpAction) -> JumpOutcome {
         match action {
             JumpAction::ExactPane { program, args } => run(program, args),
+            JumpAction::ExactTerminalTab { terminal, tty } => focus_terminal_tab(terminal, tty),
             JumpAction::ApplicationWindow { application } => activate_application(application),
             JumpAction::ProjectDirectory { path } => open_project_directory(path),
             JumpAction::ResumeInstructions { .. } => JumpOutcome::VisibleFallback,
@@ -148,6 +157,43 @@ fn run(program: &str, args: &[String]) -> JumpOutcome {
         }
         Err(_) => JumpOutcome::Unavailable,
     }
+}
+
+#[cfg(target_os = "macos")]
+fn focus_terminal_tab(terminal: &TerminalKind, tty: &str) -> JumpOutcome {
+    if !matches!(terminal, TerminalKind::MacosTerminal) {
+        return JumpOutcome::Unavailable;
+    }
+    const SCRIPT: &str = r#"on run argv
+set targetTTY to item 1 of argv
+tell application "Terminal"
+  repeat with targetWindow in windows
+    repeat with targetTab in tabs of targetWindow
+      if tty of targetTab is targetTTY then
+        set selected tab of targetWindow to targetTab
+        set frontmost of targetWindow to true
+        activate
+        return
+      end if
+    end repeat
+  end repeat
+  error number 1
+end tell
+end run"#;
+    run(
+        "/usr/bin/osascript",
+        &[
+            "-e".to_owned(),
+            SCRIPT.to_owned(),
+            "--".to_owned(),
+            tty.to_owned(),
+        ],
+    )
+}
+
+#[cfg(not(target_os = "macos"))]
+fn focus_terminal_tab(_terminal: &TerminalKind, _tty: &str) -> JumpOutcome {
+    JumpOutcome::Unavailable
 }
 
 #[cfg(target_os = "macos")]
@@ -196,6 +242,15 @@ pub fn actions_for(locator: &SessionLocator) -> Vec<JumpAction> {
     if matches!(locator.terminal.as_ref(), Some(TerminalKind::Tmux)) {
         if let Some(action) = tmux::exact_pane_action(locator.tmux_pane.as_deref()) {
             actions.push(action);
+        }
+    }
+
+    if let (Some(terminal), Some(tty)) = (locator.terminal.as_ref(), locator.tty.as_ref()) {
+        if matches!(terminal, TerminalKind::MacosTerminal) {
+            actions.push(JumpAction::ExactTerminalTab {
+                terminal: terminal.clone(),
+                tty: tty.clone(),
+            });
         }
     }
 

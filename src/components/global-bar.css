@@ -14,6 +14,7 @@
   position: relative;
   display: grid;
   grid-template-columns: 52px minmax(0, 1fr);
+  align-content: start;
   align-items: start;
   width: 100%;
   max-width: none;
@@ -37,6 +38,7 @@
   width: 52px;
   min-width: 52px;
   min-height: 72px;
+  height: 100%;
   place-items: center;
   border-right: 1px solid rgb(109 129 148 / 16%);
   cursor: grab;
@@ -285,6 +287,8 @@
   stroke: currentColor;
   stroke-linecap: round;
   stroke-dasharray: var(--ring-progress, 100) 100;
+  transform-box: fill-box;
+  transform-origin: center;
 }
 
 .progress-ring__label {
@@ -301,7 +305,7 @@
 }
 
 .progress-ring--indeterminate .progress-ring__value { stroke-dasharray: 24 76; animation: cookbench-ring-turn 1.6s linear infinite; }
-.progress-ring--determinate .progress-ring__value { stroke-dasharray: var(--ring-progress) 100; animation: cookbench-ring-turn 3.2s linear infinite; }
+.progress-ring--determinate .progress-ring__value { stroke-dasharray: var(--ring-progress) 100; }
 .progress-ring--needsHuman { color: var(--bar-attention); }
 .progress-ring--needsHuman .progress-ring__value { animation: cookbench-alert 1.4s ease-in-out infinite; }
 .progress-ring--cooked { color: var(--bar-cooked); }

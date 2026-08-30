@@ -1,7 +1,7 @@
 use cookbench_core::locator::{HostApplication, SessionLocator, TerminalKind};
 use cookbench_desktop_lib::locator::{
-    actions_for, activate_with, jump_with, JumpAction, JumpExecutor, JumpOutcome,
-    LocatorActivationStatus, LocatorActivationTarget,
+    actions_for, activate_with, correlate_terminal_locator, jump_with, JumpAction, JumpExecutor,
+    JumpOutcome, LocatorActivationStatus, LocatorActivationTarget, ObservedProcess,
 };
 
 #[derive(Default)]
@@ -66,6 +66,87 @@ fn codex_desktop_focus_precedes_project_directory_fallback() {
             JumpAction::ProjectDirectory { .. },
             JumpAction::ResumeInstructions { .. },
         ]
+    ));
+}
+
+#[test]
+fn claude_and_pi_can_correlate_one_running_terminal_without_reading_command_arguments() {
+    let processes = vec![
+        ObservedProcess::new(
+            10,
+            1,
+            None,
+            "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal",
+            None,
+        ),
+        ObservedProcess::new(20, 10, Some("ttys004"), "login", None),
+        ObservedProcess::new(
+            30,
+            20,
+            Some("ttys004"),
+            "claude",
+            Some("/workspace/cookbench"),
+        ),
+    ];
+    let base = SessionLocator {
+        working_directory: Some("/workspace/cookbench".to_owned()),
+        native_session_id: "opaque-claude-session".to_owned(),
+        ..SessionLocator::default()
+    };
+
+    let correlated = correlate_terminal_locator(
+        &cookbench_core::domain::HarnessId::ClaudeCode,
+        base,
+        &processes,
+    );
+
+    assert_eq!(
+        correlated.host_application,
+        Some(HostApplication::MacosTerminal)
+    );
+    assert_eq!(correlated.terminal, Some(TerminalKind::MacosTerminal));
+    assert_eq!(correlated.tty.as_deref(), Some("/dev/ttys004"));
+    assert!(matches!(
+        actions_for(&correlated).first(),
+        Some(JumpAction::ExactTerminalTab { .. })
+    ));
+}
+
+#[test]
+fn ambiguous_terminal_processes_do_not_claim_an_exact_session() {
+    let processes = vec![
+        ObservedProcess::new(10, 1, None, "Terminal", None),
+        ObservedProcess::new(
+            20,
+            10,
+            Some("ttys004"),
+            "claude",
+            Some("/workspace/cookbench"),
+        ),
+        ObservedProcess::new(
+            21,
+            10,
+            Some("ttys005"),
+            "claude",
+            Some("/workspace/cookbench"),
+        ),
+    ];
+    let base = SessionLocator {
+        working_directory: Some("/workspace/cookbench".to_owned()),
+        native_session_id: "opaque-claude-session".to_owned(),
+        ..SessionLocator::default()
+    };
+
+    let correlated = correlate_terminal_locator(
+        &cookbench_core::domain::HarnessId::ClaudeCode,
+        base,
+        &processes,
+    );
+
+    assert_eq!(correlated.tty, None);
+    assert!(!matches!(
+        actions_for(&correlated).first(),
+        Some(JumpAction::ExactTerminalTab { .. })
     ));
 }
 

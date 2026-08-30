@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { StoveWire } from "../types/stove";
 
 const DETACHED_LABEL_PREFIX = "stove-";
@@ -16,11 +17,16 @@ export function stoveForDetachedWindow(stoves: readonly StoveWire[], label: stri
 
 export const detachedStoveTransport = {
   detach: (stoveId: string) => invoke<DetachedWindowResponse>("detach_stove", { stoveId }),
+  close: (stoveId: string) => invoke<boolean>("close_detached_bar", { stoveId }),
   clear: (stoveId: string) => invoke<boolean>("clear_detached_stove", { stoveId }),
   recordPosition: (stoveId: string, x: number, y: number) => (
     invoke<boolean>("record_detached_stove_position", { stoveId, x, y })
   ),
 };
+
+export function startDetachedWindowDrag() {
+  return getCurrentWindow().startDragging();
+}
 
 export type WindowPosition = { x: number; y: number };
 

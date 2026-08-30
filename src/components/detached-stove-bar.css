@@ -3,46 +3,44 @@
 .detached-stove-bar {
   --bar-ink: #171a1f;
   --bar-line: rgb(255 255 255 / 88%);
+  --bar-codex: #007cab;
+  --bar-claude: #bd4f22;
+  --bar-pi: #8135ae;
   position: relative;
   display: flex;
-  width: 164px;
-  min-height: 104px;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
   padding: 11px 12px;
   border: 1px solid var(--bar-line);
   border-radius: 8px;
-  background: rgb(255 255 255 / 88%);
-  box-shadow: 0 20px 48px rgb(65 88 112 / 20%), inset 0 1px 0 rgb(255 255 255 / 76%);
+  background: #fff;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 76%);
   color: var(--bar-ink);
   font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  backdrop-filter: blur(28px) saturate(190%);
-}
-
-@supports (background: color-mix(in srgb, white, transparent)) {
-  .detached-stove-bar { background: rgb(255 255 255 / 72%); }
 }
 
 .detached-stove-bar .stove-burner-wrap { width: 82px; }
 
-.detached-stove-bar__identity {
+.detached-stove-bar__harness {
   position: absolute;
+  z-index: 4;
   top: 8px;
   left: 10px;
-  max-width: 76px;
-  overflow: hidden;
-  color: #5f6875;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  cursor: grab;
 }
 
-.detached-stove-bar__clear {
+.detached-stove-bar__harness:active { cursor: grabbing; }
+.detached-stove-bar .stove-burner__identity { display: none; }
+
+.detached-stove-bar__clear,
+.detached-stove-bar__close {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  z-index: 5;
   display: grid;
   width: 24px;
   height: 24px;
@@ -56,8 +54,41 @@
   font: 700 16px/1 ui-sans-serif, system-ui, sans-serif;
 }
 
+.detached-stove-bar__clear {
+  right: 6px;
+  bottom: 6px;
+}
+
+.detached-stove-bar__close {
+  top: 6px;
+  right: 6px;
+}
+
+.detached-stove-bar__close span {
+  position: relative;
+  display: block;
+  width: 10px;
+  height: 10px;
+}
+
+.detached-stove-bar__close span::before,
+.detached-stove-bar__close span::after {
+  position: absolute;
+  top: 4px;
+  left: 0;
+  width: 10px;
+  height: 1px;
+  background: currentColor;
+  content: "";
+  transform: rotate(45deg);
+}
+
+.detached-stove-bar__close span::after { transform: rotate(-45deg); }
+
 .detached-stove-bar__clear:hover,
-.detached-stove-bar__clear:focus-visible {
+.detached-stove-bar__clear:focus-visible,
+.detached-stove-bar__close:hover,
+.detached-stove-bar__close:focus-visible {
   background: rgb(255 255 255 / 80%);
   color: #171a1f;
   outline: 2px solid #316f98;
@@ -65,7 +96,7 @@
 }
 
 @media (prefers-reduced-transparency: reduce) {
-  .detached-stove-bar { background: #fff; backdrop-filter: none; }
+  .detached-stove-bar { background: #fff; }
 }
 
 @media (prefers-contrast: more) {

@@ -32,6 +32,7 @@ export function ProgressRing({ stove }: { stove: StoveWire }) {
     : 100;
   const stateLabel = stoveStateLabel(state);
   const ringMode = hasStructuredProgress ? "determinate" : isCooking ? "indeterminate" : "complete";
+  const ringMotion = ringMode === "indeterminate" ? "rotate" : "static";
   const centerLabel = hasStructuredProgress ? `${percentage}%` : centerLabels[state] ?? stateLabel;
 
   return (
@@ -39,6 +40,7 @@ export function ProgressRing({ stove }: { stove: StoveWire }) {
       className={`progress-ring progress-ring--${state} progress-ring--${ringMode}`}
       data-testid="progress-ring"
       data-ring-mode={ringMode}
+      data-ring-motion={ringMotion}
       data-progress={hasStructuredProgress ? percentage : undefined}
       aria-label={hasStructuredProgress ? `${stateLabel}, ${percentage}% complete` : stateLabel}
     >

@@ -20,6 +20,7 @@ test("global Bar presents sessions from Codex, Claude Code, and Pi together", as
 test("dense harness activity becomes named wrapping benches without scroll containers", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(process.env.COOKBENCH_E2E_URL ?? "http://127.0.0.1:1420");
+  await page.evaluate(() => { document.documentElement.dataset.cookbenchNative = "true"; });
   const driver = await e2eDriver(page);
   await driver.replaceStoves([
     stoveFixture(0),
@@ -31,6 +32,7 @@ test("dense harness activity becomes named wrapping benches without scroll conta
   ]);
 
   const bar = page.getByLabel(/Cookbench global bar with 6 stoves/);
+  await bar.evaluate((element) => { (element as HTMLElement).style.minHeight = "600px"; });
   await expect(bar).toHaveAttribute("data-layout", "grouped");
   await expect(bar.getByRole("region", { name: "Codex" })).toBeVisible();
   await expect(bar.getByRole("region", { name: "Claude Code" })).toBeVisible();
@@ -44,6 +46,14 @@ test("dense harness activity becomes named wrapping benches without scroll conta
     }).length,
   );
   expect(scrollContainers).toBe(0);
+  const [stoveExtent, brandBox] = await Promise.all([
+    bar.locator(".global-bar__item").evaluateAll((items) => {
+      const boxes = items.map((item) => item.getBoundingClientRect());
+      return { top: Math.min(...boxes.map((box) => box.top)), bottom: Math.max(...boxes.map((box) => box.bottom)) };
+    }),
+    bar.locator(".global-bar__brand").evaluate((element) => element.getBoundingClientRect().toJSON()),
+  ]);
+  expect(Math.abs((brandBox.y + brandBox.height / 2) - ((stoveExtent.top + stoveExtent.bottom) / 2))).toBeLessThan(2);
   if (process.env.COOKBENCH_CAPTURE_EVIDENCE === "1") {
     await page.screenshot({
       path: "docs/verification/evidence/e2e-grouped-benches.png",

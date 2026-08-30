@@ -4,7 +4,7 @@ export function LocatorActivationNotice({ result }: { result: LocatorActivationR
   if (!result) return null;
 
   if (result.status === "focused") {
-    return <output role="status" aria-live="polite">Returned to the original work surface.</output>;
+    return null;
   }
 
   if (result.status === "visibleFallback" && result.resumeSessionId) {

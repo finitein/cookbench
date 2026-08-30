@@ -16,6 +16,7 @@ export type StoveBurnerProps = {
   onTooltipVisibilityChange?: (visible: boolean, stove: StoveWire) => void;
   tooltipId?: string;
   renderTooltip?: boolean;
+  showHarnessMark?: boolean;
 };
 
 export function StoveBurner({
@@ -29,6 +30,7 @@ export function StoveBurner({
   onTooltipVisibilityChange,
   tooltipId: suppliedTooltipId,
   renderTooltip = true,
+  showHarnessMark = true,
 }: StoveBurnerProps) {
   const tooltipId = suppliedTooltipId ?? `stove-tooltip-${stove.id}`;
   const stateLabel = stoveStateLabel(stove.state);
@@ -58,7 +60,7 @@ export function StoveBurner({
         onBlur={() => onTooltipVisibilityChange?.(false, stove)}
       >
         <span className="stove-burner__ring"><ProgressRing stove={stove} /></span>
-        <span className="stove-burner__identity"><HarnessMark harness={stove.harness} /></span>
+        {showHarnessMark ? <span className="stove-burner__identity"><HarnessMark harness={stove.harness} /></span> : null}
         <span
           className="stove-burner__session"
           data-testid="stove-session-identity"

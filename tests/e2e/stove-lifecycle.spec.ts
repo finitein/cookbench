@@ -27,10 +27,22 @@ test("uses complete terminal rings and a determinate arc only with structured Co
 
   const cookingRing = page.locator('[data-testid="stove"][data-state="cooking"] [data-testid="progress-ring"]');
   await expect(cookingRing).toHaveAttribute("data-ring-mode", "determinate");
+  await expect(cookingRing).toHaveAttribute("data-ring-motion", "static");
   await expect(cookingRing).toHaveAttribute("data-progress", "40");
   for (const state of ["needsHuman", "cooked", "failed", "disconnected"]) {
     const ring = page.locator(`[data-testid="stove"][data-state="${state}"] [data-testid="progress-ring"]`);
     await expect(ring).toHaveAttribute("data-ring-mode", "complete");
     await expect(ring).not.toHaveAttribute("data-progress", /.+/);
   }
+
+  const indeterminate = stoveFixture(8, "cooking");
+  await driver.replaceStoves([{ ...indeterminate, progress: null }]);
+  const movingArc = page.getByTestId("progress-ring");
+  await expect(movingArc).toHaveAttribute("data-ring-motion", "rotate");
+  const geometry = await movingArc.locator(".progress-ring__value").evaluate((circle) => {
+    const style = getComputedStyle(circle);
+    return { animation: style.animationName, origin: style.transformOrigin };
+  });
+  expect(geometry.animation).toBe("cookbench-ring-turn");
+  expect(geometry.origin).toBe("22px 22px");
 });

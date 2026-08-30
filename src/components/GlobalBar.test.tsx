@@ -69,8 +69,10 @@ describe("GlobalBar", () => {
 
     const rings = screen.getAllByTestId("progress-ring");
     expect(rings[0]).toHaveAttribute("data-ring-mode", "determinate");
+    expect(rings[0]).toHaveAttribute("data-ring-motion", "static");
     expect(rings[0]).toHaveAttribute("data-progress", "40");
     expect(rings[1]).toHaveAttribute("data-ring-mode", "indeterminate");
+    expect(rings[1]).toHaveAttribute("data-ring-motion", "rotate");
     expect(rings[1]).not.toHaveAttribute("data-progress");
     expect(rings[1]).not.toHaveTextContent("%");
   });

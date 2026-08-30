@@ -3,8 +3,8 @@ use tauri::State;
 use crate::{
     app_state::AppState,
     locator::{
-        activate_with, LocatorActivationResult, LocatorActivationStatus, LocatorActivationTarget,
-        NativeJumpExecutor,
+        activate_with, correlate_with_running_processes, LocatorActivationResult,
+        LocatorActivationStatus, LocatorActivationTarget, NativeJumpExecutor,
     },
 };
 
@@ -19,6 +19,10 @@ pub fn activate_stove_locator(
     let Some(locator) = state.stoves.locator_for(&stove_id) else {
         return unavailable();
     };
+    let Some(stove) = state.stoves.core_stove(&stove_id) else {
+        return unavailable();
+    };
+    let locator = correlate_with_running_processes(&stove.identity.harness, locator);
 
     activate_with(&locator, &mut NativeJumpExecutor)
 }

@@ -31,7 +31,7 @@ export default function App() {
   if (detached.isDetached) {
     return detached.stove
       ? <DetachedStoveWindow stove={detached.stove} onActivate={activate} />
-      : <main className="shell" aria-label="Cookbench detached Stove" />;
+      : <main className="shell shell--detached" aria-label="Cookbench detached Stove" />;
   }
 
   return (
