@@ -26,11 +26,11 @@ Preview releases are intentionally opt-in. Pin the tag instead of silently
 following the newest preview:
 
 ```bash
-curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.2.2/install.sh | COOKBENCH_VERSION=v0.2.2 COOKBENCH_ALLOW_PRERELEASE=1 bash
+curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.3.0/install.sh | COOKBENCH_VERSION=v0.3.0 COOKBENCH_ALLOW_PRERELEASE=1 bash
 ```
 
 ```powershell
-$env:COOKBENCH_VERSION='v0.2.2'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.2.2/install.ps1 | iex
+$env:COOKBENCH_VERSION='v0.3.0'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.3.0/install.ps1 | iex
 ```
 
 Use `--dry-run` on macOS/Linux or set `COOKBENCH_DRY_RUN=1` on any platform to
@@ -103,9 +103,10 @@ binary explicitly when the remote platform or architecture differs.
 
 SSH uses the system `ssh` command, the user's existing configuration, and
 `known_hosts`. Cookbench stores no SSH password and opens no listening port.
-An empty Session roots field selects automatic discovery of every first-party
-Harness supported by the installed Cookbench build. Explicit absolute roots
-remain available as an override for nonstandard remote layouts.
+An empty Session roots field selects automatic native-root discovery for Codex,
+Claude Code, and Pi. Other catalog profiles use their documented Hook, manual,
+or presence path. Explicit absolute roots remain available as an override for
+nonstandard remote layouts.
 
 ## Removal
 

@@ -42,6 +42,8 @@ test("tag release builds the declared macOS, Windows, and Ubuntu artifact matrix
   assert.match(workflow, /publish_release:[\s\S]*permissions:\n      contents: write/);
   assert.match(workflow, /GH_REPO: \$\{\{ github\.repository \}\}/);
   assert.match(workflow, /--repo "\$GH_REPO"/);
+  assert.match(workflow, /docs\/releases\/\$\{TAG\}\.md/);
+  assert.match(workflow, /--notes-file "\$notes_file"/);
   assert.match(workflow, /if \[\[ "\$RELEASE_CHANNEL" == "prerelease" \]\]/);
   assert.match(workflow, /args\+=\(--draft\)/);
   assert.match(workflow, /COOKBENCH_TARGET: universal-apple-darwin/);

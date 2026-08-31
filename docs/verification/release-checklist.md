@@ -21,6 +21,32 @@ clear, and outbound-notification observations in Vite `e2e` mode. A production
 build scan confirms that the driver name, storage keys, and implementation are
 absent from `dist`.
 
+## v0.3.0 Release Candidate Gate
+
+The 2026-08-31 macOS development run completed `./scripts/verify.sh` for the
+v0.3.0 source tree without error. Rust formatting, workspace Clippy with
+warnings denied, all Rust unit/integration/doc tests, workspace build,
+TypeScript, 111 Vitest tests in 25 files, three GNOME protocol tests, fourteen
+Playwright product flows, production build, E2E-driver absence scan, and the
+source-only package inventory passed. The focused documentation, installer,
+and release workflow contracts also passed 10/10.
+
+The candidate synchronizes version `0.3.0` across Cargo, npm, Tauri, installer
+fixtures, public installation docs, and the rendered installation card. All
+four landing pages now share the detailed architecture, 27-profile capability
+matrix, privacy and control boundary, Agent contributor contract, v0.3.0
+commands, and all thirteen showcase images. Local link validation resolved
+every relative README link and image; each language page references thirteen
+unique showcase PNGs. The updated installation card was inspected at its
+deterministic 1200x1500 output size with no clipping or overlap.
+
+The public [`v0.3.0` release notes](../releases/v0.3.0.md) explicitly retain the
+unsigned-prerelease channel, signing gaps, registry status, and incomplete
+native platform gates. Tag-driven package, checksum, manifest, SBOM, installer,
+and GitHub Release evidence remains pending until the immutable `v0.3.0` tag is
+built by the public release workflow; it is not inferred from the local source
+gate.
+
 ## v0.2.2 Release Candidate Gate
 
 The 2026-08-31 macOS development run completed `./scripts/verify.sh` without
@@ -84,7 +110,7 @@ Additional release contracts passed:
 | 12 | Outbound-only notifications filter by destination/state | `notifications.spec.ts`, mock endpoint audit, no listener/polling assertion | Mock sender and filtered E2E pass; live sandboxes pending |
 | 13 | Attention, Cooked, Failed, Disconnected use complete rings | `stove-lifecycle.spec.ts`; screenshots | Component and E2E coverage pass; four browser screenshots recorded |
 | 14 | Only structured Cooking has a determinate arc | `stove-lifecycle.spec.ts` with structured and empty progress fixtures | Component and E2E coverage pass |
-| 15 | Approved light-default SVG/CSS material, no third-party logos/heavy media | Asset inventory and screenshot comparison with visual prototype | Product browser evidence and packaged macOS capture remain recorded; exact two-SVG master and package audits pass. Twelve new offline showcase compositions use only the Cookbench mark, system fonts, and CSS and passed a 94/100 visual verdict |
+| 15 | Approved light-default SVG/CSS material, no third-party logos/heavy media | Asset inventory and screenshot comparison with visual prototype | Product browser evidence and packaged macOS capture remain recorded; exact two-SVG master and package audits pass. Thirteen offline showcase compositions use only the Cookbench mark, system fonts, and CSS; the existing twelve-card set passed a 94/100 visual verdict and the thirteenth resource-footprint card passed a 96/100 verdict |
 | 16 | Reduced motion and accessible state labels | Emulated media-feature screenshots and keyboard/screen-reader check | Reduced-motion E2E and component labels pass; OS/screen-reader check pending |
 | 17 | No photos, GIFs, video, Lottie, sprites, or bundled web fonts | Package artifact inventory | Source-only and Release CI bundle audits pass for macOS universal, Windows x64, and Ubuntu x64; prior Ubuntu ARM64 package inventory and showcase remote/forbidden-asset checks also pass |
 

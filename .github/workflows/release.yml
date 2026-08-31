@@ -294,6 +294,10 @@ jobs:
       TAG: ${{ needs.release_context.outputs.tag }}
       RELEASE_CHANNEL: ${{ needs.release_context.outputs.channel }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release_context.outputs.tag }}
+          persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
           name: release-metadata
@@ -301,19 +305,9 @@ jobs:
       - name: Publish prerelease or create a reviewable stable draft
         shell: bash
         run: |
-          cat > release-notes.md <<'EOF'
-          Cookbench observes supported coding-agent sessions without replacing or controlling their harnesses.
-
-          macOS / Linux preview install:
-          `curl -fsSL https://github.com/finitein/cookbench/releases/download/TAG/install.sh | COOKBENCH_VERSION=TAG COOKBENCH_ALLOW_PRERELEASE=1 bash`
-
-          Windows PowerShell preview install:
-          `$env:COOKBENCH_VERSION='TAG'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/TAG/install.ps1 | iex`
-
-          Preview packages may be unsigned. The installers verify every downloaded package against `release-manifest.json`; compare release assets with `SHA256SUMS` when auditing manually. Registry commands remain unavailable until their signed submissions have been reviewed and accepted.
-          EOF
-          sed -i "s/TAG/$TAG/g" release-notes.md
-          args=("$TAG" release/artifacts/* release/metadata/* --repo "$GH_REPO" --title "Cookbench $TAG" --notes-file release-notes.md)
+          notes_file="docs/releases/${TAG}.md"
+          test -f "$notes_file"
+          args=("$TAG" release/artifacts/* release/metadata/* --repo "$GH_REPO" --title "Cookbench $TAG" --notes-file "$notes_file")
           if [[ "$RELEASE_CHANNEL" == "prerelease" ]]; then
             args+=(--prerelease)
           else
