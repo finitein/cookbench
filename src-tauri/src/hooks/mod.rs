@@ -1610,10 +1610,10 @@ mod tests {
             value["hooks"]["events"]["PreToolUse"][0]["hooks"][0]["command"],
             "existing"
         );
-        let serialized = value.to_string();
-        assert!(serialized.contains(helper.to_string_lossy().as_ref()));
-        assert!(serialized.contains("--harness"));
-        assert!(serialized.contains("zcode"));
+        assert!(zcode_has_exact_hooks(
+            &value,
+            helper.to_string_lossy().as_ref()
+        ));
 
         let mut partial = value;
         partial["hooks"]["events"]
