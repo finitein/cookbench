@@ -41,6 +41,18 @@ builds and resolves package metadata after changing to the repository directory.
 The repaired path also produced a local universal macOS app and DMG containing
 universal `cookbench-bridge` and `cookbench-hook` binaries; package smoke passed.
 
+The [`v0.2.2` package run](https://github.com/finitein/cookbench/actions/runs/33374248340)
+built, audited, immutably named, and uploaded the macOS universal App/DMG,
+Windows x64 MSI, and Ubuntu x64 DEB/AppImage. Release metadata then generated
+SHA-256 checksums, a manifest, installers, and a first-party SPDX SBOM. The
+artifact-only publish job lacked repository context, so it stopped without
+creating a partial release. The downloaded metadata artifact was hash-verified
+locally and published as the public unsigned
+[`v0.2.2` prerelease](https://github.com/finitein/cookbench/releases/tag/v0.2.2);
+the public one-command installer selected the expected macOS artifact in a
+no-install dry run. Commit `3eab18d` supplies explicit repository context for
+future artifact-only publish jobs.
+
 Additional release contracts passed:
 
 - 27 unique Harness profiles, including the requested China-first tools, with
@@ -58,7 +70,7 @@ Additional release contracts passed:
 
 | # | Requirement | Evidence required | Current status |
 | --- | --- | --- | --- |
-| 1 | Graphical macOS, Windows, Ubuntu installation | Package smoke run on each platform | Local macOS universal app/DMG package smoke passes for arm64 and Intel binaries; Ubuntu 24.04 ARM64 DEB/AppImage and graphical package smoke previously passed; Windows and Ubuntu x64 Release CI pending |
+| 1 | Graphical macOS, Windows, Ubuntu installation | Package smoke run on each platform | Release CI built and package-smoke audited macOS universal App/DMG, Windows x64 MSI, and Ubuntu x64 DEB/AppImage; Ubuntu 24.04 ARM64 graphical package smoke previously passed. Windows graphical launch and macOS Intel launch remain pending |
 | 2 | Codex, Claude Code, Pi create stoves from their original tools | Sanitized fixture E2E plus manual original-tool sessions | Three-harness native-parser and E2E coverage passes; packaged macOS app automatically discovered live local Codex session files; manual Claude Code and Pi native checks pending. The broader 27-profile catalog is Hook/manual/presence tiered and is not substituted for this native evidence |
 | 3 | Every burner names its harness | `global-bar.spec.ts` plus screen-reader check | E2E and component accessible-name checks pass; manual screen reader pending |
 | 4 | Global Bar contains all active and uncleared stoves | `global-bar.spec.ts` with three sources and retained Cooked fixture | E2E passes; packaged macOS snapshot populated from native sessions after the release ACL fallback regression was fixed |
@@ -74,7 +86,7 @@ Additional release contracts passed:
 | 14 | Only structured Cooking has a determinate arc | `stove-lifecycle.spec.ts` with structured and empty progress fixtures | Component and E2E coverage pass |
 | 15 | Approved light-default SVG/CSS material, no third-party logos/heavy media | Asset inventory and screenshot comparison with visual prototype | Product browser evidence and packaged macOS capture remain recorded; exact two-SVG master and package audits pass. Twelve new offline showcase compositions use only the Cookbench mark, system fonts, and CSS and passed a 94/100 visual verdict |
 | 16 | Reduced motion and accessible state labels | Emulated media-feature screenshots and keyboard/screen-reader check | Reduced-motion E2E and component labels pass; OS/screen-reader check pending |
-| 17 | No photos, GIFs, video, Lottie, sprites, or bundled web fonts | Package artifact inventory | Source-only, local macOS universal app/DMG, and Ubuntu ARM64 DEB/AppImage inventories pass; showcase remote/forbidden-asset checks pass; Windows and Ubuntu x64 package inventory pending Release CI |
+| 17 | No photos, GIFs, video, Lottie, sprites, or bundled web fonts | Package artifact inventory | Source-only and Release CI bundle audits pass for macOS universal, Windows x64, and Ubuntu x64; prior Ubuntu ARM64 package inventory and showcase remote/forbidden-asset checks also pass |
 
 ## Visual Matrix
 
@@ -135,5 +147,5 @@ and the native end-to-end latency gaps that remain open.
 - [x] Each row above has evidence or an explicit platform limitation.
 - [x] No test fixture includes a real session, prompt, source code, command,
   credential, token, webhook URL, or SSH secret.
-- [ ] Packaged artifacts pass the forbidden-asset inventory.
+- [x] Packaged artifacts pass the forbidden-asset inventory.
 - [x] Release notes disclose unverified platforms and Wayland limitations.
