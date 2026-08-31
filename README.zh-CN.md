@@ -61,7 +61,7 @@ Session roots 留空即可自动扫描当前版本支持工具的标准目录。
 关闭，本地通知默认只开启声音，临时报错会在 20 秒后消失。
 
 继续阅读[隐私说明](docs/privacy.md)、[安全边界](docs/security.md)、
-[12 张展示图与 HTML 源文件](docs/showcase/README.md)以及
+[13 张展示图与 HTML 源文件](docs/showcase/README.md)以及
 [发布核对表](docs/verification/release-checklist.md)。
 
 Cookbench 是采用 [MIT](LICENSE) 许可证的开源预览版。macOS 与 Ubuntu X11

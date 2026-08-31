@@ -15,6 +15,7 @@ const cases = [
   ["10-workflow.html", "workflow"],
   ["11-multibench.html", "multibench"],
   ["12-install.html", "install"],
+  ["13-footprint.html", "footprint"],
 ] as const;
 
 for (const [filename, topic] of cases) {

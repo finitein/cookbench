@@ -63,7 +63,7 @@ Session roots を空欄にすると標準ディレクトリを自動走査しま
 既定でオフ、通知はサウンドだけがオン、一時エラーは 20 秒後に消えます。
 
 [Privacy](docs/privacy.md)、[Security](docs/security.md)、
-[12 枚の紹介画像と HTML](docs/showcase/README.md)、
+[13 枚の紹介画像と HTML](docs/showcase/README.md)、
 [リリースチェックリスト](docs/verification/release-checklist.md)も参照してください。
 
 [MIT License](LICENSE) のオープンソースプレビューです。macOS と Ubuntu X11

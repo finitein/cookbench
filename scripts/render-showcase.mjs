@@ -19,6 +19,7 @@ const names = [
   "10-workflow",
   "11-multibench",
   "12-install",
+  "13-footprint",
 ];
 
 await mkdir(output, { recursive: true });

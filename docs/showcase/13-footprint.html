@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=1200"><title>轻量的 Cookbench</title><link rel="stylesheet" href="shared.css"></head>
+<body>
+<main class="poster theme-blue" data-topic="footprint">
+  <header class="masthead"><div class="brand"><img src="assets/cookbench-mark.svg" alt="">Cookbench</div><div class="page-no">13 / 13</div></header>
+  <section class="body">
+    <p class="eyebrow">轻量，不是口号，是实测</p>
+    <h1 style="font-size:78px">让 Agent 忙起来，别让电脑先累。</h1>
+    <p class="lead">Cookbench 只观察有界状态，不搬走完整会话。常驻桌面，也把资源留给真正工作的 Agent。</p>
+    <div class="stage stage--accent footprint-stage">
+      <div class="footprint-metrics">
+        <section class="footprint-metric">
+          <span>空闲内存 · RSS</span>
+          <strong>约 90 <small>MiB</small></strong>
+          <p>两次生产构建采样为 92,944 / 92,448 KiB，采样 CPU 均为 0.0%。</p>
+        </section>
+        <section class="footprint-metric">
+          <span>本地存储 · 应用包</span>
+          <strong>约 18 <small>MiB</small></strong>
+          <p>macOS arm64 本地应用包实测，不捆绑照片、视频、字体包或动画资源。</p>
+        </section>
+      </div>
+      <div class="footprint-reasons">
+        <div><b>01</b><span><strong>原地读取 Session</strong><small>原生会话文件始终是事实来源</small></span></div>
+        <div><b>02</b><span><strong>不复制完整对话</strong><small>没有 SQLite 对话数据库</small></span></div>
+        <div><b>03</b><span><strong>只保留有界元数据</strong><small>状态、布局、固定与归档信息</small></span></div>
+      </div>
+      <p class="footprint-note">数据来自 macOS 26.3、Apple M4 arm64 的本地生产构建；不同平台与构建版本会有差异。</p>
+    </div>
+  </section>
+  <footer class="footer"><span><strong>轻量常驻，安静观察。</strong></span><span>资源应该留给你的工作。</span></footer>
+</main>
+</body>
+</html>

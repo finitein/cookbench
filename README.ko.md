@@ -62,7 +62,7 @@ Session roots를 비워 두면 표준 경로를 자동 검색합니다. 호버 �
 꺼져 있고 알림은 소리만 켜져 있으며 일시 오류는 20초 뒤 사라집니다.
 
 [개인정보 보호](docs/privacy.md), [보안](docs/security.md),
-[12개 소개 이미지와 HTML](docs/showcase/README.md),
+[13개 소개 이미지와 HTML](docs/showcase/README.md),
 [릴리스 체크리스트](docs/verification/release-checklist.md)를 확인하세요.
 
 [MIT License](LICENSE)를 사용하는 오픈 소스 프리뷰입니다. macOS와 Ubuntu X11은

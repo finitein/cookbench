@@ -513,3 +513,99 @@ h3 {
 .center .lead {
   margin-inline: auto;
 }
+
+.footprint-stage {
+  min-height: 650px;
+  display: grid;
+  align-content: center;
+  gap: 34px;
+}
+
+.footprint-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-bottom: 1px solid #dce2e6;
+}
+
+.footprint-metric {
+  min-width: 0;
+  padding: 8px 34px 36px;
+}
+
+.footprint-metric:first-child {
+  padding-left: 0;
+  border-right: 1px solid #dce2e6;
+}
+
+.footprint-metric:last-child {
+  padding-right: 0;
+}
+
+.footprint-metric > span {
+  color: var(--accent);
+  font-size: 19px;
+  font-weight: 800;
+}
+
+.footprint-metric strong {
+  display: block;
+  margin: 14px 0 16px;
+  color: #151817;
+  font-size: 76px;
+  line-height: 1;
+}
+
+.footprint-metric strong small {
+  color: var(--accent);
+  font-size: 27px;
+}
+
+.footprint-metric p {
+  color: #56616d;
+  font-size: 19px;
+  line-height: 1.45;
+}
+
+.footprint-reasons {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 28px;
+}
+
+.footprint-reasons > div {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.footprint-reasons b {
+  color: var(--accent);
+  font-size: 20px;
+}
+
+.footprint-reasons span,
+.footprint-reasons strong,
+.footprint-reasons small {
+  display: block;
+}
+
+.footprint-reasons strong {
+  font-size: 20px;
+  line-height: 1.25;
+}
+
+.footprint-reasons small {
+  margin-top: 8px;
+  color: #65717d;
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.footprint-note {
+  padding-top: 22px;
+  border-top: 1px solid #dce2e6;
+  color: #65717d;
+  font-size: 16px;
+  line-height: 1.45;
+}
