@@ -4,157 +4,118 @@
   <img src="src/assets/cookbench-mark.svg" width="88" height="88" alt="Cookbench logo">
 </p>
 
+<p align="center">
+  <a href="README.md">English</a> ·
+  <a href="README.zh-CN.md">简体中文</a> ·
+  <a href="README.ja.md">日本語</a> ·
+  <a href="README.ko.md">한국어</a>
+</p>
+
 Cookbench is a lightweight desktop companion for the coding agents you already
-use. It watches their native session files and turns each session into a small
-**Stove** so you can see what is active, what needs attention, and what has
-finished without replacing or controlling the original tool.
+use. It turns each observed session into a small **Stove**, so one glance tells
+you what is running, what needs you, and what has finished. The original agent
+stays in charge: Cookbench does not host it, send prompts, approve tools, or
+remotely control it.
 
-Cookbench is local-first and pre-release. The current build supports **Codex**,
-**Claude Code**, and **Pi** on macOS, Windows, and graphical Ubuntu/Linux.
+![Cookbench global Bar showing grouped session Stoves](docs/verification/evidence/e2e-grouped-benches.png)
 
-![Cookbench global bar showing grouped session Stoves](docs/verification/evidence/e2e-grouped-benches.png)
+## Why Cookbench
 
-## What It Does
+- See concurrent Codex, Claude Code, Pi, Kimi Code, ZCode, and other supported
+  sessions in one compact Bar.
+- Return to a verified terminal pane, IDE surface, or Codex Desktop task when
+  the host exposes enough identity. Unverified targets use an honest fallback.
+- Move and freely resize the Bar, detach a Stove, group busy harnesses into
+  separate benches, and show every Stove without scrollbars.
+- Keep Cooked sessions until you clear them. Pin long-lived work, and restore
+  expired or manually removed sessions from Archive.
+- Choose sound, system banner, Bar flash, or system attention. Cooked flashing
+  continues until you click that Stove.
+- Observe a remote machine through system SSH, with zero remote installation or
+  an optional single-file bridge that uses SSH stdio and opens no port.
 
-- Shows every discovered session as one Stove in a compact, always-available Bar.
-- Separates busy harnesses into benches while keeping small mixed workloads on
-  one row.
-- Presents Starting, Planning, Cooking, Needs Human, Cooked, Failed, and
-  Disconnected states without guessing completion from inactivity.
-- Keeps a completed Stove flashing until you click it, while reduced-motion
-  mode uses a static emphasis instead.
-- Lets you move and resize the global Bar, or detach an individual Stove into
-  its own movable window.
-- Pins important sessions beyond the normal 48-hour discovery window and keeps
-  expired or manually removed sessions in a restorable Archive.
-- Returns to a captured terminal pane or Codex Desktop task when a verified
-  locator is available, then falls back visibly and safely when it is not.
-- Watches remote sessions over read-only SSH, either with no remote install or
-  with an optional single-file stdio bridge.
-- Sends optional local alerts and outbound-only Telegram, Slack, Discord,
-  Lark/Feishu, or generic webhook notifications.
+## 27 Harness Profiles
 
-Cookbench never hosts an agent, sends it prompts, approves tool calls, or
-deletes its native session history.
+Cookbench has a capability-based catalog of 27 coding-agent surfaces, more than
+a flat “supported” badge can explain. **Full**, **Standard**, and
+**Experimental** describe the available identity, lifecycle, and return
+contract. They do not pretend that every tool exposes the same features.
 
-## Supported Surfaces
+| Tier | Included surfaces | Meaning |
+| --- | --- | --- |
+| Full (14) | Codex, Claude Code, Pi, Gemini CLI, Qwen Code, Kimi Code CLI, Qoder, ZCode, Factory Droid, CodeBuddy, Cursor, GitHub Copilot CLI, OpenCode, Cline | Structured identity and lifecycle contract; exact return only when a verified locator is available |
+| Standard (12) | Trae, Grok CLI, Goose, Aider, Kiro, Amazon Q Developer, Roo Code, Continue, Amp, Mistral Vibe, Crush, OpenHands CLI | Structured observation with a guarded app, project, IDE, or terminal return |
+| Experimental (1) | Tencent WorkBuddy | Presence-only until a public structured identity and lifecycle contract is available |
 
-| Area | Current support |
-| --- | --- |
-| Harnesses | Codex CLI/Desktop, Claude Code, Pi |
-| Desktop | macOS, Windows, Ubuntu/Linux X11; GNOME Wayland is best effort with an optional presentation extension |
-| Return targets | Codex Desktop, Terminal.app, iTerm2, Ghostty, WezTerm, tmux, Zellij, cmux, plus guarded application/project fallbacks |
-| Remote | System SSH read-only discovery; optional verified bridge over SSH stdio only |
-| Notifications | Sound, system banner, Bar flash, system attention, and outbound IM/webhooks |
+Five profiles currently have automatic Cookbench-owned Hook setup: Codex,
+Claude Code, Pi, Kimi Code, and ZCode. Other structured profiles are visible in
+Hook Health with manual status rather than a fake green check. Read the exact
+[compatibility matrix](docs/harness-compatibility.md).
 
-Exact return capability depends on what identity the harness and terminal expose.
-Cookbench reports fallbacks rather than claiming a precise jump it cannot verify.
-See [session focus verification](docs/verification/session-focus.md) for the
-current capability matrix.
+## Install Preview
 
-## Install
-
-Cookbench is not yet published to Homebrew, winget, or an APT repository. Until
-signed release packages are published, build it from source:
+macOS universal and graphical Ubuntu/Linux x86_64:
 
 ```bash
-git clone https://github.com/finitein/cookbench.git
-cd cookbench
-corepack enable
-pnpm install
-pnpm tauri build
+curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.2.0/install.sh | COOKBENCH_VERSION=v0.2.0 COOKBENCH_ALLOW_PRERELEASE=1 bash
 ```
 
-The packaged application is written under `src-tauri/target/release/bundle/`.
-You need a stable Rust toolchain, Node.js, pnpm, and the
-[Tauri 2 platform prerequisites](https://v2.tauri.app/start/prerequisites/) for
-your operating system.
+Windows x64 PowerShell:
 
-For a development build:
-
-```bash
-pnpm tauri dev
+```powershell
+$env:COOKBENCH_VERSION='v0.2.0'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.2.0/install.ps1 | iex
 ```
 
-Planned one-command installs, package trust requirements, and platform notes are
-documented in [Installing Cookbench](docs/installing.md).
+The bootstrap selects a native package from `release-manifest.json` and verifies
+its SHA-256 before installation. Preview packages may be unsigned. Stable and
+source-build instructions are in [Installing Cookbench](docs/installing.md).
 
 ## Getting Started
 
-1. Start Cookbench and then use Codex, Claude Code, or Pi normally.
-2. Cookbench automatically scans the standard native session roots from the
-   last 48 hours. It does not copy complete conversations.
-3. Open **Settings > Sources** to inspect discovery health. Optional managed
-   hooks improve lifecycle and terminal identity without changing unrelated
-   harness configuration.
-4. Click a Stove to return to its original work surface. Use Pin to keep it,
-   Delete to archive a non-completed Stove, or Clear to remove a retained Cooked
-   Stove from Cookbench only.
+1. Start Cookbench, then use your coding agents normally.
+2. Leave Session roots empty to scan all standard roots supported by this build.
+3. Open **Settings > Sources** and **Settings > Hook Health** to see which
+   identity and lifecycle signals are actually healthy.
+4. Click a Stove to return to its verified work surface. Pin, archive, restore,
+   or clear it without deleting the harness's native session.
 
-Hover details are disabled by default and can be enabled in Settings. Local
-alerts default to sound only; banners, Bar flashing, and system attention are
-opt-in.
+Hover details are off by default. Local alerts default to sound only. Temporary
+errors disappear after 20 seconds instead of occupying a permanent status row.
 
-## SSH Sessions
+## Local-first Boundary
 
-Add a host in Settings using an alias already defined in `~/.ssh/config`, such
-as `workstation`. Leave **Session roots** empty to scan the standard Codex,
-Claude Code, and Pi roots automatically. Enter explicit absolute roots only for
-nonstandard remote layouts.
+Native session files remain the source of truth. Cookbench stores bounded
+presentation metadata, settings, pin/archive state, and minimum return locators.
+It has no SQLite conversation database, copies no complete transcript, collects
+no telemetry, and exposes no inbound messaging or remote-control API.
 
-Cookbench uses the system `ssh` client and existing `known_hosts`. It stores no
-SSH password, opens no port, and does not control the remote agent. More detail
-is available in [Installing Cookbench](docs/installing.md#native-sources-and-helpers).
-
-## Privacy And Security
-
-Native session files are the source of truth. Cookbench stores only bounded
-configuration, sanitized presentation metadata, pin/archive state, and minimum
-locators. There is no conversation database, cloud account, telemetry service,
-or inbound notification control plane.
-
-Read the full [privacy](docs/privacy.md) and [security](docs/security.md)
-boundaries before enabling remote sources or outbound notifications.
+Read [Privacy](docs/privacy.md), [Security](docs/security.md), and the
+[showcase source and rendered media index](docs/showcase/README.md).
 
 ## Development
 
-The repository is a Rust workspace with a Tauri 2 desktop shell and a React
-frontend.
+Cookbench is a Rust workspace with a Tauri 2 desktop shell and React frontend.
 
 ```bash
-# Frontend tests and type checking
-pnpm test --run
+corepack enable
+pnpm install
 pnpm lint
+pnpm test --run
 pnpm build
-
-# Rust verification
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-Browser-level visual checks use Playwright:
+Fixtures must be synthetic and metadata-only. Never commit real prompts,
+transcripts, code, commands, credentials, keys, or webhook endpoints.
 
-```bash
-pnpm test:e2e
-```
+## Status and License
 
-Fixtures must remain synthetic and metadata-only. Do not commit real prompts,
-session transcripts, code, commands, credentials, keys, or webhook endpoints.
+Cookbench is an open-source preview. macOS and Ubuntu X11 have recorded native
+evidence. Windows and GNOME Wayland retain explicit manual verification gaps;
+unsigned preview artifacts are not presented as stable packages. See the
+[release checklist](docs/verification/release-checklist.md).
 
-## Project Status
-
-Cookbench is under active development. macOS and Ubuntu X11 have recorded
-native verification; Windows and GNOME Wayland still have explicit manual test
-gaps. Public package registries, signing, notarization, and auto-update delivery
-are not yet live. The repository does not present draft artifacts as production
-releases.
-
-Verification evidence and remaining platform gaps are tracked in
-[the release checklist](docs/verification/release-checklist.md) and
-[the overlay matrix](docs/verification/platform-overlay.md).
-
-## License
-
-Cookbench is available under the [MIT License](LICENSE). Third-party notices are
-recorded in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Licensed under [MIT](LICENSE). Third-party notices are in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

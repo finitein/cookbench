@@ -32,17 +32,18 @@ or font assets are present.
   libayatana-appindicator, libsecret/Secret Service, and FUSE/AppImage runtime
   expectations in the release notes.
 
-The tag workflow creates an unsigned draft prerelease by default. A stable
+The tag workflow publishes an explicitly marked unsigned prerelease by default,
+including checksum-verifying `install.sh` and `install.ps1` assets. A stable
 workflow dispatch fails before building unless every macOS signing/notarization
-secret and Windows signing/timestamp secret is present. A human release owner
-reviews signatures, notarization, package-smoke output, SHA-256 checksums, the
-first-party SPDX artifact manifest, and the honest platform matrix before
-publication.
+secret and Windows signing/timestamp secret is present, and the stable result
+remains a reviewable draft. A human release owner reviews signatures,
+notarization, package-smoke output, SHA-256 checksums, the first-party SPDX
+artifact manifest, and the honest platform matrix before stable publication.
 
 Every release job checks out the resolved version tag and verifies its commit
 SHA before building. Configure the `release-signing` GitHub environment with
 required reviewers and place signing/notarization secrets behind that
-environment; only the final draft-publication job receives `contents: write`.
+environment; only the final release-publication job receives `contents: write`.
 
 The workflow produces registry submission material only after a stable signed
 build: a fixed-checksum Homebrew Cask, fixed-checksum winget manifests, and APT
@@ -59,8 +60,10 @@ Secret Service and must be tested only with synthetic sandbox destinations.
 
 ## Integration Locations
 
-- Codex, Claude, and Pi hooks: use Hook Health in Cookbench Settings and follow
-  `docs/integrations/hooks.md`; uninstall must preserve unrelated hook entries.
+- Codex, Claude Code, Pi, Kimi Code, and ZCode hooks can be managed through Hook
+  Health in Cookbench Settings. Other catalog profiles show manual or
+  presence-only status; uninstall must preserve unrelated hook entries. Follow
+  `docs/integrations/hooks.md` for the ownership and privacy boundary.
 - GNOME presentation extension: follow
   `docs/integrations/gnome-extension.md` and verify clean removal.
 - SSH bridge: distribute the helper built for each supported remote target;
