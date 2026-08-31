@@ -34,12 +34,32 @@
   align-items: baseline;
 }
 
+.hook-health__title {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.hook-health__tier,
+.hook-health__integration {
+  border: 1px solid #c8d1da;
+  border-radius: 4px;
+  color: #52606d;
+  font-size: 11px;
+  line-height: 18px;
+  padding: 0 5px;
+}
+
 .hook-health__identity span {
   overflow: hidden;
   max-width: 32rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.hook-health__identity .hook-health__tier--full { border-color: #71b58f; color: #137145; }
+.hook-health__identity .hook-health__tier--experimental { border-color: #d9a76c; color: #8a4f08; }
 
 .hook-health__state {
   font-weight: 650;

@@ -6,6 +6,8 @@ import { HookHealthPanel } from "./HookHealthPanel";
 const status = [{
   harness: "codex" as const,
   label: "Codex",
+  tier: "full" as const,
+  integration: "automatic" as const,
   health: "notInstalled" as const,
   configDisplay: "~/.codex/config.toml",
   detail: "No Cookbench notify hook is installed.",
@@ -32,5 +34,35 @@ describe("HookHealthPanel", () => {
     await waitFor(() => expect(mocks.manageHook).toHaveBeenCalledWith("codex", "previewInstall"));
     expect(screen.getByLabelText("Hook configuration preview")).toHaveTextContent("cookbench-hook");
     expect(screen.getByText(/No harness configuration was changed/)).toBeInTheDocument();
+  });
+
+  it("distinguishes automatic, manual, and presence-only integrations", async () => {
+    mocks.getHookStatus.mockResolvedValue([
+      status[0],
+      {
+        ...status[0],
+        harness: "qwen_code",
+        label: "Qwen Code",
+        tier: "full",
+        integration: "manual",
+        health: "noRecentEvents",
+        canInstall: false,
+      },
+      {
+        ...status[0],
+        harness: "workbuddy",
+        label: "Tencent WorkBuddy",
+        tier: "experimental",
+        integration: "presenceOnly",
+        health: "detected",
+        canInstall: false,
+      },
+    ]);
+    render(<HookHealthPanel />);
+    expect(await screen.findByText("Qwen Code")).toBeInTheDocument();
+    expect(screen.getByText("Manual setup")).toBeInTheDocument();
+    expect(screen.getByText("Presence only")).toBeInTheDocument();
+    expect(screen.getByText("Experimental")).toBeInTheDocument();
+    expect(screen.queryAllByRole("button", { name: "Install" })).toHaveLength(1);
   });
 });

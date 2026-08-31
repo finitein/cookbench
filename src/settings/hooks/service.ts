@@ -1,12 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
 
-export type HookHarness = "codex" | "claudeCode" | "pi";
+export type HookHarness = "codex" | "claudeCode" | "pi" | "kimiCode" | "zcode" | (string & {});
 export type HookHealth = "detected" | "notInstalled" | "healthy" | "outdated" | "conflicted" | "unwritable" | "noRecentEvents";
 export type HookAction = "previewInstall" | "install" | "repair" | "uninstall";
+export type HookSupportTier = "full" | "standard" | "experimental";
+export type HookIntegration = "automatic" | "manual" | "presenceOnly";
 
 export type HookStatus = {
   harness: HookHarness;
   label: string;
+  tier: HookSupportTier;
+  integration: HookIntegration;
   health: HookHealth;
   configDisplay: string;
   detail: string;

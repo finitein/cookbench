@@ -12,8 +12,10 @@ use std::{
 };
 
 use cookbench_adapters::{
+    catalog,
     claude::{install_hooks_with_command, uninstall_all_cookbench_hooks},
     codex::{inspect_notify_hook, NotifyHookPlan},
+    HarnessProfile, SupportTier,
 };
 use serde::{Deserialize, Serialize};
 
@@ -27,6 +29,46 @@ pub enum HookHarness {
     Codex,
     ClaudeCode,
     Pi,
+    KimiCode,
+    Zcode,
+}
+
+impl HookHarness {
+    fn wire_id(self) -> &'static str {
+        match self {
+            Self::Codex => "codex",
+            Self::ClaudeCode => "claudeCode",
+            Self::Pi => "pi",
+            Self::KimiCode => "kimiCode",
+            Self::Zcode => "zcode",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum HookSupportTier {
+    Full,
+    Standard,
+    Experimental,
+}
+
+impl From<SupportTier> for HookSupportTier {
+    fn from(value: SupportTier) -> Self {
+        match value {
+            SupportTier::Full => Self::Full,
+            SupportTier::Standard => Self::Standard,
+            SupportTier::Experimental => Self::Experimental,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum HookIntegration {
+    Automatic,
+    Manual,
+    PresenceOnly,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -44,8 +86,10 @@ pub enum HookHealth {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HookStatus {
-    pub harness: HookHarness,
+    pub harness: String,
     pub label: &'static str,
+    pub tier: HookSupportTier,
+    pub integration: HookIntegration,
     pub health: HookHealth,
     pub config_display: String,
     pub detail: String,
@@ -105,9 +149,23 @@ impl From<io::Error> for HookError {
 pub fn statuses() -> Vec<HookStatus> {
     let helper = hook_program();
     let helper_is_current = helper_is_current(&packaged_hook_program(), &helper);
-    [HookHarness::Codex, HookHarness::ClaudeCode, HookHarness::Pi]
-        .into_iter()
-        .map(|harness| with_helper_health(status_with_helper(harness, &helper), helper_is_current))
+    catalog()
+        .iter()
+        .map(|profile| {
+            let status = match profile.id {
+                "codex" => status_with_helper(HookHarness::Codex, &helper),
+                "claude_code" => status_with_helper(HookHarness::ClaudeCode, &helper),
+                "pi" => status_with_helper(HookHarness::Pi, &helper),
+                "kimi_code" => status_with_helper(HookHarness::KimiCode, &helper),
+                "zcode" => status_with_helper(HookHarness::Zcode, &helper),
+                _ => catalog_status(profile),
+            };
+            if status.integration == HookIntegration::Automatic {
+                with_helper_health(status, helper_is_current)
+            } else {
+                status
+            }
+        })
         .collect()
 }
 
@@ -124,6 +182,8 @@ fn status_with_helper(harness: HookHarness, helper: &Path) -> HookStatus {
         HookHarness::Codex => codex_status_with_helper(&codex_config_path(), helper),
         HookHarness::ClaudeCode => claude_status_with_helper(&claude_config_path(), helper),
         HookHarness::Pi => pi_status_with_helper(&pi_extension_path(), helper),
+        HookHarness::KimiCode => kimi_status_with_helper(&kimi_config_path(), helper),
+        HookHarness::Zcode => zcode_status_with_helper(&zcode_config_path(), helper),
     }
 }
 
@@ -136,6 +196,49 @@ pub fn apply(harness: HookHarness, action: HookAction) -> Result<HookActionResul
         HookHarness::Codex => apply_codex_with_helper(action, &codex_config_path(), &helper),
         HookHarness::ClaudeCode => apply_claude_with_helper(action, &claude_config_path(), &helper),
         HookHarness::Pi => apply_pi_with_helper(action, &pi_extension_path(), &helper),
+        HookHarness::KimiCode => apply_kimi_with_helper(action, &kimi_config_path(), &helper),
+        HookHarness::Zcode => apply_zcode_with_helper(action, &zcode_config_path(), &helper),
+    }
+}
+
+fn catalog_status(profile: &HarnessProfile) -> HookStatus {
+    let tier = HookSupportTier::from(profile.tier);
+    let integration = if profile.structured_lifecycle {
+        HookIntegration::Manual
+    } else {
+        HookIntegration::PresenceOnly
+    };
+    let recent = last_event_ms(profile.id).is_some_and(|timestamp| {
+        now_ms().saturating_sub(timestamp) <= STALE_HOOK_AFTER.as_millis() as u64
+    });
+    HookStatus {
+        harness: profile.id.to_owned(),
+        label: profile.label,
+        tier,
+        integration,
+        health: if recent {
+            HookHealth::Healthy
+        } else if profile.structured_lifecycle {
+            HookHealth::NoRecentEvents
+        } else {
+            HookHealth::Detected
+        },
+        config_display: profile
+            .default_roots
+            .first()
+            .copied()
+            .unwrap_or("Application presence")
+            .into(),
+        detail: if recent {
+            "Cookbench recently received a structured metadata-only lifecycle event.".into()
+        } else if profile.structured_lifecycle {
+            "Structured integration is supported; automatic configuration is not yet available for this vendor dialect.".into()
+        } else {
+            "Experimental presence detection only; Cookbench does not infer lifecycle or completion.".into()
+        },
+        can_install: false,
+        can_repair: false,
+        can_uninstall: false,
     }
 }
 
@@ -146,8 +249,10 @@ fn codex_status(path: &Path) -> HookStatus {
 
 fn codex_status_with_helper(path: &Path, helper: &Path) -> HookStatus {
     let base = HookStatus {
-        harness: HookHarness::Codex,
+        harness: HookHarness::Codex.wire_id().into(),
         label: "Codex",
+        tier: HookSupportTier::Full,
+        integration: HookIntegration::Automatic,
         health: HookHealth::NotInstalled,
         config_display: display_path(path),
         detail: "No Cookbench notify hook is installed.".into(),
@@ -209,8 +314,10 @@ fn codex_status_with_helper(path: &Path, helper: &Path) -> HookStatus {
 
 fn claude_status_with_helper(path: &Path, helper: &Path) -> HookStatus {
     let base = HookStatus {
-        harness: HookHarness::ClaudeCode,
+        harness: HookHarness::ClaudeCode.wire_id().into(),
         label: "Claude Code",
+        tier: HookSupportTier::Full,
+        integration: HookIntegration::Automatic,
         health: HookHealth::NotInstalled,
         config_display: display_path(path),
         detail: "No Cookbench lifecycle hooks are installed.".into(),
@@ -353,10 +460,339 @@ fn apply_claude_with_helper(
     finish_action(HookHarness::ClaudeCode, action, path, current, next)
 }
 
+const KIMI_BLOCK_START: &str = "# Cookbench managed hooks";
+const KIMI_BLOCK_END: &str = "# End Cookbench managed hooks";
+const KIMI_EVENTS: &[&str] = &[
+    "SessionStart",
+    "UserPromptSubmit",
+    "PreToolUse",
+    "PostToolUse",
+    "PostToolUseFailure",
+    "PermissionRequest",
+    "Stop",
+    "SessionEnd",
+];
+
+fn kimi_status_with_helper(path: &Path, helper: &Path) -> HookStatus {
+    let base = HookStatus {
+        harness: HookHarness::KimiCode.wire_id().into(),
+        label: "Kimi Code CLI",
+        tier: HookSupportTier::Full,
+        integration: HookIntegration::Automatic,
+        health: HookHealth::NotInstalled,
+        config_display: display_path(path),
+        detail: "No Cookbench Kimi lifecycle hooks are installed.".into(),
+        can_install: true,
+        can_repair: false,
+        can_uninstall: false,
+    };
+    let Ok(current) = fs::read_to_string(path) else {
+        return if path.exists() {
+            unwritable(base)
+        } else {
+            base
+        };
+    };
+    let Ok(expected) = kimi_managed_block(helper) else {
+        return helper_unavailable(base);
+    };
+    if current.contains(&expected) {
+        return with_event_health(HookStatus {
+            health: HookHealth::Healthy,
+            detail: "Cookbench Kimi lifecycle hooks are installed.".into(),
+            can_install: false,
+            can_repair: true,
+            can_uninstall: true,
+            ..base
+        });
+    }
+    if current.contains(KIMI_BLOCK_START) {
+        return HookStatus {
+            health: HookHealth::Outdated,
+            detail:
+                "An older Cookbench Kimi hook block is present; repair replaces only that block."
+                    .into(),
+            can_install: false,
+            can_repair: true,
+            can_uninstall: true,
+            ..base
+        };
+    }
+    base
+}
+
+fn apply_kimi_with_helper(
+    action: HookAction,
+    path: &Path,
+    helper: &Path,
+) -> Result<HookActionResult, HookError> {
+    let current = read_optional(path)?;
+    let cleaned = remove_kimi_managed_block(&current)?;
+    let next = match action {
+        HookAction::Uninstall => cleaned,
+        HookAction::PreviewInstall | HookAction::Install | HookAction::Repair => {
+            let block = kimi_managed_block(helper)?;
+            let separator = if cleaned.is_empty() || cleaned.ends_with('\n') {
+                ""
+            } else {
+                "\n"
+            };
+            format!("{cleaned}{separator}{block}")
+        }
+    };
+    finish_action(HookHarness::KimiCode, action, path, current, next)
+}
+
+fn kimi_managed_block(helper: &Path) -> Result<String, HookError> {
+    let helper = helper.to_str().ok_or_else(|| {
+        HookError::InvalidConfiguration("packaged hook helper path is not valid UTF-8".into())
+    })?;
+    if helper.is_empty() || helper.len() > 512 || helper.chars().any(char::is_control) {
+        return Err(HookError::InvalidConfiguration(
+            "packaged hook helper path is invalid".into(),
+        ));
+    }
+    let command = format!("{} --harness kimi_code", shell_quote(helper));
+    let command = serde_json::to_string(&command)
+        .map_err(|error| HookError::InvalidConfiguration(error.to_string()))?;
+    let rules = KIMI_EVENTS
+        .iter()
+        .map(|event| format!("[[hooks]]\nevent = \"{event}\"\ncommand = {command}\ntimeout = 5\n"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    Ok(format!(
+        "{KIMI_BLOCK_START} v{}\n{rules}{KIMI_BLOCK_END}\n",
+        env!("CARGO_PKG_VERSION")
+    ))
+}
+
+fn shell_quote(value: &str) -> String {
+    #[cfg(windows)]
+    {
+        format!("\"{}\"", value.replace('"', "\\\""))
+    }
+    #[cfg(not(windows))]
+    {
+        format!("'{}'", value.replace('\'', "'\\''"))
+    }
+}
+
+fn remove_kimi_managed_block(current: &str) -> Result<String, HookError> {
+    let Some(start) = current.find(KIMI_BLOCK_START) else {
+        return Ok(current.to_owned());
+    };
+    let tail = &current[start..];
+    let Some(relative_end) = tail.find(KIMI_BLOCK_END) else {
+        return Err(HookError::Conflict(
+            "The Cookbench Kimi hook marker is incomplete; refusing to rewrite the file.".into(),
+        ));
+    };
+    let mut end = start + relative_end + KIMI_BLOCK_END.len();
+    if current.as_bytes().get(end) == Some(&b'\r') {
+        end += 1;
+    }
+    if current.as_bytes().get(end) == Some(&b'\n') {
+        end += 1;
+    }
+    Ok(format!("{}{}", &current[..start], &current[end..]))
+}
+
+const ZCODE_EVENTS: &[&str] = &[
+    "SessionStart",
+    "UserPromptSubmit",
+    "PreToolUse",
+    "PermissionRequest",
+    "PostToolUse",
+    "PostToolUseFailure",
+    "Stop",
+];
+
+fn zcode_status_with_helper(path: &Path, helper: &Path) -> HookStatus {
+    let base = HookStatus {
+        harness: HookHarness::Zcode.wire_id().into(),
+        label: "ZCode",
+        tier: HookSupportTier::Full,
+        integration: HookIntegration::Automatic,
+        health: HookHealth::NotInstalled,
+        config_display: display_path(path),
+        detail: "No Cookbench ZCode lifecycle hooks are installed.".into(),
+        can_install: true,
+        can_repair: false,
+        can_uninstall: false,
+    };
+    let Ok(current) = fs::read_to_string(path) else {
+        return if path.exists() {
+            unwritable(base)
+        } else {
+            base
+        };
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&current) else {
+        return HookStatus {
+            health: HookHealth::Conflicted,
+            detail: "ZCode config is not valid JSON; Cookbench will not rewrite it.".into(),
+            can_install: false,
+            ..base
+        };
+    };
+    let Some(helper) = helper.to_str() else {
+        return helper_unavailable(base);
+    };
+    if zcode_has_exact_hooks(&value, helper) {
+        return with_event_health(HookStatus {
+            health: HookHealth::Healthy,
+            detail: "Cookbench ZCode lifecycle hooks are installed.".into(),
+            can_install: false,
+            can_repair: true,
+            can_uninstall: true,
+            ..base
+        });
+    }
+    if contains_owned_zcode_hook(&value) {
+        return HookStatus {
+            health: HookHealth::Outdated,
+            detail: "An older Cookbench ZCode hook is present; repair preserves unrelated events."
+                .into(),
+            can_install: false,
+            can_repair: true,
+            can_uninstall: true,
+            ..base
+        };
+    }
+    base
+}
+
+fn apply_zcode_with_helper(
+    action: HookAction,
+    path: &Path,
+    helper: &Path,
+) -> Result<HookActionResult, HookError> {
+    let current = read_optional(path)?;
+    let value = if current.trim().is_empty() {
+        serde_json::json!({})
+    } else {
+        serde_json::from_str(&current)
+            .map_err(|error| HookError::InvalidConfiguration(error.to_string()))?
+    };
+    let helper = helper.to_str().ok_or_else(|| {
+        HookError::InvalidConfiguration("packaged hook helper path is not valid UTF-8".into())
+    })?;
+    let next_value = mutate_zcode_hooks(value, helper, action != HookAction::Uninstall)?;
+    let next = serde_json::to_string_pretty(&next_value)
+        .map_err(|error| HookError::InvalidConfiguration(error.to_string()))?
+        + "\n";
+    finish_action(HookHarness::Zcode, action, path, current, next)
+}
+
+fn mutate_zcode_hooks(
+    mut value: serde_json::Value,
+    helper: &str,
+    install: bool,
+) -> Result<serde_json::Value, HookError> {
+    let root = value.as_object_mut().ok_or_else(|| {
+        HookError::InvalidConfiguration("ZCode config root must be a JSON object".into())
+    })?;
+    let hooks = root
+        .entry("hooks")
+        .or_insert_with(|| serde_json::json!({}))
+        .as_object_mut()
+        .ok_or_else(|| HookError::InvalidConfiguration("ZCode hooks must be an object".into()))?;
+    if install {
+        hooks.insert("enabled".into(), serde_json::Value::Bool(true));
+    }
+    let events = hooks
+        .entry("events")
+        .or_insert_with(|| serde_json::json!({}))
+        .as_object_mut()
+        .ok_or_else(|| {
+            HookError::InvalidConfiguration("ZCode hook events must be an object".into())
+        })?;
+
+    for groups in events.values_mut() {
+        if let Some(groups) = groups.as_array_mut() {
+            for group in groups.iter_mut() {
+                if let Some(handlers) = group
+                    .get_mut("hooks")
+                    .and_then(serde_json::Value::as_array_mut)
+                {
+                    handlers.retain(|handler| !is_owned_zcode_handler(handler));
+                }
+            }
+            groups.retain(|group| {
+                group
+                    .get("hooks")
+                    .and_then(serde_json::Value::as_array)
+                    .is_none_or(|handlers| !handlers.is_empty())
+            });
+        }
+    }
+
+    if install {
+        for event in ZCODE_EVENTS {
+            events
+                .entry((*event).to_owned())
+                .or_insert_with(|| serde_json::json!([]))
+                .as_array_mut()
+                .ok_or_else(|| {
+                    HookError::InvalidConfiguration(format!(
+                        "ZCode {event} hook group must be an array"
+                    ))
+                })?
+                .push(serde_json::json!({
+                    "matcher": "*",
+                    "hooks": [{
+                        "type": "process",
+                        "command": helper,
+                        "args": ["--harness", "zcode"],
+                        "enabled": true,
+                        "timeoutMs": 5000
+                    }]
+                }));
+        }
+    }
+    Ok(value)
+}
+
+fn is_owned_zcode_handler(handler: &serde_json::Value) -> bool {
+    handler
+        .get("command")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|command| command.contains("cookbench-hook"))
+        && handler.get("args") == Some(&serde_json::json!(["--harness", "zcode"]))
+}
+
+fn contains_owned_zcode_hook(value: &serde_json::Value) -> bool {
+    is_owned_zcode_handler(value)
+        || match value {
+            serde_json::Value::Object(object) => object.values().any(contains_owned_zcode_hook),
+            serde_json::Value::Array(values) => values.iter().any(contains_owned_zcode_hook),
+            _ => false,
+        }
+}
+
+fn zcode_has_exact_hooks(value: &serde_json::Value, helper: &str) -> bool {
+    ZCODE_EVENTS.iter().all(|event| {
+        value["hooks"]["events"][event]
+            .as_array()
+            .is_some_and(|groups| {
+                groups.iter().any(|group| {
+                    group["hooks"].as_array().is_some_and(|handlers| {
+                        handlers.iter().any(|handler| {
+                            handler["command"] == helper
+                                && handler["args"] == serde_json::json!(["--harness", "zcode"])
+                        })
+                    })
+                })
+            })
+    })
+}
+
 fn pi_status_with_helper(path: &Path, helper: &Path) -> HookStatus {
     let base = HookStatus {
-        harness: HookHarness::Pi,
+        harness: HookHarness::Pi.wire_id().into(),
         label: "Pi",
+        tier: HookSupportTier::Full,
+        integration: HookIntegration::Automatic,
         health: HookHealth::NotInstalled,
         config_display: display_path(path),
         detail: "No Cookbench Pi lifecycle extension is installed.".into(),
@@ -904,6 +1340,16 @@ fn pi_extension_path() -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_else(|| home().join(".pi/agent/extensions/cookbench.ts"))
 }
+fn kimi_config_path() -> PathBuf {
+    env::var_os("COOKBENCH_KIMI_CONFIG")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home().join(".kimi-code/config.toml"))
+}
+fn zcode_config_path() -> PathBuf {
+    env::var_os("COOKBENCH_ZCODE_CONFIG")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home().join(".zcode/cli/config.json"))
+}
 
 fn display_path(path: &Path) -> String {
     path.strip_prefix(home())
@@ -934,6 +1380,14 @@ fn preview_summary(harness: HookHarness, changed: bool) -> String {
         ),
         HookHarness::Pi => format!(
             "Would add Cookbench's metadata-only Pi lifecycle extension (helper version {}). Existing session content is never included.",
+            env!("CARGO_PKG_VERSION")
+        ),
+        HookHarness::KimiCode => format!(
+            "Would add Cookbench-owned Kimi lifecycle rules (helper version {}). Unrelated TOML settings and hooks remain unchanged.",
+            env!("CARGO_PKG_VERSION")
+        ),
+        HookHarness::Zcode => format!(
+            "Would add Cookbench-owned ZCode process hooks (helper version {}). Unrelated JSON settings and event handlers remain unchanged.",
             env!("CARGO_PKG_VERSION")
         ),
     }
@@ -989,8 +1443,8 @@ fn contains_other_cookbench_hook(
 }
 
 fn with_event_health(status: HookStatus) -> HookStatus {
-    let harness = status.harness;
-    health_with_last_event(status, now_ms(), last_event_ms(harness))
+    let last_event = last_event_ms(&status.harness);
+    health_with_last_event(status, now_ms(), last_event)
 }
 
 fn health_with_last_event(status: HookStatus, now: u64, last_event: Option<u64>) -> HookStatus {
@@ -1008,10 +1462,10 @@ fn health_with_last_event(status: HookStatus, now: u64, last_event: Option<u64>)
     }
 }
 
-fn last_event_ms(harness: HookHarness) -> Option<u64> {
+fn last_event_ms(harness: &str) -> Option<u64> {
     let bytes = fs::read(hook_health_ledger_path()).ok()?;
     let ledger: HookHealthLedger = serde_json::from_slice(&bytes).ok()?;
-    ledger.last_event_ms.get(harness_key(harness)).copied()
+    ledger.last_event_ms.get(health_key(harness)).copied()
 }
 
 #[derive(Deserialize)]
@@ -1048,11 +1502,10 @@ fn default_hook_spool_dir() -> PathBuf {
     }
 }
 
-fn harness_key(harness: HookHarness) -> &'static str {
+fn health_key(harness: &str) -> &str {
     match harness {
-        HookHarness::Codex => "codex",
-        HookHarness::ClaudeCode => "claudeCode",
-        HookHarness::Pi => "pi",
+        "kimiCode" => "kimi_code",
+        value => value,
     }
 }
 
@@ -1079,6 +1532,105 @@ mod tests {
         ));
         fs::create_dir_all(&path).unwrap();
         path
+    }
+
+    #[test]
+    fn status_inventory_covers_the_complete_catalog_with_honest_tiers() {
+        let inventory = statuses();
+        assert_eq!(inventory.len(), cookbench_adapters::catalog().len());
+        assert_eq!(
+            inventory
+                .iter()
+                .map(|status| status.label)
+                .collect::<std::collections::HashSet<_>>()
+                .len(),
+            inventory.len()
+        );
+        let workbuddy = inventory
+            .iter()
+            .find(|status| status.label == "Tencent WorkBuddy")
+            .unwrap();
+        assert_eq!(workbuddy.tier, HookSupportTier::Experimental);
+        assert_eq!(workbuddy.integration, HookIntegration::PresenceOnly);
+        assert!(!workbuddy.can_install);
+    }
+
+    #[test]
+    fn kimi_managed_block_preserves_config_and_uninstalls_only_owned_hooks() {
+        let dir = unique_dir("kimi");
+        let path = dir.join("config.toml");
+        let helper = dir.join("cookbench-hook");
+        fs::write(&path, "model = \"kimi-for-coding\"\n").unwrap();
+
+        let installed = apply_kimi_with_helper(HookAction::Install, &path, &helper).unwrap();
+        assert!(installed.changed);
+        assert!(installed.backup_display.is_some());
+        let config = fs::read_to_string(&path).unwrap();
+        assert!(config.contains("model = \"kimi-for-coding\""));
+        assert!(config.contains("# Cookbench managed hooks"));
+        assert!(config.contains("--harness kimi_code"));
+
+        let removed = apply_kimi_with_helper(HookAction::Uninstall, &path, &helper).unwrap();
+        assert!(removed.changed);
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            "model = \"kimi-for-coding\"\n"
+        );
+    }
+
+    #[test]
+    fn zcode_install_preserves_unrelated_events_and_uses_direct_argv() {
+        let dir = unique_dir("zcode");
+        let path = dir.join("config.json");
+        let helper = dir.join("cookbench-hook");
+        fs::write(
+            &path,
+            serde_json::to_vec(&serde_json::json!({
+                "theme": "dark",
+                "hooks": {
+                    "enabled": true,
+                    "events": {
+                        "PreToolUse": [{
+                            "matcher": "Write",
+                            "hooks": [{"type": "process", "command": "existing", "args": []}]
+                        }]
+                    }
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        apply_zcode_with_helper(HookAction::Install, &path, &helper).unwrap();
+        let value: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(value["theme"], "dark");
+        assert_eq!(value["hooks"]["enabled"], true);
+        assert_eq!(
+            value["hooks"]["events"]["PreToolUse"][0]["hooks"][0]["command"],
+            "existing"
+        );
+        let serialized = value.to_string();
+        assert!(serialized.contains(helper.to_string_lossy().as_ref()));
+        assert!(serialized.contains("--harness"));
+        assert!(serialized.contains("zcode"));
+
+        let mut partial = value;
+        partial["hooks"]["events"]
+            .as_object_mut()
+            .unwrap()
+            .remove("Stop");
+        fs::write(&path, serde_json::to_vec(&partial).unwrap()).unwrap();
+        assert_eq!(
+            zcode_status_with_helper(&path, &helper).health,
+            HookHealth::Outdated
+        );
+        apply_zcode_with_helper(HookAction::Repair, &path, &helper).unwrap();
+
+        apply_zcode_with_helper(HookAction::Uninstall, &path, &helper).unwrap();
+        let removed = fs::read_to_string(&path).unwrap();
+        assert!(removed.contains("existing"));
+        assert!(!removed.contains("cookbench-hook"));
     }
 
     #[test]
@@ -1156,8 +1708,10 @@ mod tests {
     #[test]
     fn managed_but_stale_hook_is_reported_without_a_real_clock() {
         let status = HookStatus {
-            harness: HookHarness::Codex,
+            harness: HookHarness::Codex.wire_id().into(),
             label: "Codex",
+            tier: HookSupportTier::Full,
+            integration: HookIntegration::Automatic,
             health: HookHealth::Healthy,
             config_display: "~/.codex/config.toml".into(),
             detail: "healthy".into(),
@@ -1178,8 +1732,10 @@ mod tests {
     #[test]
     fn installed_hook_with_a_missing_or_stale_managed_helper_is_outdated() {
         let status = HookStatus {
-            harness: HookHarness::Codex,
+            harness: HookHarness::Codex.wire_id().into(),
             label: "Codex",
+            tier: HookSupportTier::Full,
+            integration: HookIntegration::Automatic,
             health: HookHealth::Healthy,
             config_display: "~/.codex/config.toml".into(),
             detail: "healthy".into(),

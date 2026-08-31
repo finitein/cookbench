@@ -13,6 +13,18 @@ const HEALTH_LABEL: Record<HookStatus["health"], string> = {
   noRecentEvents: "No recent events",
 };
 
+const TIER_LABEL: Record<HookStatus["tier"], string> = {
+  full: "Full",
+  standard: "Standard",
+  experimental: "Experimental",
+};
+
+const INTEGRATION_LABEL: Record<HookStatus["integration"], string> = {
+  automatic: "Automatic",
+  manual: "Manual setup",
+  presenceOnly: "Presence only",
+};
+
 export function HookHealthPanel() {
   const [hooks, setHooks] = useState<HookStatus[]>([]);
   const [message, setMessage] = useState("");
@@ -48,7 +60,11 @@ export function HookHealthPanel() {
         {hooks.map((hook) => (
           <li key={hook.harness} className="hook-health__item">
             <div className="hook-health__identity">
-              <strong>{hook.label}</strong>
+              <div className="hook-health__title">
+                <strong>{hook.label}</strong>
+                <span className={`hook-health__tier hook-health__tier--${hook.tier}`}>{TIER_LABEL[hook.tier]}</span>
+                <span className="hook-health__integration">{INTEGRATION_LABEL[hook.integration]}</span>
+              </div>
               <span title={hook.configDisplay}>{hook.configDisplay}</span>
             </div>
             <div className="hook-health__detail">
