@@ -1,23 +1,23 @@
 <!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=1200"><title>Install Cookbench</title><link rel="stylesheet" href="shared.css"></head>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=1200"><title>安装 Cookbench</title><link rel="stylesheet" href="shared.css"></head>
 <body>
 <main class="poster theme-green" data-topic="install">
   <header class="masthead"><div class="brand"><img src="assets/cookbench-mark.svg" alt="">Cookbench</div><div class="page-no">12 / 12</div></header>
   <section class="body">
-    <p class="eyebrow">Open source · MIT licensed</p>
-    <h1>One command to a calmer Agent desktop.</h1>
-    <p class="lead">Platform-native packages, manifest-driven selection, and SHA-256 verification before installation.</p>
+    <p class="eyebrow">开源 · MIT 许可证</p>
+    <h1>一条命令，让 Agent 桌面更从容。</h1>
+    <p class="lead">原生安装包、清单驱动选择，并在安装前验证 SHA-256。</p>
     <div class="stage stage--accent">
-      <h3>macOS universal / Ubuntu Linux x86_64</h3>
+      <h3>macOS 通用版 / Ubuntu Linux x86_64</h3>
       <div class="code" style="margin-top:16px">curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.2.2/<strong>install.sh</strong> | COOKBENCH_VERSION=v0.2.2 COOKBENCH_ALLOW_PRERELEASE=1 bash</div>
       <h3 style="margin-top:30px">Windows x64 PowerShell</h3>
       <div class="code" style="margin-top:16px">$env:COOKBENCH_VERSION='v0.2.2'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.2.2/<strong>install.ps1</strong> | iex</div>
-      <div class="flow" style="margin-top:34px"><div class="flow-node">Detect platform</div><div class="flow-arrow">→</div><div class="flow-node">Read manifest</div><div class="flow-arrow">→</div><div class="flow-node emphasis">Verify SHA-256</div><div class="flow-arrow">→</div><div class="flow-node">Install native app</div></div>
-      <div class="tag-row" style="margin-top:28px"><span class="tag">Rust</span><span class="tag">Tauri 2</span><span class="tag">React</span><span class="tag">Local-first</span><span class="tag">No telemetry</span></div>
+      <div class="flow" style="margin-top:34px"><div class="flow-node">识别平台</div><div class="flow-arrow">→</div><div class="flow-node">读取清单</div><div class="flow-arrow">→</div><div class="flow-node emphasis">校验 SHA-256</div><div class="flow-arrow">→</div><div class="flow-node">安装原生应用</div></div>
+      <div class="tag-row" style="margin-top:28px"><span class="tag">Rust</span><span class="tag">Tauri 2</span><span class="tag">React</span><span class="tag">本地优先</span><span class="tag">无遥测</span></div>
     </div>
   </section>
-  <footer class="footer"><span><strong>github.com/finitein/cookbench</strong></span><span>Start watching the work, not every window.</span></footer>
+  <footer class="footer"><span><strong>github.com/finitein/cookbench</strong></span><span>开始关注任务，不再盯着每个窗口。</span></footer>
 </main>
 </body>
 </html>

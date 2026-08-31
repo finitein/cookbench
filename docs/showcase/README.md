@@ -1,29 +1,27 @@
-# Cookbench Showcase
+# Cookbench 中文展示图
 
-This directory contains twelve offline 1200x1500 HTML compositions and their
-deterministic PNG renders. They are intended for project announcements, social
-posts, community introductions, and video thumbnails or inserts.
+本目录包含 12 张离线生成的 1200×1500 中文 HTML 宣传页，以及对应的确定性
+PNG 渲染结果。它们可用于项目公告、社交平台发布、社区介绍和视频封面或插图。
 
-| Page | Audience and message |
+| 页面 | 受众与主题 |
 | --- | --- |
-| [01 Overview](01-overview.html) | Beginners: what Cookbench is |
-| [02 One Glance](02-one-glance.html) | Anyone juggling concurrent Agent sessions |
-| [03 Catalog](03-catalog.html) | 27 global and China-first Harness profiles |
-| [04 Tiers](04-tiers.html) | Honest Full, Standard, Experimental capability |
-| [05 Return](05-return.html) | Strong session-to-window identity and exact return |
-| [06 Platforms](06-platforms.html) | macOS, Windows, and graphical Linux |
-| [07 SSH](07-ssh.html) | Zero-install read-only mode and optional stdio bridge |
-| [08 Privacy](08-privacy.html) | Local-first metadata boundary |
-| [09 Hooks](09-hooks.html) | Hook installation, health, repair, and sanitization |
-| [10 Workflow](10-workflow.html) | Notifications, pinning, Archive, and completion |
-| [11 Multi-bench](11-multibench.html) | Heavy multi-Agent layout without scrollbars |
-| [12 Install](12-install.html) | One-command installation and open source |
+| [01 项目概览](01-overview.html) | AI 初学者：Cookbench 是什么 |
+| [02 一眼看清](02-one-glance.html) | 同时运行多个 Agent 会话的人 |
+| [03 适配目录](03-catalog.html) | 27 个全球及中国本土 Harness Profile |
+| [04 支持分级](04-tiers.html) | 诚实说明完整、标准、实验性能力 |
+| [05 精准跳转](05-return.html) | 会话到窗口的强身份链与精准返回 |
+| [06 跨平台](06-platforms.html) | macOS、Windows 与图形化 Linux |
+| [07 SSH](07-ssh.html) | 零安装只读模式与可选 stdio Bridge |
+| [08 隐私](08-privacy.html) | 本地优先的元数据边界 |
+| [09 Hook](09-hooks.html) | Hook 安装、健康、修复与内容过滤 |
+| [10 任务管理](10-workflow.html) | 通知、固定、归档与完成确认 |
+| [11 多排工作台](11-multibench.html) | 无滚动条的重度多 Agent 布局 |
+| [12 一行安装](12-install.html) | 一行命令安装与开源说明 |
 
-All pages use the two Cookbench-owned SVG marks, system fonts, CSS, and local
-product evidence only. They contain no third-party logos, remote assets, stock
-photos, font packages, GIFs, video, Lottie, or copied product artwork.
+所有页面仅使用 Cookbench 自有 SVG 标志、系统字体、CSS 和本地产品证据；不含
+第三方 Logo、远程资源、图库照片、字体包、GIF、视频、Lottie 或复制的产品图稿。
 
-Render the committed PNG set with:
+重新渲染已提交的 PNG：
 
 ```bash
 pnpm showcase:render

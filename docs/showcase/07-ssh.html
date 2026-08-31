@@ -1,29 +1,29 @@
 <!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=1200"><title>SSH observation</title><link rel="stylesheet" href="shared.css"></head>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=1200"><title>SSH 远程观察</title><link rel="stylesheet" href="shared.css"></head>
 <body>
 <main class="poster theme-blue" data-topic="ssh">
   <header class="masthead"><div class="brand"><img src="assets/cookbench-mark.svg" alt="">Cookbench</div><div class="page-no">07 / 12</div></header>
   <section class="body">
-    <p class="eyebrow">Your remote agents, on the same Bar</p>
-    <h1>Observe over SSH. Open no port.</h1>
-    <p class="lead">Use the SSH config and trust model already on your machine. Cookbench remains a read-only observer.</p>
+    <p class="eyebrow">同一条 Bar，远程 Agent 也在其中</p>
+    <h1>通过 SSH 查看，不开放任何端口。</h1>
+    <p class="lead">沿用你机器上的 SSH 配置与信任模型。Cookbench 始终只读观察。</p>
     <div class="stage stage--accent">
       <div class="flow">
-        <div class="flow-node"><img src="assets/cookbench-mark.svg" alt="" style="width:66px"><br>Local Cookbench</div>
+        <div class="flow-node"><img src="assets/cookbench-mark.svg" alt="" style="width:66px"><br>本机 Cookbench</div>
         <div class="flow-arrow">⇄</div>
-        <div class="flow-node emphasis">System SSH<br><span style="font-size:17px">stdio only</span></div>
+        <div class="flow-node emphasis">系统 SSH<br><span style="font-size:17px">仅使用 stdio</span></div>
         <div class="flow-arrow">⇄</div>
-        <div class="flow-node">Remote native<br>session roots</div>
+        <div class="flow-node">远端原生<br>Session 目录</div>
       </div>
       <div class="privacy-grid" style="margin-top:36px">
-        <section class="privacy-item"><h3>Zero-install mode</h3><p style="margin-top:12px">Scan supported standard roots with ordinary SSH commands. Leave Session roots empty for automatic discovery.</p></section>
-        <section class="privacy-item"><h3>Optional bridge</h3><p style="margin-top:12px">Upload one checksum-verified binary and keep all communication inside SSH stdin/stdout.</p></section>
+        <section class="privacy-item"><h3>零安装模式</h3><p style="margin-top:12px">用普通 SSH 命令扫描默认目录。Session roots 留空即可自动发现。</p></section>
+        <section class="privacy-item"><h3>可选单文件 Bridge</h3><p style="margin-top:12px">上传一个经过校验的二进制文件，全部通信都留在 SSH stdin/stdout 内。</p></section>
       </div>
-      <ul class="check-list"><li>No SSH password stored</li><li>No listening service or inbound control plane</li><li>No Agent start, stop, prompt, approval, or interruption</li></ul>
+      <ul class="check-list"><li>不保存 SSH 密码</li><li>不启动监听服务，不建立入站控制面</li><li>不启动、停止、提示、批准或中断 Agent</li></ul>
     </div>
   </section>
-  <footer class="footer"><span><strong>Remote status, local trust.</strong> Existing known_hosts stays in charge.</span><span>cookbench</span></footer>
+  <footer class="footer"><span><strong>远程状态，本地信任。</strong> 仍由现有 known_hosts 把关。</span><span>cookbench</span></footer>
 </main>
 </body>
 </html>
