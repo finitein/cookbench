@@ -12,6 +12,7 @@ async function read(relativePath) {
 test("tag release builds the declared macOS, Windows, and Ubuntu artifact matrix", async () => {
   const workflow = await read(".github/workflows/release.yml");
   const staging = await read("scripts/release/stage-artifacts.sh");
+  const macSidecars = await read("scripts/release/prepare-macos-universal-sidecars.sh");
 
   for (const required of [
     "macos_universal",
@@ -40,6 +41,9 @@ test("tag release builds the declared macOS, Windows, and Ubuntu artifact matrix
   assert.match(workflow, /publish_release:[\s\S]*permissions:\n      contents: write/);
   assert.match(workflow, /if \[\[ "\$RELEASE_CHANNEL" == "prerelease" \]\]/);
   assert.match(workflow, /args\+=\(--draft\)/);
+  assert.match(workflow, /COOKBENCH_TARGET: universal-apple-darwin/);
+  assert.match(macSidecars, /for helper in cookbench-bridge cookbench-hook/);
+  assert.match(macSidecars, /src-tauri\/binaries\/\$helper-\$target/);
 });
 
 test("release output is checksummed, described, and kept distinct from stable publishing", async () => {

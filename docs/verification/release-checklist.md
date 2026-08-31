@@ -21,7 +21,7 @@ clear, and outbound-notification observations in Vite `e2e` mode. A production
 build scan confirms that the driver name, storage keys, and implementation are
 absent from `dist`.
 
-## v0.2.0 Automated Gate
+## v0.2.1 Release Candidate Gate
 
 The 2026-08-31 macOS development run completed `./scripts/verify.sh` without
 error: Rust formatting, workspace Clippy with warnings denied, all Rust unit and
@@ -29,12 +29,20 @@ integration tests, workspace build, TypeScript, 103 Vitest tests, three GNOME
 protocol tests, fourteen product Playwright flows, production build, E2E-driver
 absence scan, and source-only package inventory all passed.
 
+The earlier `v0.2.0` tag did not publish a GitHub Release. Its package workflow
+correctly stopped after the macOS bundle omitted architecture-specific sidecars
+and the Linux/Windows audit treated generated system icon sizes as unrelated
+runtime artwork. `v0.2.1` stages both per-architecture and universal helpers and
+audits platform icon derivatives separately from the two approved runtime SVGs.
+The repaired path produced a local universal macOS app and DMG containing
+universal `cookbench-bridge` and `cookbench-hook` binaries; package smoke passed.
+
 Additional release contracts passed:
 
 - 27 unique Harness profiles, including the requested China-first tools, with
   tier, lifecycle, and return-surface invariants.
-- Eleven documentation, installer, manifest, release-workflow, and PNG renderer
-  contracts.
+- Ten documentation, installer, manifest, and release-workflow contracts, plus
+  the PNG renderer contract.
 - Twelve showcase Playwright pages at exactly 1200x1500 with zero overflow and
   no remote assets; twelve PNG headers confirm 1200x1500 output.
 - Visual verdict 94/100 after all twelve PNGs were inspected. Terminal states
@@ -46,7 +54,7 @@ Additional release contracts passed:
 
 | # | Requirement | Evidence required | Current status |
 | --- | --- | --- | --- |
-| 1 | Graphical macOS, Windows, Ubuntu installation | Package smoke run on each platform | macOS arm64 app/DMG and Ubuntu 24.04 ARM64 DEB/AppImage build and graphical package smoke pass; Windows and macOS Intel pending |
+| 1 | Graphical macOS, Windows, Ubuntu installation | Package smoke run on each platform | Local macOS universal app/DMG package smoke passes for arm64 and Intel binaries; Ubuntu 24.04 ARM64 DEB/AppImage and graphical package smoke previously passed; Windows and Ubuntu x64 Release CI pending |
 | 2 | Codex, Claude Code, Pi create stoves from their original tools | Sanitized fixture E2E plus manual original-tool sessions | Three-harness native-parser and E2E coverage passes; packaged macOS app automatically discovered live local Codex session files; manual Claude Code and Pi native checks pending. The broader 27-profile catalog is Hook/manual/presence tiered and is not substituted for this native evidence |
 | 3 | Every burner names its harness | `global-bar.spec.ts` plus screen-reader check | E2E and component accessible-name checks pass; manual screen reader pending |
 | 4 | Global Bar contains all active and uncleared stoves | `global-bar.spec.ts` with three sources and retained Cooked fixture | E2E passes; packaged macOS snapshot populated from native sessions after the release ACL fallback regression was fixed |
@@ -62,7 +70,7 @@ Additional release contracts passed:
 | 14 | Only structured Cooking has a determinate arc | `stove-lifecycle.spec.ts` with structured and empty progress fixtures | Component and E2E coverage pass |
 | 15 | Approved light-default SVG/CSS material, no third-party logos/heavy media | Asset inventory and screenshot comparison with visual prototype | Product browser evidence and packaged macOS capture remain recorded; exact two-SVG master and package audits pass. Twelve new offline showcase compositions use only the Cookbench mark, system fonts, and CSS and passed a 94/100 visual verdict |
 | 16 | Reduced motion and accessible state labels | Emulated media-feature screenshots and keyboard/screen-reader check | Reduced-motion E2E and component labels pass; OS/screen-reader check pending |
-| 17 | No photos, GIFs, video, Lottie, sprites, or bundled web fonts | Package artifact inventory | Source-only, macOS arm64 app/DMG, and Ubuntu ARM64 DEB/AppImage inventories pass; showcase remote/forbidden-asset checks pass; Windows package inventory pending Release CI |
+| 17 | No photos, GIFs, video, Lottie, sprites, or bundled web fonts | Package artifact inventory | Source-only, local macOS universal app/DMG, and Ubuntu ARM64 DEB/AppImage inventories pass; showcase remote/forbidden-asset checks pass; Windows and Ubuntu x64 package inventory pending Release CI |
 
 ## Visual Matrix
 

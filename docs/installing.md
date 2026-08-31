@@ -26,11 +26,11 @@ Preview releases are intentionally opt-in. Pin the tag instead of silently
 following the newest preview:
 
 ```bash
-curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.2.0/install.sh | COOKBENCH_VERSION=v0.2.0 COOKBENCH_ALLOW_PRERELEASE=1 bash
+curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.2.1/install.sh | COOKBENCH_VERSION=v0.2.1 COOKBENCH_ALLOW_PRERELEASE=1 bash
 ```
 
 ```powershell
-$env:COOKBENCH_VERSION='v0.2.0'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.2.0/install.ps1 | iex
+$env:COOKBENCH_VERSION='v0.2.1'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.2.1/install.ps1 | iex
 ```
 
 Use `--dry-run` on macOS/Linux or set `COOKBENCH_DRY_RUN=1` on any platform to

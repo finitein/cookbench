@@ -92,6 +92,7 @@ jobs:
     env:
       VERSION: ${{ needs.release_context.outputs.version }}
       RELEASE_CHANNEL: ${{ needs.release_context.outputs.channel }}
+      COOKBENCH_TARGET: universal-apple-darwin
       APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
       APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
       APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}

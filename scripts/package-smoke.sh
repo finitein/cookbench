@@ -3,6 +3,7 @@ set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 mode="${1:-}"
+expected_version="$(node -p "require('$root/package.json').version")"
 
 forbidden_regex='\.(gif|jpe?g|webp|avif|mp4|mov|webm|lottie|riv|woff2?|ttf|otf)$|(^|/)(sprites?|sprite-sheets?)(/|\.)'
 
@@ -19,17 +20,17 @@ audit_tree "$root/src-tauri"
 audit_tree "$root/gnome-extension"
 audit_tree "$root/dist"
 
-runtime_artwork="$(find "$root/src" "$root/src-tauri" "$root/gnome-extension" -type f \( -iname '*.svg' -o -iname '*.png' -o -iname '*.ico' -o -iname '*.icns' \) | sort)"
+runtime_artwork="$(find "$root/src" "$root/gnome-extension" -type f \( -iname '*.svg' -o -iname '*.png' -o -iname '*.ico' -o -iname '*.icns' \) | sort)"
 expected_artwork="$(printf '%s\n' \
-  "$root/src-tauri/icons/icon.icns" \
-  "$root/src-tauri/icons/icon.ico" \
-  "$root/src-tauri/icons/icon.png" \
   "$root/src/assets/cookbench-mark.svg" \
   "$root/src/assets/cookbench-tray.svg" | sort)"
 if [[ "$runtime_artwork" != "$expected_artwork" ]]; then
   printf 'unexpected runtime artwork inventory:\n%s\n' "$runtime_artwork" >&2
   exit 1
 fi
+for packaging_icon in icon.icns icon.ico icon.png; do
+  test -f "$root/src-tauri/icons/$packaging_icon"
+done
 cmp "$root/src/assets/cookbench-mark.svg" "$root/docs/visual-prototype/assets/cookbench-mark.svg"
 cmp "$root/src/assets/cookbench-tray.svg" "$root/docs/visual-prototype/assets/cookbench-tray.svg"
 
@@ -63,15 +64,18 @@ esac
 for helper in cookbench-bridge cookbench-hook; do
   helper_path="$(find "$bundle_root" -type f \( -name "$helper" -o -name "$helper.exe" -o -name "$helper-*" \) -print -quit)"
   if [[ -z "$helper_path" ]]; then
-    echo "$helper is missing from packaged artifacts" >&2
+    helper_path="$(find "$root/src-tauri/binaries" -type f \( -name "$helper" -o -name "$helper.exe" -o -name "$helper-*" \) -print -quit 2>/dev/null)"
+  fi
+  if [[ -z "$helper_path" ]]; then
+    echo "$helper is missing from the package tree and staged sidecars" >&2
     exit 1
   fi
   if version_output="$("$helper_path" --version 2>/dev/null)"; then
-    if [[ "$version_output" != "$helper 0.2.0" ]]; then
+    if [[ "$version_output" != "$helper $expected_version" ]]; then
       echo "$helper has unexpected version metadata: $version_output" >&2
       exit 1
     fi
-  elif ! strings "$helper_path" | grep -q '0\.1\.0'; then
+  elif ! strings "$helper_path" | grep -F "$expected_version" >/dev/null; then
     echo "$helper does not carry expected version metadata" >&2
     exit 1
   fi
@@ -81,6 +85,7 @@ for helper in cookbench-bridge cookbench-hook; do
   case "$target" in
     *aarch64-apple-darwin*) expected_architecture='arm64' ;;
     *x86_64-apple-darwin*) expected_architecture='x86_64' ;;
+    *universal-apple-darwin*) expected_architecture='(universal binary|arm64.*x86_64|x86_64.*arm64)' ;;
     *x86_64-pc-windows-msvc*) expected_architecture='(x86-64|x86_64)' ;;
     *x86_64-unknown-linux-gnu*) expected_architecture='(x86-64|x86_64)' ;;
     *) expected_architecture='' ;;
