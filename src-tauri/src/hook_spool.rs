@@ -106,7 +106,7 @@ fn record_hook_health(directory: &Path, harness: &HarnessId, received_at_ms: u64
         .unwrap_or_default();
     ledger
         .last_event_ms
-        .insert(harness_key(harness).into(), received_at_ms);
+        .insert(harness_key(harness), received_at_ms);
     let Ok(bytes) = serde_json::to_vec(&ledger) else {
         return;
     };
@@ -130,12 +130,12 @@ struct HookHealthLedger {
     last_event_ms: BTreeMap<String, u64>,
 }
 
-fn harness_key(harness: &HarnessId) -> &'static str {
+fn harness_key(harness: &HarnessId) -> String {
     match harness {
-        HarnessId::Codex => "codex",
-        HarnessId::ClaudeCode => "claudeCode",
-        HarnessId::Pi => "pi",
-        HarnessId::Other(_) => "other",
+        HarnessId::Codex => "codex".into(),
+        HarnessId::ClaudeCode => "claudeCode".into(),
+        HarnessId::Pi => "pi".into(),
+        HarnessId::Other(value) => value.clone(),
     }
 }
 
@@ -247,6 +247,12 @@ impl Envelope {
             "codex" => HarnessId::Codex,
             "claude_code" => HarnessId::ClaudeCode,
             "pi" => HarnessId::Pi,
+            value
+                if cookbench_adapters::harness_profile(value)
+                    .is_some_and(|profile| profile.structured_lifecycle) =>
+            {
+                HarnessId::Other(value.to_owned())
+            }
             _ => return None,
         };
         let kind = match self.event.event_type.as_str() {
@@ -389,6 +395,36 @@ mod tests {
             serde_json::from_slice(&fs::read(directory.join("hook-health.json")).unwrap()).unwrap();
         assert_eq!(value["last_event_ms"]["claudeCode"], 42);
         assert_eq!(value.as_object().unwrap().len(), 1);
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn accepts_allowlisted_catalog_harnesses_as_forward_compatible_ids() {
+        let envelope: Envelope = serde_json::from_str(
+            r#"{"schema_version":2,"source":"hook","received_at_ms":7,"event":{"event_type":"turn_completed","session_id":"qwen-session","harness":"qwen_code"}}"#,
+        )
+        .unwrap();
+        let observation = envelope
+            .into_observation(HostIdentity::local("local"))
+            .unwrap();
+        assert_eq!(
+            observation.identity.harness,
+            HarnessId::Other("qwen_code".into())
+        );
+    }
+
+    #[test]
+    fn health_ledger_keeps_each_expanded_harness_separate() {
+        let directory =
+            std::env::temp_dir().join(format!("cookbench-expanded-health-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&directory);
+        fs::create_dir_all(&directory).unwrap();
+        record_hook_health(&directory, &HarnessId::Other("qwen_code".into()), 42);
+        record_hook_health(&directory, &HarnessId::Other("kimi_code".into()), 43);
+        let value: serde_json::Value =
+            serde_json::from_slice(&fs::read(directory.join("hook-health.json")).unwrap()).unwrap();
+        assert_eq!(value["last_event_ms"]["qwen_code"], 42);
+        assert_eq!(value["last_event_ms"]["kimi_code"], 43);
         let _ = fs::remove_dir_all(directory);
     }
 }

@@ -18,10 +18,7 @@ const EX_TEMPFAIL: u8 = 75;
 fn main() -> ExitCode {
     match env::args().skip(1).collect::<Vec<_>>().as_slice() {
         [] => run_hook(None, None),
-        [flag, harness]
-            if flag == "--harness"
-                && matches!(harness.as_str(), "codex" | "claude-code" | "claude" | "pi") =>
-        {
+        [flag, harness] if flag == "--harness" && envelope::supports_harness(harness) => {
             run_hook(Some(harness), None)
         }
         [flag, harness, payload] if flag == "--harness" && harness == "codex" => {
@@ -63,10 +60,7 @@ fn run_hook(expected_harness: Option<&String>, argument_payload: Option<&[u8]>) 
         Err(error) => return fail(EX_USAGE, error.diagnostic()),
     };
     if let Some(expected) = expected_harness {
-        let expected = match expected.as_str() {
-            "claude" | "claude-code" => "claude_code",
-            value => value,
-        };
+        let expected = envelope::canonical_harness(expected).unwrap_or(expected);
         if envelope.event.harness != expected {
             return fail(EX_USAGE, "hook harness does not match its invocation");
         }

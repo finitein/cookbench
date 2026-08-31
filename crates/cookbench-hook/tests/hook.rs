@@ -125,6 +125,27 @@ fn accepts_generated_pi_extension_events_without_retaining_agent_content() {
 }
 
 #[test]
+fn accepts_expanded_structured_harness_invocations() {
+    for harness in ["gemini_cli", "qwen_code", "qoder", "zcode", "factory_droid"] {
+        let spool = unique_temp_dir(harness);
+        let payload = format!(
+            r#"{{"session_id":"{harness}-session","hook_event_name":"Stop","prompt":"private synthetic content"}}"#
+        );
+        let output = run_hook_with_args(Some(&spool), payload.as_bytes(), &["--harness", harness]);
+        assert!(
+            output.status.success(),
+            "{harness}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let envelope = only_envelope(&spool);
+        assert_eq!(envelope["event"]["harness"], harness);
+        assert_eq!(envelope["event"]["event_type"], "turn_completed");
+        assert!(!envelope.to_string().contains("private synthetic content"));
+        fs::remove_dir_all(spool).expect("temp directory should be removed");
+    }
+}
+
+#[test]
 fn maps_claude_notification_types_without_retaining_messages() {
     for (notification_type, expected_event) in [
         ("permission_prompt", "permission_requested"),

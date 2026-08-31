@@ -11,7 +11,7 @@ pub const MAX_HARNESS_BYTES: usize = 32;
 struct HookInput {
     event_type: LifecycleEvent,
     session_id: String,
-    harness: Harness,
+    harness: String,
     #[serde(default)]
     sequence: Option<u64>,
     #[serde(default)]
@@ -35,24 +35,6 @@ pub enum LifecycleEvent {
     ConnectionRestored,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum Harness {
-    Codex,
-    ClaudeCode,
-    Pi,
-}
-
-impl Harness {
-    const fn as_str(&self) -> &'static str {
-        match self {
-            Self::Codex => "codex",
-            Self::ClaudeCode => "claude_code",
-            Self::Pi => "pi",
-        }
-    }
-}
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Progress {
@@ -72,7 +54,7 @@ pub struct EventEnvelope {
 pub struct SanitizedEvent {
     pub event_type: LifecycleEvent,
     pub session_id: String,
-    pub harness: &'static str,
+    pub harness: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sequence: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -190,6 +172,56 @@ pub enum EnvelopeError {
     InvalidField,
 }
 
+const STRUCTURED_HARNESSES: &[&str] = &[
+    "codex",
+    "claude_code",
+    "pi",
+    "gemini_cli",
+    "qwen_code",
+    "kimi_code",
+    "qoder",
+    "zcode",
+    "factory_droid",
+    "codebuddy",
+    "cursor",
+    "github_copilot",
+    "opencode",
+    "cline",
+    "trae",
+    "grok_cli",
+    "goose",
+    "aider",
+    "kiro",
+    "amazon_q",
+    "roo_code",
+    "continue",
+    "amp",
+    "mistral_vibe",
+    "crush",
+    "openhands",
+];
+
+pub fn canonical_harness(value: &str) -> Option<&str> {
+    if value.len() > MAX_HARNESS_BYTES {
+        return None;
+    }
+    let value = match value {
+        "claude" | "claude-code" => "claude_code",
+        "gemini" | "gemini-cli" => "gemini_cli",
+        "qwen" | "qwen-code" => "qwen_code",
+        "kimi" | "kimi-code" => "kimi_code",
+        "factory" | "droid" => "factory_droid",
+        "copilot" | "github-copilot" => "github_copilot",
+        "open-code" => "opencode",
+        value => value,
+    };
+    STRUCTURED_HARNESSES.contains(&value).then_some(value)
+}
+
+pub fn supports_harness(value: &str) -> bool {
+    canonical_harness(value).is_some()
+}
+
 impl EnvelopeError {
     pub const fn diagnostic(self) -> &'static str {
         match self {
@@ -215,7 +247,7 @@ pub fn parse(input: &[u8], received_at_ms: u64) -> Result<EventEnvelope, Envelop
     if hook.session_id.is_empty()
         || hook.session_id.len() > MAX_SESSION_ID_BYTES
         || !hook.session_id.is_ascii()
-        || hook.harness.as_str().len() > MAX_HARNESS_BYTES
+        || canonical_harness(&hook.harness).is_none()
         || hook
             .progress
             .as_ref()
@@ -231,7 +263,9 @@ pub fn parse(input: &[u8], received_at_ms: u64) -> Result<EventEnvelope, Envelop
         event: SanitizedEvent {
             event_type: hook.event_type,
             session_id: hook.session_id,
-            harness: hook.harness.as_str(),
+            harness: canonical_harness(&hook.harness)
+                .expect("validated harness")
+                .to_owned(),
             sequence: hook.sequence,
             progress: hook.progress,
             locator: LocatorProjection::from_environment().non_empty(),
@@ -255,15 +289,16 @@ pub fn parse_native(
         serde_json::from_slice(input).map_err(|_| EnvelopeError::Malformed)?;
     let object = value.as_object().ok_or(EnvelopeError::Malformed)?;
 
-    let (harness, session_id, event_type) = match harness {
-        "claude" | "claude-code" => {
+    let canonical = canonical_harness(harness).ok_or(EnvelopeError::InvalidField)?;
+    let (session_id, event_type) = match canonical {
+        "claude_code" => {
             let session_id = required_string(object, "session_id")?;
             let hook_event = required_string(object, "hook_event_name")?;
             let event_type = match hook_event {
                 "SessionStart" => LifecycleEvent::SessionDiscovered,
                 "UserPromptSubmit" => LifecycleEvent::UserPromptSubmitted,
-                "PreToolUse" | "SubagentStart" => LifecycleEvent::ToolStarted,
-                "PostToolUse" | "SubagentStop" => LifecycleEvent::ToolCompleted,
+                "PreToolUse" => LifecycleEvent::ToolStarted,
+                "PostToolUse" => LifecycleEvent::ToolCompleted,
                 "PermissionRequest" => LifecycleEvent::PermissionRequested,
                 "Stop" => LifecycleEvent::TurnCompleted,
                 "SessionEnd" => LifecycleEvent::ProcessExited,
@@ -274,7 +309,7 @@ pub fn parse_native(
                 },
                 _ => return Err(EnvelopeError::InvalidField),
             };
-            ("claude_code", session_id, event_type)
+            (session_id, event_type)
         }
         "codex" => {
             let session_id = required_string(object, "thread-id")?;
@@ -284,7 +319,7 @@ pub fn parse_native(
                 "user-input-requested" => LifecycleEvent::QuestionAsked,
                 _ => return Err(EnvelopeError::InvalidField),
             };
-            ("codex", session_id, event_type)
+            (session_id, event_type)
         }
         "pi" => {
             let session_id = required_string(object, "session_id")?;
@@ -300,9 +335,36 @@ pub fn parse_native(
                 "process_exited" => LifecycleEvent::ProcessExited,
                 _ => return Err(EnvelopeError::InvalidField),
             };
-            ("pi", session_id, event_type)
+            (session_id, event_type)
         }
-        _ => return Err(EnvelopeError::InvalidField),
+        _ => {
+            let session_id = required_string_any(
+                object,
+                &[
+                    "session_id",
+                    "sessionId",
+                    "conversation_id",
+                    "conversationId",
+                    "thread_id",
+                    "threadId",
+                    "task_id",
+                    "taskId",
+                    "generation_id",
+                ],
+            )?;
+            let event = required_string_any(
+                object,
+                &[
+                    "hook_event_name",
+                    "event_name",
+                    "eventName",
+                    "event",
+                    "type",
+                ],
+            )?;
+            let event_type = lifecycle_event(event, object)?;
+            (session_id, event_type)
+        }
     };
 
     validate_session_id(session_id)?;
@@ -313,12 +375,59 @@ pub fn parse_native(
         event: SanitizedEvent {
             event_type,
             session_id: session_id.to_owned(),
-            harness,
+            harness: canonical.to_owned(),
             sequence: None,
             progress: None,
             locator: LocatorProjection::from_native(object),
         },
     })
+}
+
+fn lifecycle_event(
+    value: &str,
+    object: &serde_json::Map<String, serde_json::Value>,
+) -> Result<LifecycleEvent, EnvelopeError> {
+    let normalized = value
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect::<String>();
+    match normalized.as_str() {
+        "sessionstart" | "sessiondiscovered" | "taskstart" | "taskresume" => {
+            Ok(LifecycleEvent::SessionDiscovered)
+        }
+        "userpromptsubmit" | "userpromptsubmitted" | "promptsubmit" => {
+            Ok(LifecycleEvent::UserPromptSubmitted)
+        }
+        "pretooluse" | "beforetool" | "beforetoolcall" | "preshellexecution"
+        | "premcpexecution" => Ok(LifecycleEvent::ToolStarted),
+        "posttooluse" | "aftertool" | "aftertoolcall" | "postshellexecution"
+        | "postmcpexecution" => Ok(LifecycleEvent::ToolCompleted),
+        "permissionrequest" | "permissionrequested" | "approvalrequested" => {
+            Ok(LifecycleEvent::PermissionRequested)
+        }
+        "questionasked" | "userinputrequested" => Ok(LifecycleEvent::QuestionAsked),
+        "stop" | "turncompleted" | "taskcomplete" | "sessionidle" | "agentend" => {
+            Ok(LifecycleEvent::TurnCompleted)
+        }
+        "sessionend" | "processexited" | "taskcancel" => Ok(LifecycleEvent::ProcessExited),
+        "sessionfailed" | "stopfailure" | "posttoolusefailure" => Ok(LifecycleEvent::SessionFailed),
+        "notification" => {
+            match required_string_any(object, &["notification_type", "notificationType", "reason"])?
+            {
+                "permission_prompt" | "permission" | "approval" => {
+                    Ok(LifecycleEvent::PermissionRequested)
+                }
+                "idle_prompt" | "elicitation_dialog" | "question" => {
+                    Ok(LifecycleEvent::QuestionAsked)
+                }
+                _ => Err(EnvelopeError::InvalidField),
+            }
+        }
+        // Child-agent events are deliberately not promoted to separate Stoves.
+        "subagentstart" | "subagentstop" => Err(EnvelopeError::InvalidField),
+        _ => Err(EnvelopeError::InvalidField),
+    }
 }
 
 fn required_string<'a>(
@@ -328,6 +437,16 @@ fn required_string<'a>(
     object
         .get(field)
         .and_then(serde_json::Value::as_str)
+        .ok_or(EnvelopeError::Malformed)
+}
+
+fn required_string_any<'a>(
+    object: &'a serde_json::Map<String, serde_json::Value>,
+    fields: &[&str],
+) -> Result<&'a str, EnvelopeError> {
+    fields
+        .iter()
+        .find_map(|field| object.get(*field).and_then(serde_json::Value::as_str))
         .ok_or(EnvelopeError::Malformed)
 }
 
@@ -438,5 +557,59 @@ mod tests {
         let serialized = serde_json::to_string(&locator).unwrap();
         assert!(!serialized.contains("prompt"));
         assert!(!serialized.contains("must never survive"));
+    }
+
+    #[test]
+    fn projects_structured_events_for_expanded_harnesses() {
+        let cases = [
+            ("gemini_cli", "SessionStart", "session_discovered"),
+            ("qwen_code", "PermissionRequest", "permission_requested"),
+            ("kimi_code", "AfterToolCall", "tool_completed"),
+            ("qoder", "UserPromptSubmit", "user_prompt_submitted"),
+            ("zcode", "Stop", "turn_completed"),
+            ("factory_droid", "PreToolUse", "tool_started"),
+            ("codebuddy", "Notification", "question_asked"),
+            ("cursor", "sessionEnd", "process_exited"),
+            ("github_copilot", "postToolUse", "tool_completed"),
+            ("opencode", "session.idle", "turn_completed"),
+            ("cline", "TaskComplete", "turn_completed"),
+        ];
+
+        for (harness, event, expected) in cases {
+            let payload = serde_json::json!({
+                "session_id": format!("{harness}-session"),
+                "hook_event_name": event,
+                "notification_type": "idle_prompt",
+                "transcript_path": format!("/safe/{harness}.jsonl"),
+                "cwd": "/safe/project",
+                "prompt": "discard this",
+                "tool_input": {"command": "discard this too"}
+            });
+            let envelope = parse_native(payload.to_string().as_bytes(), harness, 42)
+                .unwrap_or_else(|_| panic!("{harness} {event} should parse"));
+            assert_eq!(envelope.event.harness, harness);
+            let serialized = serde_json::to_value(envelope).unwrap();
+            assert_eq!(serialized["event"]["event_type"], expected);
+            assert!(serialized.to_string().find("discard this").is_none());
+            assert_eq!(
+                serialized["event"]["locator"]["working_directory"],
+                "/safe/project"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_unknown_harnesses_and_suppresses_subagent_lifecycle() {
+        let payload = br#"{"session_id":"session-1","hook_event_name":"SessionStart"}"#;
+        assert!(matches!(
+            parse_native(payload, "unknown_agent", 42),
+            Err(EnvelopeError::InvalidField)
+        ));
+
+        let subagent = br#"{"session_id":"session-1","hook_event_name":"SubagentStart"}"#;
+        assert!(matches!(
+            parse_native(subagent, "qwen_code", 42),
+            Err(EnvelopeError::InvalidField)
+        ));
     }
 }
