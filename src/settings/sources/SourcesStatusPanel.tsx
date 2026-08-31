@@ -9,6 +9,18 @@ const HEALTH_LABEL: Record<LocalSourceStatus["health"], string> = {
   unavailable: "Unavailable",
 };
 
+const TIER_LABEL: Record<LocalSourceStatus["tier"], string> = {
+  full: "Full",
+  standard: "Standard",
+  experimental: "Experimental",
+};
+
+const OBSERVATION_LABEL: Record<LocalSourceStatus["observation"], string> = {
+  nativeSessions: "Native sessions",
+  structuredHook: "Structured hook",
+  presenceOnly: "Presence only",
+};
+
 function sessionLabel(count: number) {
   return `${count} session${count === 1 ? "" : "s"}`;
 }
@@ -40,12 +52,14 @@ export function SourcesStatusPanel() {
           <li key={source.harness} className="source-status__source">
             <div className="source-status__identity">
               <strong>{source.label}</strong>
+              <span className={`source-status__tier source-status__tier--${source.tier}`}>{TIER_LABEL[source.tier]}</span>
               <span title={source.rootDisplay}>{source.rootDisplay}</span>
             </div>
             <div className="source-status__details">
               <span className={`source-status__health source-status__health--${source.health}`}>
                 {HEALTH_LABEL[source.health]}
               </span>
+              <span>{OBSERVATION_LABEL[source.observation]}</span>
               <span>{sessionLabel(source.discoveredSessions)}</span>
               {source.parserErrors > 0 ? <span>{errorLabel(source.parserErrors)}</span> : null}
             </div>

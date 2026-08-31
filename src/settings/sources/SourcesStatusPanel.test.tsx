@@ -12,9 +12,11 @@ describe("SourcesStatusPanel", () => {
   beforeEach(() => {
     getLocalSourceStatus.mockResolvedValue({
       sources: [
-        { harness: "codex", label: "Codex", health: "healthy", rootDisplay: "~/.codex/sessions", discoveredSessions: 4, parserErrors: 0 },
-        { harness: "claudeCode", label: "Claude Code", health: "degraded", rootDisplay: "~/.claude/projects", discoveredSessions: 1, parserErrors: 2 },
-        { harness: "pi", label: "Pi", health: "unavailable", rootDisplay: "~/.pi/agent/sessions", discoveredSessions: 0, parserErrors: 0 },
+        { harness: "codex", label: "Codex", tier: "full", observation: "nativeSessions", health: "healthy", rootDisplay: "~/.codex/sessions", discoveredSessions: 4, parserErrors: 0 },
+        { harness: "claudeCode", label: "Claude Code", tier: "full", observation: "nativeSessions", health: "degraded", rootDisplay: "~/.claude/projects", discoveredSessions: 1, parserErrors: 2 },
+        { harness: "pi", label: "Pi", tier: "full", observation: "nativeSessions", health: "unavailable", rootDisplay: "~/.pi/agent/sessions", discoveredSessions: 0, parserErrors: 0 },
+        { harness: "qwen_code", label: "Qwen Code", tier: "full", observation: "structuredHook", health: "unavailable", rootDisplay: "~/.qwen/tmp", discoveredSessions: 0, parserErrors: 0 },
+        { harness: "workbuddy", label: "Tencent WorkBuddy", tier: "experimental", observation: "presenceOnly", health: "unavailable", rootDisplay: "Application presence", discoveredSessions: 0, parserErrors: 0 },
       ],
     });
   });
@@ -30,9 +32,12 @@ describe("SourcesStatusPanel", () => {
     expect(screen.getByText("Needs attention")).toBeInTheDocument();
     expect(screen.getByText("2 parsing issues")).toBeInTheDocument();
     expect(screen.getByText("Pi")).toBeInTheDocument();
-    expect(screen.getByText("Unavailable")).toBeInTheDocument();
+    expect(screen.getAllByText("Unavailable").length).toBeGreaterThan(0);
     expect(screen.getByText("~/.codex/sessions")).toBeInTheDocument();
     expect(screen.getByText("~/.claude/projects")).toBeInTheDocument();
+    expect(screen.getByText("Structured hook")).toBeInTheDocument();
+    expect(screen.getByText("Presence only")).toBeInTheDocument();
+    expect(screen.getByText("Experimental")).toBeInTheDocument();
   });
 
   it("reports a generic unavailable state when the status command cannot be read", async () => {

@@ -20,11 +20,12 @@ use std::{
 };
 
 use cookbench_adapters::{
+    catalog,
     claude::{self, ClaudeAdapter},
     codex::{self, CodexAdapter},
     io::{DirectoryWatch, JsonlTailer, TailLimits, TailRecord},
     pi::{self, PiAdapter},
-    HostSource, NativeSession,
+    HostSource, NativeSession, SupportTier,
 };
 use cookbench_core::diagnostics::redact_source_path;
 use cookbench_core::domain::{
@@ -171,10 +172,28 @@ enum ParserKind {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub enum LocalSourceHarness {
-    Codex,
-    ClaudeCode,
-    Pi,
+pub enum LocalSourceSupportTier {
+    Full,
+    Standard,
+    Experimental,
+}
+
+impl From<SupportTier> for LocalSourceSupportTier {
+    fn from(value: SupportTier) -> Self {
+        match value {
+            SupportTier::Full => Self::Full,
+            SupportTier::Standard => Self::Standard,
+            SupportTier::Experimental => Self::Experimental,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LocalSourceObservation {
+    NativeSessions,
+    StructuredHook,
+    PresenceOnly,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -188,8 +207,10 @@ pub enum LocalSourceHealth {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LocalSourceStatus {
-    pub harness: LocalSourceHarness,
+    pub harness: String,
     pub label: &'static str,
+    pub tier: LocalSourceSupportTier,
+    pub observation: LocalSourceObservation,
     pub health: LocalSourceHealth,
     pub root_display: String,
     pub discovered_sessions: usize,
@@ -210,18 +231,43 @@ impl LocalSourceStatusState {
         let home = std::env::var("HOME")
             .or_else(|_| std::env::var("USERPROFILE"))
             .unwrap_or_default();
-        let status = [ParserKind::Codex, ParserKind::Claude, ParserKind::Pi]
-            .into_iter()
-            .map(|kind| {
-                let source_roots = roots_for_kind(kind, config);
+        let status = catalog()
+            .iter()
+            .map(|profile| {
+                let source_roots = match profile.id {
+                    "codex" => roots_for_kind(ParserKind::Codex, config)
+                        .into_iter()
+                        .map(Path::to_path_buf)
+                        .collect::<Vec<_>>(),
+                    "claude_code" => roots_for_kind(ParserKind::Claude, config)
+                        .into_iter()
+                        .map(Path::to_path_buf)
+                        .collect::<Vec<_>>(),
+                    "pi" => roots_for_kind(ParserKind::Pi, config)
+                        .into_iter()
+                        .map(Path::to_path_buf)
+                        .collect::<Vec<_>>(),
+                    _ => profile
+                        .default_roots
+                        .iter()
+                        .map(|root| expand_catalog_root(root, &home))
+                        .collect(),
+                };
                 let available = source_roots.iter().any(|root| root.is_dir());
                 let display = source_roots
                     .first()
                     .and_then(|root| redact_source_path(&root.to_string_lossy(), &home))
-                    .unwrap_or_else(|| "Hidden source".to_owned());
+                    .or_else(|| profile.default_roots.first().map(|root| (*root).to_owned()))
+                    .unwrap_or_else(|| "Application presence".to_owned());
                 LocalSourceStatus {
-                    harness: harness_for(kind),
-                    label: label_for(kind),
+                    harness: wire_harness_id(profile.id).into(),
+                    label: profile.label,
+                    tier: LocalSourceSupportTier::from(profile.tier),
+                    observation: match profile.id {
+                        "codex" | "claude_code" | "pi" => LocalSourceObservation::NativeSessions,
+                        _ if profile.structured_lifecycle => LocalSourceObservation::StructuredHook,
+                        _ => LocalSourceObservation::PresenceOnly,
+                    },
                     health: if available {
                         LocalSourceHealth::Healthy
                     } else {
@@ -272,20 +318,26 @@ impl LocalSourceStatusState {
     }
 }
 
-const fn harness_for(kind: ParserKind) -> LocalSourceHarness {
+const fn harness_for(kind: ParserKind) -> &'static str {
     match kind {
-        ParserKind::Codex => LocalSourceHarness::Codex,
-        ParserKind::Claude => LocalSourceHarness::ClaudeCode,
-        ParserKind::Pi => LocalSourceHarness::Pi,
+        ParserKind::Codex => "codex",
+        ParserKind::Claude => "claudeCode",
+        ParserKind::Pi => "pi",
     }
 }
 
-const fn label_for(kind: ParserKind) -> &'static str {
-    match kind {
-        ParserKind::Codex => "Codex",
-        ParserKind::Claude => "Claude Code",
-        ParserKind::Pi => "Pi",
+fn wire_harness_id(id: &str) -> &str {
+    match id {
+        "claude_code" => "claudeCode",
+        "kimi_code" => "kimiCode",
+        value => value,
     }
+}
+
+fn expand_catalog_root(root: &str, home: &str) -> PathBuf {
+    root.strip_prefix("~/")
+        .map(|relative| PathBuf::from(home).join(relative))
+        .unwrap_or_else(|| PathBuf::from(root))
 }
 
 struct WatchedSession {

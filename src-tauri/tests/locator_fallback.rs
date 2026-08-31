@@ -130,6 +130,62 @@ fn claude_and_pi_can_correlate_one_running_terminal_without_reading_command_argu
 }
 
 #[test]
+fn catalog_terminal_harnesses_use_allowlisted_process_names_for_exact_return() {
+    let processes = vec![
+        ObservedProcess::new(10, 1, None, "Terminal", None),
+        ObservedProcess::new(20, 10, Some("ttys014"), "zsh", None),
+        ObservedProcess::new(
+            30,
+            20,
+            Some("ttys014"),
+            "qwen",
+            Some("/workspace/cookbench"),
+        ),
+    ];
+    let base = SessionLocator {
+        working_directory: Some("/workspace/cookbench".to_owned()),
+        native_session_id: "qwen-session".to_owned(),
+        ..SessionLocator::default()
+    };
+
+    let correlated = correlate_terminal_locator(
+        &cookbench_core::domain::HarnessId::Other("qwen_code".into()),
+        base,
+        &processes,
+    );
+    assert_eq!(correlated.tty.as_deref(), Some("/dev/ttys014"));
+    assert_eq!(
+        correlated.host_application,
+        Some(HostApplication::MacosTerminal)
+    );
+}
+
+#[test]
+fn presence_only_profiles_never_claim_an_exact_terminal() {
+    let processes = vec![
+        ObservedProcess::new(10, 1, None, "Terminal", None),
+        ObservedProcess::new(
+            30,
+            10,
+            Some("ttys015"),
+            "workbuddy",
+            Some("/workspace/cookbench"),
+        ),
+    ];
+    let base = SessionLocator {
+        working_directory: Some("/workspace/cookbench".to_owned()),
+        native_session_id: "workbuddy-presence".to_owned(),
+        ..SessionLocator::default()
+    };
+    let correlated = correlate_terminal_locator(
+        &cookbench_core::domain::HarnessId::Other("workbuddy".into()),
+        base.clone(),
+        &processes,
+    );
+    assert_eq!(correlated, base);
+}
+
+#[test]
 fn ambiguous_terminal_processes_do_not_claim_an_exact_session() {
     let processes = vec![
         ObservedProcess::new(10, 1, None, "Terminal", None),

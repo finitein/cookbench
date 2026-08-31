@@ -10,8 +10,8 @@ use std::{
 
 use cookbench_core::domain::{EventKind, HostIdentity, ProjectIdentity, StoveEvent, StoveIdentity};
 use cookbench_desktop_lib::runtime::{
-    start, LocalObservationConfig, LocalObservationRuntime, LocalSourceStatusState,
-    ObservationOrigin, ObservationSink, ObservationSummary,
+    start, LocalObservationConfig, LocalObservationRuntime, LocalSourceObservation,
+    LocalSourceStatusState, ObservationOrigin, ObservationSink, ObservationSummary,
 };
 
 #[derive(Default)]
@@ -126,15 +126,22 @@ fn reconstructs_three_native_harnesses_then_observes_appended_lifecycle_records(
     runtime.bootstrap();
     assert_eq!(runtime.session_count(), 3);
     let statuses = runtime.source_status();
-    assert_eq!(statuses.sources.len(), 3);
+    assert_eq!(statuses.sources.len(), cookbench_adapters::catalog().len());
     assert!(statuses
         .sources
         .iter()
+        .filter(|source| matches!(source.harness.as_str(), "codex" | "claudeCode" | "pi"))
         .all(|source| source.discovered_sessions == 1));
     assert!(statuses
         .sources
         .iter()
         .all(|source| source.parser_errors == 0));
+    let workbuddy = statuses
+        .sources
+        .iter()
+        .find(|source| source.harness == "workbuddy")
+        .unwrap();
+    assert_eq!(workbuddy.observation, LocalSourceObservation::PresenceOnly);
     let status_json = serde_json::to_string(&statuses).unwrap();
     assert!(!status_json.contains("turn_completed"));
     assert!(!status_json.contains("user_prompt"));

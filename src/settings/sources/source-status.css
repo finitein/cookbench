@@ -46,6 +46,16 @@
 
 .source-status__identity strong { font-size: 13px; }
 
+.source-status__tier {
+  border: 1px solid #c8d1da;
+  border-radius: 4px;
+  flex: none;
+  padding: 1px 5px;
+}
+
+.source-status__identity .source-status__tier--full { border-color: #71b58f; color: #137145; }
+.source-status__identity .source-status__tier--experimental { border-color: #d9a76c; color: #8a4f08; }
+
 .source-status__identity span {
   overflow: hidden;
   color: #647384;

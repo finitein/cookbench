@@ -3,6 +3,7 @@ use std::{collections::HashMap, path::Path};
 #[cfg(target_os = "macos")]
 use std::time::{Duration, Instant};
 
+use cookbench_adapters::{harness_profile, ReturnSurface};
 use cookbench_core::{
     domain::HarnessId,
     locator::{HostApplication, SessionLocator, TerminalKind},
@@ -55,7 +56,7 @@ pub fn correlate_terminal_locator(
     mut locator: SessionLocator,
     processes: &[ObservedProcess],
 ) -> SessionLocator {
-    if !matches!(harness, HarnessId::ClaudeCode | HarnessId::Pi) {
+    if !terminal_return_supported(harness) {
         return locator;
     }
 
@@ -119,7 +120,26 @@ fn harness_process(harness: &HarnessId, executable: &str) -> bool {
     match harness {
         HarnessId::ClaudeCode => name.eq_ignore_ascii_case("claude"),
         HarnessId::Pi => name.eq_ignore_ascii_case("pi"),
-        HarnessId::Codex | HarnessId::Other(_) => false,
+        HarnessId::Other(id) => harness_profile(id).is_some_and(|profile| {
+            profile
+                .executables
+                .iter()
+                .any(|expected| name.eq_ignore_ascii_case(expected))
+        }),
+        HarnessId::Codex => false,
+    }
+}
+
+fn terminal_return_supported(harness: &HarnessId) -> bool {
+    match harness {
+        HarnessId::ClaudeCode | HarnessId::Pi => true,
+        HarnessId::Other(id) => harness_profile(id).is_some_and(|profile| {
+            matches!(
+                profile.return_surface,
+                ReturnSurface::Terminal | ReturnSurface::ApplicationOrTerminal
+            )
+        }),
+        HarnessId::Codex => false,
     }
 }
 
