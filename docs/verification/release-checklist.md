@@ -21,7 +21,7 @@ clear, and outbound-notification observations in Vite `e2e` mode. A production
 build scan confirms that the driver name, storage keys, and implementation are
 absent from `dist`.
 
-## v0.2.1 Release Candidate Gate
+## v0.2.2 Release Candidate Gate
 
 The 2026-08-31 macOS development run completed `./scripts/verify.sh` without
 error: Rust formatting, workspace Clippy with warnings denied, all Rust unit and
@@ -32,9 +32,13 @@ absence scan, and source-only package inventory all passed.
 The earlier `v0.2.0` tag did not publish a GitHub Release. Its package workflow
 correctly stopped after the macOS bundle omitted architecture-specific sidecars
 and the Linux/Windows audit treated generated system icon sizes as unrelated
-runtime artwork. `v0.2.1` stages both per-architecture and universal helpers and
-audits platform icon derivatives separately from the two approved runtime SVGs.
-The repaired path produced a local universal macOS app and DMG containing
+runtime artwork. `v0.2.1` corrected those issues and Ubuntu x64 then built,
+audited, and staged successfully, but no Release was published: the prerelease
+macOS job consumed a configured signing certificate that the runner could not
+import, and Git Bash passed its POSIX root path directly to Windows Node during
+the MSI audit. `v0.2.2` clears signing variables only for unsigned prerelease
+builds and resolves package metadata after changing to the repository directory.
+The repaired path also produced a local universal macOS app and DMG containing
 universal `cookbench-bridge` and `cookbench-hook` binaries; package smoke passed.
 
 Additional release contracts passed:

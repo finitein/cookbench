@@ -3,7 +3,7 @@ set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 mode="${1:-}"
-expected_version="$(node -p "require('$root/package.json').version")"
+expected_version="$(cd "$root" && node -p "require('./package.json').version")"
 
 forbidden_regex='\.(gif|jpe?g|webp|avif|mp4|mov|webm|lottie|riv|woff2?|ttf|otf)$|(^|/)(sprites?|sprite-sheets?)(/|\.)'
 

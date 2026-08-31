@@ -13,6 +13,7 @@ test("tag release builds the declared macOS, Windows, and Ubuntu artifact matrix
   const workflow = await read(".github/workflows/release.yml");
   const staging = await read("scripts/release/stage-artifacts.sh");
   const macSidecars = await read("scripts/release/prepare-macos-universal-sidecars.sh");
+  const packageSmoke = await read("scripts/package-smoke.sh");
 
   for (const required of [
     "macos_universal",
@@ -42,8 +43,10 @@ test("tag release builds the declared macOS, Windows, and Ubuntu artifact matrix
   assert.match(workflow, /if \[\[ "\$RELEASE_CHANNEL" == "prerelease" \]\]/);
   assert.match(workflow, /args\+=\(--draft\)/);
   assert.match(workflow, /COOKBENCH_TARGET: universal-apple-darwin/);
+  assert.match(workflow, /if \[\[ "\$RELEASE_CHANNEL" == "prerelease" \]\]; then[\s\S]*unset APPLE_CERTIFICATE/);
   assert.match(macSidecars, /for helper in cookbench-bridge cookbench-hook/);
   assert.match(macSidecars, /src-tauri\/binaries\/\$helper-\$target/);
+  assert.match(packageSmoke, /cd "\$root" && node -p "require\('\.\/package\.json'\)\.version"/);
 });
 
 test("release output is checksummed, described, and kept distinct from stable publishing", async () => {

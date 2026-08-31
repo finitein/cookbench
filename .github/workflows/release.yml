@@ -123,7 +123,12 @@ jobs:
           pnpm tauri icon docs/visual-prototype/assets/cookbench-mark.svg
       - name: Build macOS universal app and DMG
         shell: bash
-        run: pnpm tauri build --ci --target universal-apple-darwin --config packaging/tauri.macos-universal.conf.json --bundles app,dmg
+        run: |
+          if [[ "$RELEASE_CHANNEL" == "prerelease" ]]; then
+            unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY
+            unset APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
+          fi
+          pnpm tauri build --ci --target universal-apple-darwin --config packaging/tauri.macos-universal.conf.json --bundles app,dmg
       - name: Audit package contents
         shell: bash
         run: bash scripts/package-smoke.sh target/universal-apple-darwin/release/bundle

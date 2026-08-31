@@ -39,12 +39,12 @@ Codex、Claude Code、Pi、Kimi Code、ZCode は Cookbench 所有 Hook の自動
 
 ```bash
 # macOS universal / GUI Ubuntu Linux x86_64
-curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.2.1/install.sh | COOKBENCH_VERSION=v0.2.1 COOKBENCH_ALLOW_PRERELEASE=1 bash
+curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.2.2/install.sh | COOKBENCH_VERSION=v0.2.2 COOKBENCH_ALLOW_PRERELEASE=1 bash
 ```
 
 ```powershell
 # Windows x64 PowerShell
-$env:COOKBENCH_VERSION='v0.2.1'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.2.1/install.ps1 | iex
+$env:COOKBENCH_VERSION='v0.2.2'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.2.2/install.ps1 | iex
 ```
 
 `release-manifest.json` からネイティブパッケージを選び、SHA-256 検証後にだけ

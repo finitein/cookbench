@@ -38,12 +38,12 @@ Codex、Claude Code、Pi、Kimi Code、ZCode 已支持自动维护 Cookbench 自
 
 ```bash
 # macOS 通用版 / 图形化 Ubuntu Linux x86_64
-curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.2.1/install.sh | COOKBENCH_VERSION=v0.2.1 COOKBENCH_ALLOW_PRERELEASE=1 bash
+curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.2.2/install.sh | COOKBENCH_VERSION=v0.2.2 COOKBENCH_ALLOW_PRERELEASE=1 bash
 ```
 
 ```powershell
 # Windows x64 PowerShell
-$env:COOKBENCH_VERSION='v0.2.1'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.2.1/install.ps1 | iex
+$env:COOKBENCH_VERSION='v0.2.2'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.2.2/install.ps1 | iex
 ```
 
 脚本会从 `release-manifest.json` 选择原生安装包并先验证 SHA-256。预览包可能

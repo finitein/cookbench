@@ -13,14 +13,14 @@ function manifest(channel = "stable") {
   return {
     schemaVersion: 1,
     product: "Cookbench",
-    version: "0.2.1",
+    version: "0.2.2",
     channel,
     signing: channel === "stable" ? "required" : "unsigned-prerelease",
     artifacts: [
-      { name: "Cookbench-0.2.1-macos-universal.dmg", sha256: "a".repeat(64) },
-      { name: "Cookbench-0.2.1-windows-x64.msi", sha256: "b".repeat(64) },
-      { name: "Cookbench-0.2.1-linux-amd64.deb", sha256: "c".repeat(64) },
-      { name: "Cookbench-0.2.1-linux-amd64.AppImage", sha256: "d".repeat(64) },
+      { name: "Cookbench-0.2.2-macos-universal.dmg", sha256: "a".repeat(64) },
+      { name: "Cookbench-0.2.2-windows-x64.msi", sha256: "b".repeat(64) },
+      { name: "Cookbench-0.2.2-linux-amd64.deb", sha256: "c".repeat(64) },
+      { name: "Cookbench-0.2.2-linux-amd64.AppImage", sha256: "d".repeat(64) },
     ],
   };
 }
@@ -39,9 +39,9 @@ async function withManifest(channel, run) {
 test("shell installer selects platform artifacts without installing in dry-run", async () => {
   await withManifest("stable", async (path) => {
     for (const [os, arch, expected] of [
-      ["macos", "arm64", "Cookbench-0.2.1-macos-universal.dmg"],
-      ["macos", "x64", "Cookbench-0.2.1-macos-universal.dmg"],
-      ["linux", "x64", "Cookbench-0.2.1-linux-amd64.AppImage"],
+      ["macos", "arm64", "Cookbench-0.2.2-macos-universal.dmg"],
+      ["macos", "x64", "Cookbench-0.2.2-macos-universal.dmg"],
+      ["linux", "x64", "Cookbench-0.2.2-linux-amd64.AppImage"],
     ]) {
       const { stdout } = await exec("bash", [
         new URL("../../scripts/install.sh", import.meta.url).pathname,
