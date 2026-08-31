@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=1200"><title>SSH observation</title><link rel="stylesheet" href="shared.css"></head>
+<body>
+<main class="poster theme-blue" data-topic="ssh">
+  <header class="masthead"><div class="brand"><img src="assets/cookbench-mark.svg" alt="">Cookbench</div><div class="page-no">07 / 12</div></header>
+  <section class="body">
+    <p class="eyebrow">Your remote agents, on the same Bar</p>
+    <h1>Observe over SSH. Open no port.</h1>
+    <p class="lead">Use the SSH config and trust model already on your machine. Cookbench remains a read-only observer.</p>
+    <div class="stage stage--accent">
+      <div class="flow">
+        <div class="flow-node"><img src="assets/cookbench-mark.svg" alt="" style="width:66px"><br>Local Cookbench</div>
+        <div class="flow-arrow">⇄</div>
+        <div class="flow-node emphasis">System SSH<br><span style="font-size:17px">stdio only</span></div>
+        <div class="flow-arrow">⇄</div>
+        <div class="flow-node">Remote native<br>session roots</div>
+      </div>
+      <div class="privacy-grid" style="margin-top:36px">
+        <section class="privacy-item"><h3>Zero-install mode</h3><p style="margin-top:12px">Scan supported standard roots with ordinary SSH commands. Leave Session roots empty for automatic discovery.</p></section>
+        <section class="privacy-item"><h3>Optional bridge</h3><p style="margin-top:12px">Upload one checksum-verified binary and keep all communication inside SSH stdin/stdout.</p></section>
+      </div>
+      <ul class="check-list"><li>No SSH password stored</li><li>No listening service or inbound control plane</li><li>No Agent start, stop, prompt, approval, or interruption</li></ul>
+    </div>
+  </section>
+  <footer class="footer"><span><strong>Remote status, local trust.</strong> Existing known_hosts stays in charge.</span><span>cookbench</span></footer>
+</main>
+</body>
+</html>
