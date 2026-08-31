@@ -42,10 +42,18 @@ deterministic 1200x1500 output size with no clipping or overlap.
 
 The public [`v0.3.0` release notes](../releases/v0.3.0.md) explicitly retain the
 unsigned-prerelease channel, signing gaps, registry status, and incomplete
-native platform gates. Tag-driven package, checksum, manifest, SBOM, installer,
-and GitHub Release evidence remains pending until the immutable `v0.3.0` tag is
-built by the public release workflow; it is not inferred from the local source
-gate.
+native platform gates. The public
+[`v0.3.0` release workflow](https://github.com/finitein/cookbench/actions/runs/33394397024)
+resolved the immutable tag to commit `61c803c`, then passed its channel gate,
+macOS universal, Windows x64, Ubuntu x64, metadata, and publication jobs. The
+resulting unsigned
+[`v0.3.0` prerelease](https://github.com/finitein/cookbench/releases/tag/v0.3.0)
+contains AppImage, DEB, universal App/DMG, MSI, both installers, SHA-256 sums,
+the release manifest, and the SPDX SBOM. All seven files named by `SHA256SUMS`
+were downloaded and verified locally. The manifest reports version `0.3.0`,
+channel `prerelease`, signing `unsigned-prerelease`, and all five native
+artifacts; the published shell installer selected the expected macOS universal
+DMG in an opt-in no-install dry run.
 
 ## v0.2.2 Release Candidate Gate
 
