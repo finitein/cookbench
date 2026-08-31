@@ -4,6 +4,7 @@ import type { StoveWire } from "../types/stove";
 import { createPositionPersistence, detachedStoveTransport, startDetachedWindowDrag } from "../services/detachedStoves";
 import { DetachedStoveBar } from "./DetachedStoveBar";
 import { archiveStove, setStovePinned } from "../services/stoves";
+import { useI18n } from "../i18n/i18n";
 
 export type DetachedStoveWindowProps = {
   stove: StoveWire;
@@ -12,6 +13,7 @@ export type DetachedStoveWindowProps = {
 };
 
 export function DetachedStoveWindow({ stove, onActivate, activeAlertStoveId }: DetachedStoveWindowProps) {
+  const { t } = useI18n();
   useEffect(() => {
     const persistence = createPositionPersistence(({ x, y }) => {
       void detachedStoveTransport.recordPosition(stove.id, x, y);
@@ -36,7 +38,7 @@ export function DetachedStoveWindow({ stove, onActivate, activeAlertStoveId }: D
   }, [stove.id]);
 
   return (
-    <main className="shell shell--detached" aria-label="Cookbench detached Stove">
+    <main className="shell shell--detached" aria-label={t("bar.detached", { name: "Cookbench" })}>
       <DetachedStoveBar
         stove={stove}
         onActivate={onActivate}

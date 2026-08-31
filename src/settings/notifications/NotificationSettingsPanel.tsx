@@ -19,6 +19,7 @@ import { DisplaySettingsPanel } from "../display/DisplaySettingsPanel";
 import { SourcesStatusPanel } from "../sources/SourcesStatusPanel";
 import { HookHealthPanel } from "../hooks/HookHealthPanel";
 import { ArchiveSettingsPanel } from "../archive/ArchiveSettingsPanel";
+import { useI18n, type TranslationKey } from "../../i18n/i18n";
 
 const LABELS: Record<NotificationDestination, string> = {
   telegram: "Telegram",
@@ -28,25 +29,26 @@ const LABELS: Record<NotificationDestination, string> = {
   generic: "Generic Webhook",
 };
 
-const EVENTS: Array<{ id: NotificationEvent; label: string }> = [
-  { id: "sessionAppeared", label: "Session Appeared" },
-  { id: "cookingStarted", label: "Cooking Started" },
-  { id: "phaseChanged", label: "Phase Changed" },
-  { id: "needsHuman", label: "Needs Human" },
-  { id: "progressMilestone", label: "Progress Milestone" },
-  { id: "cooked", label: "Cooked" },
-  { id: "failed", label: "Failed" },
-  { id: "disconnected", label: "Disconnected" },
-  { id: "connectionRestored", label: "Connection Restored" },
-  { id: "stoveCleared", label: "Stove Cleared" },
-];
+const EVENTS: NotificationEvent[] = ["sessionAppeared", "cookingStarted", "phaseChanged", "needsHuman", "progressMilestone", "cooked", "failed", "disconnected", "connectionRestored", "stoveCleared"];
+const EVENT_KEYS: Record<NotificationEvent, TranslationKey> = {
+  sessionAppeared: "notifications.sessionAppeared", cookingStarted: "notifications.cookingStarted",
+  phaseChanged: "notifications.phaseChanged", needsHuman: "notifications.needsHuman",
+  progressMilestone: "notifications.progressMilestone", cooked: "notifications.cooked",
+  failed: "notifications.failed", disconnected: "notifications.disconnected",
+  connectionRestored: "notifications.connectionRestored", stoveCleared: "notifications.stoveCleared",
+};
 
-const LOCAL_CHANNELS: Array<{ id: LocalNotificationChannel; label: string }> = [
-  { id: "sound", label: "Sound" },
-  { id: "systemBanner", label: "System notification" },
-  { id: "barFlash", label: "Flash Stove" },
-  { id: "systemAttention", label: "Request attention" },
-];
+const LOCAL_CHANNELS: LocalNotificationChannel[] = ["sound", "systemBanner", "barFlash", "systemAttention"];
+const CHANNEL_KEYS: Record<LocalNotificationChannel, TranslationKey> = {
+  sound: "notifications.sound", systemBanner: "notifications.system",
+  barFlash: "notifications.flash", systemAttention: "notifications.attention",
+};
+
+type StatusMessage = {
+  key: TranslationKey;
+  name?: string;
+  nameKey?: TranslationKey;
+};
 
 const DEFAULT_LOCAL_NOTIFICATION_SETTINGS: LocalNotificationSettingsWire = {
   sound: true,
@@ -57,6 +59,9 @@ const DEFAULT_LOCAL_NOTIFICATION_SETTINGS: LocalNotificationSettingsWire = {
 };
 
 export function NotificationSettingsPanel() {
+  const { t } = useI18n();
+  const eventLabel = (event: NotificationEvent) => t(EVENT_KEYS[event]);
+  const channelLabel = (channel: LocalNotificationChannel) => t(CHANNEL_KEYS[channel]);
   const [tab, setTab] = useState<"general" | "archive">("general");
   const [destinations, setDestinations] = useState<NotificationDestinationWire[]>([]);
   const [localSettings, setLocalSettings] = useState<LocalNotificationSettingsWire>(
@@ -65,20 +70,20 @@ export function NotificationSettingsPanel() {
   const [secrets, setSecrets] = useState<Partial<Record<NotificationDestination, string>>>({});
   const [busy, setBusy] = useState<NotificationDestination | null>(null);
   const [localBusy, setLocalBusy] = useState<"save" | LocalNotificationChannel | null>(null);
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState<StatusMessage | null>(null);
 
   useEffect(() => {
     void getNotificationSettings().then(setDestinations).catch(() => {
-      setStatus("Notification settings are unavailable.");
+      setStatus({ key: "notifications.settingsUnavailable" });
     });
     void getLocalNotificationSettings().then(setLocalSettings).catch(() => {
-      setStatus("Local alert settings are unavailable.");
+      setStatus({ key: "notifications.localUnavailable" });
     });
   }, []);
 
   useEffect(() => {
     if (!status) return undefined;
-    const timeout = window.setTimeout(() => setStatus(""), 20_000);
+    const timeout = window.setTimeout(() => setStatus(null), 20_000);
     return () => window.clearTimeout(timeout);
   }, [status]);
 
@@ -93,7 +98,7 @@ export function NotificationSettingsPanel() {
 
   const save = async (item: NotificationDestinationWire) => {
     setBusy(item.destination);
-    setStatus("");
+    setStatus(null);
     try {
       const next = await configureNotificationDestination({
         destination: item.destination,
@@ -105,9 +110,9 @@ export function NotificationSettingsPanel() {
       });
       setDestinations(next);
       setSecrets((current) => ({ ...current, [item.destination]: "" }));
-      setStatus(`${LABELS[item.destination]} saved.`);
+      setStatus({ key: "notifications.saved", name: LABELS[item.destination] });
     } catch {
-      setStatus(`${LABELS[item.destination]} could not be saved.`);
+      setStatus({ key: "notifications.saveFailed", name: LABELS[item.destination] });
     } finally {
       setBusy(null);
     }
@@ -115,12 +120,12 @@ export function NotificationSettingsPanel() {
 
   const test = async (item: NotificationDestinationWire) => {
     setBusy(item.destination);
-    setStatus("");
+    setStatus(null);
     try {
       await sendTestNotification(item.destination);
-      setStatus(`${LABELS[item.destination]} test sent.`);
+      setStatus({ key: "notifications.testSent", name: LABELS[item.destination] });
     } catch {
-      setStatus(`${LABELS[item.destination]} test failed.`);
+      setStatus({ key: "notifications.testFailed", name: LABELS[item.destination] });
     } finally {
       setBusy(null);
     }
@@ -132,12 +137,12 @@ export function NotificationSettingsPanel() {
 
   const saveLocal = async () => {
     setLocalBusy("save");
-    setStatus("");
+    setStatus(null);
     try {
       setLocalSettings(await configureLocalNotificationSettings(localSettings));
-      setStatus("Local alerts saved.");
+      setStatus({ key: "notifications.localSaved" });
     } catch {
-      setStatus("Local alerts could not be saved.");
+      setStatus({ key: "notifications.localSaveFailed" });
     } finally {
       setLocalBusy(null);
     }
@@ -145,89 +150,88 @@ export function NotificationSettingsPanel() {
 
   const testLocal = async (channel: LocalNotificationChannel) => {
     setLocalBusy(channel);
-    setStatus("");
+    setStatus(null);
     try {
       const result = await testLocalNotification(channel);
-      const label = LOCAL_CHANNELS.find((item) => item.id === channel)?.label ?? "Local alert";
       setStatus(
         result === "delivered" || result === "queued"
-          ? `${label} test sent.`
+          ? { key: "notifications.testSent", nameKey: CHANNEL_KEYS[channel] }
           : result === "permissionDenied"
-            ? `${label} needs system notification permission.`
-            : `${label} is unavailable on this system.`,
+            ? { key: "notifications.permission", nameKey: CHANNEL_KEYS[channel] }
+            : { key: "notifications.channelUnavailable", nameKey: CHANNEL_KEYS[channel] },
       );
     } catch {
-      setStatus("Local alert test failed.");
+      setStatus({ key: "notifications.localTestFailed" });
     } finally {
       setLocalBusy(null);
     }
   };
 
   return (
-    <main className="notification-settings" aria-label="Cookbench settings">
+    <main className="notification-settings" aria-label={`Cookbench ${t("settings.title").toLowerCase()}`}>
       <div className="notification-settings__surface">
         <header className="notification-settings__masthead">
           <div>
             <p>Cookbench</p>
-            <h1>Settings</h1>
+            <h1>{t("settings.title")}</h1>
           </div>
         </header>
-        <div className="notification-settings__tabs" role="tablist" aria-label="Settings sections">
-          <button type="button" role="tab" aria-selected={tab === "general"} onClick={() => setTab("general")}>General</button>
-          <button type="button" role="tab" aria-selected={tab === "archive"} onClick={() => setTab("archive")}>Archive</button>
+        <div className="notification-settings__tabs" role="tablist" aria-label={t("settings.title")}>
+          <button type="button" role="tab" aria-selected={tab === "general"} onClick={() => setTab("general")}>{t("settings.general")}</button>
+          <button type="button" role="tab" aria-selected={tab === "archive"} onClick={() => setTab("archive")}>{t("settings.archive")}</button>
         </div>
         {tab === "archive" ? <ArchiveSettingsPanel /> : <>
         <DisplaySettingsPanel />
         <section aria-labelledby="local-alerts-title">
           <div className="notification-settings__section-heading">
-            <h2 id="local-alerts-title">Local alerts</h2>
+            <h2 id="local-alerts-title">{t("notifications.local")}</h2>
           </div>
           <div className="notification-settings__local-alerts">
             {LOCAL_CHANNELS.map((channel) => (
-              <div className="notification-settings__local-channel" key={channel.id}>
+              <div className="notification-settings__local-channel" key={channel}>
                 <label className="notification-settings__toggle">
                   <input
                     type="checkbox"
-                    checked={localSettings[channel.id]}
-                    onChange={(event) => updateLocal({ [channel.id]: event.target.checked })}
+                    checked={localSettings[channel]}
+                    onChange={(event) => updateLocal({ [channel]: event.target.checked })}
                   />
-                  <span>{channel.label}</span>
+                  <span>{channelLabel(channel)}</span>
                 </label>
                 <button
                   type="button"
-                  aria-label={`Test ${channel.label}`}
+                  aria-label={`${t("notifications.test")} ${channelLabel(channel)}`}
                   disabled={localBusy !== null}
-                  onClick={() => void testLocal(channel.id)}
+                  onClick={() => void testLocal(channel)}
                 >
-                  Test
+                  {t("notifications.test")}
                 </button>
               </div>
             ))}
             <fieldset>
-              <legend>States</legend>
+              <legend>{t("common.states")}</legend>
               {EVENTS.map((event) => (
-                <label key={event.id}>
+                <label key={event}>
                   <input
                     type="checkbox"
-                    checked={localSettings.events.includes(event.id)}
+                    checked={localSettings.events.includes(event)}
                     onChange={(input) => updateLocal({
                       events: input.target.checked
-                        ? [...localSettings.events, event.id]
-                        : localSettings.events.filter((candidate) => candidate !== event.id),
+                        ? [...localSettings.events, event]
+                        : localSettings.events.filter((candidate) => candidate !== event),
                     })}
                   />
-                  {event.label}
+                  {eventLabel(event)}
                 </label>
               ))}
             </fieldset>
             <div className="notification-settings__actions">
-              <button type="button" disabled={localBusy !== null} onClick={() => void saveLocal()}>Save</button>
+              <button type="button" disabled={localBusy !== null} onClick={() => void saveLocal()}>{t("common.save")}</button>
             </div>
           </div>
         </section>
         <section aria-labelledby="notification-settings-title">
           <div className="notification-settings__section-heading">
-            <h2 id="notification-settings-title">Notifications</h2>
+            <h2 id="notification-settings-title">{t("notifications.title")}</h2>
           </div>
           <div className="notification-settings__destinations">
         {destinations.map((item) => (
@@ -240,17 +244,17 @@ export function NotificationSettingsPanel() {
                   checked={item.enabled}
                   onChange={(event) => update(item.destination, { enabled: event.target.checked })}
                 />
-                <span>Enabled</span>
+                <span>{t("common.enabled")}</span>
               </label>
             </div>
             <div className="notification-settings__fields">
               <label>
-                <span>{item.destination === "telegram" ? "Bot token" : "Webhook URL"}</span>
+                <span>{item.destination === "telegram" ? t("notifications.botToken") : t("notifications.webhook")}</span>
                 <input
                   type="password"
                   value={secrets[item.destination] ?? ""}
                   autoComplete="off"
-                  placeholder={item.configured ? "Stored in system credentials" : "Not configured"}
+                  placeholder={item.configured ? t("notifications.stored") : t("notifications.notConfigured")}
                   onChange={(event) => setSecrets((current) => ({
                     ...current,
                     [item.destination]: event.target.value,
@@ -259,7 +263,7 @@ export function NotificationSettingsPanel() {
               </label>
               {item.destination === "telegram" ? (
                 <label>
-                  <span>Chat ID</span>
+                  <span>{t("notifications.chatId")}</span>
                   <input
                     value={item.recipient ?? ""}
                     onChange={(event) => update(item.destination, { recipient: event.target.value })}
@@ -268,24 +272,24 @@ export function NotificationSettingsPanel() {
               ) : null}
             </div>
             <fieldset>
-              <legend>States</legend>
+              <legend>{t("common.states")}</legend>
               {EVENTS.map((event) => (
-                <label key={event.id}>
+                <label key={event}>
                   <input
                     type="checkbox"
-                    checked={item.events.includes(event.id)}
+                    checked={item.events.includes(event)}
                     onChange={(input) => update(item.destination, {
                       events: input.target.checked
-                        ? [...item.events, event.id]
-                        : item.events.filter((candidate) => candidate !== event.id),
+                        ? [...item.events, event]
+                        : item.events.filter((candidate) => candidate !== event),
                     })}
                   />
-                  {event.label}
+                  {eventLabel(event)}
                 </label>
               ))}
             </fieldset>
             <label className="notification-settings__template">
-              <span>Message template</span>
+              <span>{t("notifications.template")}</span>
               <input
                 value={item.template ?? ""}
                 maxLength={1024}
@@ -296,19 +300,25 @@ export function NotificationSettingsPanel() {
               />
             </label>
             <div className="notification-settings__actions">
-              <button type="button" disabled={busy === item.destination} onClick={() => void save(item)}>Save</button>
+              <button type="button" disabled={busy === item.destination} onClick={() => void save(item)}>{t("common.save")}</button>
               <button
                 type="button"
                 disabled={!item.enabled || !item.configured || busy === item.destination}
                 onClick={() => void test(item)}
               >
-                Test
+                {t("notifications.test")}
               </button>
             </div>
           </section>
         ))}
           </div>
-          <output role="status" aria-live="polite">{status}</output>
+          <output role="status" aria-live="polite">{
+            status
+              ? t(status.key, status.name || status.nameKey
+                ? { name: status.name ?? (status.nameKey ? t(status.nameKey) : "") }
+                : undefined)
+              : ""
+          }</output>
         </section>
         <SourcesStatusPanel />
         <HookHealthPanel />

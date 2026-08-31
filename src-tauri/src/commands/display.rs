@@ -4,8 +4,8 @@
 //! or manage a harness session.
 
 use cookbench_core::persistence::{
-    GlobalBarPlacement, GlobalBarPosition, MonitorIdentity, MonitorWorkArea, PersistedConfig,
-    RelativePosition, WindowPosition,
+    AppLocale, GlobalBarPlacement, GlobalBarPosition, MonitorIdentity, MonitorWorkArea,
+    PersistedConfig, RelativePosition, WindowPosition,
 };
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, State};
@@ -13,6 +13,7 @@ use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, State};
 use crate::{
     app_state::AppState,
     commands::windows::TauriWindowCommandService,
+    i18n::NativeLocaleState,
     platform::{apply_platform_overlay, OverlayError},
 };
 
@@ -28,6 +29,7 @@ pub struct DisplaySettingsWire {
     pub global_bar_visible: bool,
     pub global_bar_placement: GlobalBarPlacement,
     pub hover_details_enabled: bool,
+    pub locale: AppLocale,
     pub detached_bars: Vec<DetachedBarWire>,
 }
 
@@ -37,6 +39,7 @@ pub struct DisplaySettingsInput {
     pub global_bar_visible: bool,
     pub global_bar_placement: GlobalBarPlacement,
     pub hover_details_enabled: bool,
+    pub locale: AppLocale,
 }
 
 pub const DISPLAY_SETTINGS_CHANGED_EVENT: &str = "cookbench://display-settings-changed";
@@ -46,6 +49,7 @@ pub fn settings_wire(config: &PersistedConfig) -> DisplaySettingsWire {
         global_bar_visible: config.layout.global_bar_visible,
         global_bar_placement: config.layout.global_bar_placement,
         hover_details_enabled: config.layout.hover_details_enabled,
+        locale: config.preferences.locale,
         detached_bars: config
             .layout
             .detached_layouts
@@ -67,14 +71,17 @@ pub fn configure_display_settings(
     input: DisplaySettingsInput,
     app: AppHandle,
     state: State<'_, AppState>,
+    native_locale: State<'_, NativeLocaleState>,
     windows: State<'_, TauriWindowCommandService>,
 ) -> Result<DisplaySettingsWire, String> {
     let previous = state.persisted_config().layout;
+    let previous_locale = state.persisted_config().preferences.locale;
     let placement_changed = previous.global_bar_placement != input.global_bar_placement;
     state.update_persisted_config(|config| {
         config.layout.global_bar_visible = input.global_bar_visible;
         config.layout.global_bar_placement = input.global_bar_placement;
         config.layout.hover_details_enabled = input.hover_details_enabled;
+        config.preferences.locale = input.locale;
         if placement_changed {
             // Choosing a screen anchor is an explicit request to leave the
             // last free-form drag position behind.
@@ -95,9 +102,34 @@ pub fn configure_display_settings(
         .set_global_bar_visible(input.global_bar_visible)
         .map_err(|error| error.to_string())?;
     let wire = settings_wire(&state.persisted_config());
-    app.emit_to("main", DISPLAY_SETTINGS_CHANGED_EVENT, &wire)
+    if previous_locale != input.locale {
+        let locale = native_locale.set_preference(input.locale);
+        apply_native_locale(&app, locale);
+    }
+    app.emit(DISPLAY_SETTINGS_CHANGED_EVENT, &wire)
         .map_err(|error| error.to_string())?;
     Ok(wire)
+}
+
+/// Synchronizes the browser-resolved system locale to native surfaces. The
+/// persisted preference remains `System`; only the runtime translation used
+/// by the tray, window title, and local notifications changes.
+#[tauri::command]
+pub fn sync_native_locale(
+    locale: AppLocale,
+    app: AppHandle,
+    native_locale: State<'_, NativeLocaleState>,
+) -> Result<(), String> {
+    let locale = native_locale.set_resolved(locale)?;
+    apply_native_locale(&app, locale);
+    Ok(())
+}
+
+fn apply_native_locale(app: &AppHandle, locale: AppLocale) {
+    let _ = crate::desktop_shell::runtime::update_menu(app, locale);
+    if let Some(settings) = app.get_webview_window("settings") {
+        let _ = settings.set_title(crate::i18n::settings_window_title(locale));
+    }
 }
 
 pub fn restore_global_bar_size(
@@ -324,6 +356,7 @@ mod tests {
                 global_bar_visible: false,
                 global_bar_placement: GlobalBarPlacement::BottomRight,
                 hover_details_enabled: false,
+                locale: AppLocale::System,
                 detached_bars: vec![DetachedBarWire {
                     stove_id: "remote-a:session-1".into()
                 }],

@@ -7,7 +7,8 @@ use std::{
 };
 
 use cookbench_core::{
-    notifications::NotificationEventKind, persistence::LocalNotificationPreferences,
+    notifications::NotificationEventKind,
+    persistence::{AppLocale, LocalNotificationPreferences},
 };
 use serde::{Deserialize, Serialize};
 use tauri::{plugin::PermissionState, Emitter, Manager, Runtime, UserAttentionType};
@@ -42,6 +43,8 @@ pub struct LocalAlertPayload {
     pub stove_id: String,
     pub project: String,
     pub event: NotificationEventKind,
+    #[serde(skip)]
+    locale: AppLocale,
 }
 
 impl LocalAlertPayload {
@@ -54,22 +57,17 @@ impl LocalAlertPayload {
             stove_id: bounded(stove_id.as_ref(), 128),
             project: bounded(project.as_ref(), 128),
             event,
+            locale: AppLocale::En,
         }
     }
 
+    pub const fn with_locale(mut self, locale: AppLocale) -> Self {
+        self.locale = locale;
+        self
+    }
+
     pub fn state_label(&self) -> &'static str {
-        match self.event {
-            NotificationEventKind::SessionAppeared => "Session appeared",
-            NotificationEventKind::CookingStarted => "Cooking started",
-            NotificationEventKind::PhaseChanged => "Phase changed",
-            NotificationEventKind::NeedsHuman => "Needs human",
-            NotificationEventKind::ProgressMilestone => "Progress updated",
-            NotificationEventKind::Cooked => "Cooked",
-            NotificationEventKind::Failed => "Failed",
-            NotificationEventKind::Disconnected => "Disconnected",
-            NotificationEventKind::ConnectionRestored => "Connection restored",
-            NotificationEventKind::StoveCleared => "Stove cleared",
-        }
+        crate::i18n::notification_event_label(self.locale, self.event)
     }
 
     fn banner_body(&self) -> String {
@@ -325,7 +323,9 @@ fn bounded(value: &str, max_chars: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{first_successful_sound, SystemSoundCommand};
+    use cookbench_core::{notifications::NotificationEventKind, persistence::AppLocale};
+
+    use super::{first_successful_sound, LocalAlertPayload, SystemSoundCommand};
 
     #[test]
     fn sound_candidates_continue_after_a_nonzero_exit() {
@@ -348,5 +348,14 @@ mod tests {
 
         assert!(delivered);
         assert_eq!(attempted, ["first", "second"]);
+    }
+
+    #[test]
+    fn native_alert_copy_follows_the_saved_locale() {
+        let alert = LocalAlertPayload::new("stove", "cookbench", NotificationEventKind::Cooked)
+            .with_locale(AppLocale::ZhCn);
+
+        assert_eq!(alert.state_label(), "任务已完成");
+        assert_eq!(alert.banner_body(), "cookbench · 任务已完成");
     }
 }

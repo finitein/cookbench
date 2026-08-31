@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DisplaySettingsPanel } from "./DisplaySettingsPanel";
+import { I18nProvider } from "../../i18n/i18n";
 
 const {
   getDisplaySettings,
@@ -32,6 +33,7 @@ describe("DisplaySettingsPanel", () => {
       globalBarVisible: true,
       globalBarPlacement: "topCenter",
       hoverDetailsEnabled: false,
+      locale: "system",
       detachedBars: [{ stoveId: "host-a:session-1" }],
     });
     configureDisplaySettings.mockImplementation(async (input) => ({
@@ -63,6 +65,7 @@ describe("DisplaySettingsPanel", () => {
         globalBarVisible: false,
         globalBarPlacement: "topCenter",
         hoverDetailsEnabled: false,
+        locale: "system",
       });
     });
     expect(screen.getByRole("button", { name: "Close independent Bar host-a:session-1" })).toBeInTheDocument();
@@ -80,8 +83,23 @@ describe("DisplaySettingsPanel", () => {
         globalBarVisible: true,
         globalBarPlacement: "topCenter",
         hoverDetailsEnabled: true,
+        locale: "system",
       });
     });
+  });
+
+  it("persists an explicit interface language selection", async () => {
+    render(<DisplaySettingsPanel />);
+
+    const language = await screen.findByRole("combobox", { name: "Language" });
+    fireEvent.change(language, { target: { value: "zh-CN" } });
+
+    await waitFor(() => expect(configureDisplaySettings).toHaveBeenCalledWith({
+      globalBarVisible: true,
+      globalBarPlacement: "topCenter",
+      hoverDetailsEnabled: false,
+      locale: "zh-CN",
+    }));
   });
 
   it("closes only the selected independent Bar", async () => {
@@ -100,5 +118,26 @@ describe("DisplaySettingsPanel", () => {
 
     await waitFor(() => expect(setLaunchAtLogin).toHaveBeenCalledWith(true));
     expect(launchAtLogin).toBeChecked();
+  });
+
+  it("renders an async error in the currently selected language", async () => {
+    let rejectSettings: ((reason?: unknown) => void) | undefined;
+    getDisplaySettings.mockReturnValueOnce(new Promise((_resolve, reject) => {
+      rejectSettings = reject;
+    }));
+    const { rerender } = render(
+      <I18nProvider preference="en">
+        <DisplaySettingsPanel />
+      </I18nProvider>,
+    );
+
+    rerender(
+      <I18nProvider preference="zh-CN">
+        <DisplaySettingsPanel />
+      </I18nProvider>,
+    );
+    rejectSettings?.(new Error("unavailable"));
+
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("显示设置不可用"));
   });
 });

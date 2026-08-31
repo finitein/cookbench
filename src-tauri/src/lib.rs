@@ -5,6 +5,7 @@ pub mod diagnostics;
 pub mod events;
 pub mod hook_spool;
 pub mod hooks;
+pub mod i18n;
 pub mod locator;
 pub mod notifications;
 pub mod persistence;
@@ -167,6 +168,7 @@ pub fn run() {
             None,
         ))
         .manage(app_state::AppState::default())
+        .manage(i18n::NativeLocaleState::default())
         .manage(notification_runtime)
         .manage(commands::notifications::LocalAlertCommandState(Arc::new(
             notifications::local::LocalAlertDispatcher::default(),
@@ -191,6 +193,7 @@ pub fn run() {
             commands::windows::set_global_bar_minimum_size,
             commands::display::get_display_settings,
             commands::display::configure_display_settings,
+            commands::display::sync_native_locale,
             commands::display::record_global_bar_position,
             commands::locator::activate_stove_locator,
             commands::notifications::open_notification_settings,
@@ -213,6 +216,8 @@ pub fn run() {
             let app_data = app.path().app_data_dir()?;
             let state = app.state::<app_state::AppState>();
             state.initialize_persistence(&app_data);
+            let native_locale = app.state::<i18n::NativeLocaleState>();
+            native_locale.set_preference(state.persisted_config().preferences.locale);
             if commands::notifications::configure_runtime(
                 &state.persisted_config(),
                 &app.state::<commands::notifications::NotificationCommandState>()
@@ -327,7 +332,7 @@ pub fn run() {
             ) {
                 eprintln!("Cookbench could not restore global Bar display preferences: {error}");
             }
-            match desktop_shell::runtime::install(app) {
+            match desktop_shell::runtime::install(app, native_locale.current()) {
                 Ok(Some(diagnostic)) => {
                     eprintln!("Cookbench desktop integration: {}", diagnostic.message);
                 }

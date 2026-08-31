@@ -1,5 +1,6 @@
 import { stoveSessionIdentity, type StoveWire } from "../types/stove";
 import { stoveStateLabel } from "./ProgressRing";
+import { useI18n } from "../i18n/i18n";
 
 function duration(seconds: number) {
   const minutes = Math.floor(seconds / 60);
@@ -16,23 +17,24 @@ export function StoveTooltip({
   id: string;
   className?: string;
 }) {
+  const { t } = useI18n();
   const structured = Boolean(stove.progress?.total);
-  const elapsed = stove.elapsedMs == null ? "Not reported" : duration(Math.floor(stove.elapsedMs / 1000));
+  const elapsed = stove.elapsedMs == null ? t("common.notReported") : duration(Math.floor(stove.elapsedMs / 1000));
 
   return (
     <aside className={`stove-tooltip${className ? ` ${className}` : ""}`} id={id} role="tooltip">
       <strong>{stove.projectLabel}</strong>
-      <span>{stove.taskTitle ?? "Current session"}</span>
+      <span>{stove.taskTitle ?? t("common.currentSession")}</span>
       <dl>
-        <div><dt>Harness</dt><dd>{stove.harness.label}</dd></div>
-        <div><dt>Host</dt><dd>{stove.host.kind === "ssh" ? `Remote: ${stove.host.id}` : `Local: ${stove.host.id}`}</dd></div>
-        <div><dt>Project</dt><dd>{stove.projectLabel ?? "Not reported"}</dd></div>
-        <div><dt>Session</dt><dd>{stoveSessionIdentity(stove)}</dd></div>
-        <div><dt>State</dt><dd>{stoveStateLabel(stove.state)}</dd></div>
-        <div><dt>Activity</dt><dd>{stove.currentAction ?? "Waiting for source activity"}</dd></div>
-        <div><dt>Progress</dt><dd>{structured ? `${stove.progress?.completed ?? 0}/${stove.progress?.total} (${stove.progress?.provenance})` : "No structured progress"}</dd></div>
-        <div><dt>Elapsed</dt><dd>{elapsed}</dd></div>
-        <div><dt>Next</dt><dd>{stove.nextAction ?? "No next action reported"}</dd></div>
+        <div><dt>{t("tooltip.harness")}</dt><dd>{stove.harness.label}</dd></div>
+        <div><dt>{t("tooltip.host")}</dt><dd>{stove.host.kind === "ssh" ? t("tooltip.remote", { host: stove.host.id }) : t("tooltip.local", { host: stove.host.id })}</dd></div>
+        <div><dt>{t("tooltip.project")}</dt><dd>{stove.projectLabel ?? t("common.notReported")}</dd></div>
+        <div><dt>{t("tooltip.session")}</dt><dd>{stoveSessionIdentity(stove)}</dd></div>
+        <div><dt>{t("tooltip.state")}</dt><dd>{stoveStateLabel(stove.state, t)}</dd></div>
+        <div><dt>{t("tooltip.activity")}</dt><dd>{stove.currentAction ?? t("tooltip.waiting")}</dd></div>
+        <div><dt>{t("tooltip.progress")}</dt><dd>{structured ? `${stove.progress?.completed ?? 0}/${stove.progress?.total} (${stove.progress?.provenance})` : t("tooltip.noProgress")}</dd></div>
+        <div><dt>{t("tooltip.elapsed")}</dt><dd>{elapsed}</dd></div>
+        <div><dt>{t("tooltip.next")}</dt><dd>{stove.nextAction ?? t("tooltip.noNext")}</dd></div>
       </dl>
     </aside>
   );

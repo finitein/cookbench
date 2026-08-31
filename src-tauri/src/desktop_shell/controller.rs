@@ -1,3 +1,5 @@
+use cookbench_core::persistence::AppLocale;
+
 /// The stable menu identifiers passed to Tauri's tray handler.
 pub const SHOW_BAR_MENU_ID: &str = "show-bar";
 pub const HIDE_BAR_MENU_ID: &str = "hide-bar";
@@ -19,35 +21,40 @@ pub struct TrayMenuItem {
     pub action: TrayAction,
 }
 
-pub const fn tray_menu() -> [TrayMenuItem; 4] {
+pub fn tray_menu(locale: AppLocale) -> [TrayMenuItem; 4] {
+    let [show_bar, hide_bar, open_settings, quit] = crate::i18n::tray_menu_titles(locale);
     [
         TrayMenuItem {
             id: SHOW_BAR_MENU_ID,
-            title: "Show Bar",
+            title: show_bar,
             action: TrayAction::ShowBar,
         },
         TrayMenuItem {
             id: HIDE_BAR_MENU_ID,
-            title: "Hide Bar",
+            title: hide_bar,
             action: TrayAction::HideBar,
         },
         TrayMenuItem {
             id: OPEN_SETTINGS_MENU_ID,
-            title: "Open Settings",
+            title: open_settings,
             action: TrayAction::OpenSettings,
         },
         TrayMenuItem {
             id: QUIT_MENU_ID,
-            title: "Quit",
+            title: quit,
             action: TrayAction::Quit,
         },
     ]
 }
 
 pub fn tray_action(id: &str) -> Option<TrayAction> {
-    tray_menu()
-        .into_iter()
-        .find_map(|item| (item.id == id).then_some(item.action))
+    match id {
+        SHOW_BAR_MENU_ID => Some(TrayAction::ShowBar),
+        HIDE_BAR_MENU_ID => Some(TrayAction::HideBar),
+        OPEN_SETTINGS_MENU_ID => Some(TrayAction::OpenSettings),
+        QUIT_MENU_ID => Some(TrayAction::Quit),
+        _ => None,
+    }
 }
 
 /// A platform-neutral accelerator understood by Tauri's official plugin.
@@ -113,7 +120,7 @@ mod tests {
     #[test]
     fn tray_menu_has_only_cookbench_presentation_actions() {
         assert_eq!(
-            tray_menu().map(|item| item.id),
+            tray_menu(AppLocale::En).map(|item| item.id),
             [
                 SHOW_BAR_MENU_ID,
                 HIDE_BAR_MENU_ID,
@@ -126,6 +133,7 @@ mod tests {
             Some(TrayAction::OpenSettings)
         );
         assert_eq!(tray_action("unknown"), None);
+        assert_eq!(tray_menu(AppLocale::ZhCn)[2].title, "打开设置");
     }
 
     #[test]

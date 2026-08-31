@@ -11,6 +11,8 @@ export type GlobalBarPlacement =
   | "bottomCenter"
   | "bottomRight";
 
+export type AppLocale = "system" | "en" | "zh-CN" | "ja" | "ko";
+
 export type DetachedBarWire = {
   stoveId: string;
 };
@@ -19,12 +21,13 @@ export type DisplaySettingsWire = {
   globalBarVisible: boolean;
   globalBarPlacement: GlobalBarPlacement;
   hoverDetailsEnabled: boolean;
+  locale: AppLocale;
   detachedBars: DetachedBarWire[];
 };
 
 export type DisplaySettingsInput = Pick<
   DisplaySettingsWire,
-  "globalBarVisible" | "globalBarPlacement" | "hoverDetailsEnabled"
+  "globalBarVisible" | "globalBarPlacement" | "hoverDetailsEnabled" | "locale"
 >;
 
 export function getDisplaySettings(): Promise<DisplaySettingsWire> {
@@ -33,6 +36,11 @@ export function getDisplaySettings(): Promise<DisplaySettingsWire> {
 
 export function configureDisplaySettings(input: DisplaySettingsInput): Promise<DisplaySettingsWire> {
   return invoke<DisplaySettingsWire>("configure_display_settings", { input });
+}
+
+/** Keeps tray, native window titles, and system notifications in step with the webview locale. */
+export function syncNativeLocale(locale: Exclude<AppLocale, "system">): Promise<void> {
+  return invoke<void>("sync_native_locale", { locale });
 }
 
 export async function subscribeToDisplaySettings(

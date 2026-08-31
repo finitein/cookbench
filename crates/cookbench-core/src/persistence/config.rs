@@ -8,6 +8,20 @@ use crate::notifications::NotificationEventKind;
 use super::Versioned;
 use super::{DetachedStoveLayout, MonitorIdentity, RelativePosition, WindowSize};
 
+/// The interface language selected by the user. `System` keeps first launch
+/// lightweight while explicit choices remain stable across every window.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AppLocale {
+    #[default]
+    System,
+    En,
+    #[serde(rename = "zh-CN")]
+    ZhCn,
+    Ja,
+    Ko,
+}
+
 /// The global Bar's screen-relative anchor. Detached Bars retain their own
 /// monitor-relative positions independently of this preference.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -149,6 +163,8 @@ pub struct UserPreferences {
     #[serde(default)]
     pub notifications_enabled: bool,
     #[serde(default)]
+    pub locale: AppLocale,
+    #[serde(default)]
     pub local_notifications: LocalNotificationPreferences,
 }
 
@@ -157,6 +173,7 @@ impl Default for UserPreferences {
         Self {
             always_on_top: true,
             notifications_enabled: false,
+            locale: AppLocale::default(),
             local_notifications: LocalNotificationPreferences::default(),
         }
     }

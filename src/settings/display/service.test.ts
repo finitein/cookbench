@@ -8,6 +8,7 @@ import {
   closeDetachedBar,
   configureDisplaySettings,
   getDisplaySettings,
+  syncNativeLocale,
   subscribeToDisplaySettings,
 } from "./service";
 
@@ -19,6 +20,7 @@ describe("display settings service", () => {
       globalBarVisible: false,
       globalBarPlacement: "bottomCenter",
       hoverDetailsEnabled: false,
+      locale: "system",
     });
     await closeDetachedBar("remote-a:session-1");
 
@@ -28,10 +30,19 @@ describe("display settings service", () => {
         globalBarVisible: false,
         globalBarPlacement: "bottomCenter",
         hoverDetailsEnabled: false,
+        locale: "system",
       },
     });
     expect(invoke).toHaveBeenNthCalledWith(3, "close_detached_bar", { stoveId: "remote-a:session-1" });
     expect(JSON.stringify(invoke.mock.calls)).not.toMatch(/prompt|command|terminal|password|token/i);
+  });
+
+  it("synchronizes the resolved webview locale to native surfaces", async () => {
+    invoke.mockResolvedValue(undefined);
+
+    await syncNativeLocale("zh-CN");
+
+    expect(invoke).toHaveBeenCalledWith("sync_native_locale", { locale: "zh-CN" });
   });
 
   it("delivers the saved preference and subsequent live updates", async () => {
@@ -39,6 +50,7 @@ describe("display settings service", () => {
       globalBarVisible: true,
       globalBarPlacement: "topCenter" as const,
       hoverDetailsEnabled: false,
+      locale: "system" as const,
       detachedBars: [],
     };
     const changed = { ...initial, hoverDetailsEnabled: true };

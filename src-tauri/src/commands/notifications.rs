@@ -96,7 +96,9 @@ pub struct LocalNotificationInput {
 
 #[tauri::command]
 pub fn open_notification_settings(app: AppHandle) -> Result<(), String> {
+    let locale = app.state::<crate::i18n::NativeLocaleState>().current();
     if let Some(window) = app.get_webview_window("settings") {
+        let _ = window.set_title(crate::i18n::settings_window_title(locale));
         window
             .set_always_on_top(true)
             .map_err(|error| error.to_string())?;
@@ -105,7 +107,7 @@ pub fn open_notification_settings(app: AppHandle) -> Result<(), String> {
         return Ok(());
     }
     WebviewWindowBuilder::new(&app, "settings", WebviewUrl::App("index.html".into()))
-        .title("Cookbench Settings")
+        .title(crate::i18n::settings_window_title(locale))
         .inner_size(620.0, 720.0)
         .min_inner_size(420.0, 520.0)
         .resizable(true)
@@ -159,6 +161,7 @@ pub fn test_local_notification(
     app: AppHandle,
     state: State<'_, LocalAlertCommandState>,
     app_state: State<'_, AppState>,
+    native_locale: State<'_, crate::i18n::NativeLocaleState>,
 ) -> LocalAlertResult {
     let effects = TauriLocalAlertEffects::new(&app);
     if channel == LocalAlertChannel::SystemBanner {
@@ -173,9 +176,11 @@ pub fn test_local_notification(
         .first()
         .map(|stove| (stove.id.as_str(), stove.project_label.as_str()))
         .unwrap_or(("__cookbench_test__", "Cookbench"));
+    let locale = native_locale.current();
     state.0.test_channel(
         channel,
-        &LocalAlertPayload::new(stove_id, project, NotificationEventKind::Cooked),
+        &LocalAlertPayload::new(stove_id, project, NotificationEventKind::Cooked)
+            .with_locale(locale),
         &effects,
     )
 }

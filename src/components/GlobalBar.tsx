@@ -5,6 +5,7 @@ import { arrangeBenches, stoveCapacityForWidth } from "./benchLayout";
 import { StoveBurner } from "./StoveBurner";
 import { StoveTooltip } from "./StoveTooltip";
 import { LOCAL_ALERT_TEST_STOVE_ID } from "../services/localAlerts";
+import { useI18n } from "../i18n/i18n";
 import "./global-bar.css";
 
 export type GlobalBarProps = {
@@ -61,6 +62,7 @@ export function GlobalBar({
   hoverDetailsEnabled = false,
   activeAlertStoveId = null,
 }: GlobalBarProps) {
+  const { t } = useI18n();
   const previousStates = useRef(new Map<string, StoveState>());
   const priorStates = previousStates.current;
   const [tooltipStoveId, setTooltipStoveId] = useState<string | null>(null);
@@ -81,7 +83,7 @@ export function GlobalBar({
   return (
     <section
       className={`global-bar${stoves.length === 0 ? " global-bar--empty" : ""}${tooltipStove ? " global-bar--tooltip-open" : ""}${activeAlertStoveId === LOCAL_ALERT_TEST_STOVE_ID ? " global-bar--alert" : ""}`}
-      aria-label={`Cookbench global bar with ${stoves.length} stoves`}
+      aria-label={t("bar.global", { count: stoves.length })}
       data-layout={layout.grouped ? "grouped" : "mixed"}
     >
       <div className="global-bar__brand" aria-label="Cookbench">
@@ -90,8 +92,8 @@ export function GlobalBar({
           <button
             className="global-bar__settings"
             type="button"
-            aria-label="Open Cookbench settings"
-            title="Settings"
+            aria-label={t("bar.openSettings")}
+            title={t("bar.settings")}
             onClick={onOpenSettings}
           >
             <span aria-hidden="true"><i /><i /><i /></span>
@@ -100,12 +102,12 @@ export function GlobalBar({
       </div>
       <div className="global-bar__benches" data-layout={layout.grouped ? "grouped" : "mixed"}>
         {layout.benches.map((bench) => (
-          <section className="global-bar__bench" data-harness={bench.id} key={bench.id} aria-label={bench.label}>
+          <section className="global-bar__bench" data-harness={bench.id} key={bench.id} aria-label={bench.id === "all" ? t("bar.stoves") : bench.label}>
             {layout.grouped ? <h2 className="global-bar__bench-heading">{bench.label}</h2> : null}
             <div
               className="global-bar__stoves global-bar__bench-stoves"
               role="list"
-              aria-label={layout.grouped ? `${bench.label} stoves` : "Stoves"}
+              aria-label={layout.grouped ? t("bar.harnessStoves", { name: bench.label }) : t("bar.stoves")}
             >
               {bench.stoves.map((stove) => (
                 <div className="global-bar__item" role="listitem" key={stove.id}>

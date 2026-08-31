@@ -33,6 +33,9 @@ remotely control it.
   continues until you click that Stove.
 - Observe a remote machine through system SSH, with zero remote installation or
   an optional single-file bridge that uses SSH stdio and opens no port.
+- Keep the companion lightweight, inspect or DIY the fully open-source MIT code,
+  and switch the interface between system, English, Simplified Chinese,
+  Japanese, and Korean.
 
 ## 27 Harness Profiles
 

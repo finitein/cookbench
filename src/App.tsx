@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { DetachedStoveWindow } from "./components/DetachedStoveWindow";
 import { GlobalBar } from "./components/GlobalBar";
@@ -14,14 +14,27 @@ import { NotificationSettingsPanel } from "./settings/notifications/Notification
 import { openNotificationSettings } from "./settings/notifications/service";
 import { useLocalAlert } from "./services/localAlerts";
 import type { StoveWire } from "./types/stove";
+import { I18nProvider, useI18n } from "./i18n/i18n";
+import { syncNativeLocale } from "./settings/display/service";
 
 export default function App() {
+  const displaySettings = useDisplaySettings();
+  return <I18nProvider preference={displaySettings?.locale}><CookbenchApp displaySettings={displaySettings} /></I18nProvider>;
+}
+
+function CookbenchApp({ displaySettings }: { displaySettings: ReturnType<typeof useDisplaySettings> }) {
+  const { locale, t } = useI18n();
   const { stoves } = useStoves();
   const detached = useDetachedWindowStove(stoves);
-  const displaySettings = useDisplaySettings();
   const { activeStoveId: activeAlertStoveId, dismiss: dismissLocalAlert } = useLocalAlert();
   useGlobalBarWindow();
   const [activation, setActivation] = useState<LocatorActivationResult | null>(null);
+  useEffect(() => {
+    if (!displaySettings) return;
+    void syncNativeLocale(locale).catch(() => {
+      // Browser fixtures do not expose the native Tauri command surface.
+    });
+  }, [displaySettings, locale]);
   const activate = (stove: StoveWire) => {
     dismissLocalAlert(stove.id);
     void activateStove(stove.id)
@@ -36,7 +49,7 @@ export default function App() {
   if (detached.isDetached) {
     return detached.stove
       ? <DetachedStoveWindow stove={detached.stove} onActivate={activate} activeAlertStoveId={activeAlertStoveId} />
-      : <main className="shell shell--detached" aria-label="Cookbench detached Stove" />;
+      : <main className="shell shell--detached" aria-label={t("bar.detached", { name: "Cookbench" })} />;
   }
 
   return (

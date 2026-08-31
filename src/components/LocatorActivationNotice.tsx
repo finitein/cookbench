@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 
 import type { LocatorActivationResult } from "../services/locator";
+import { useI18n } from "../i18n/i18n";
 
 export function LocatorActivationNotice({ result }: { result: LocatorActivationResult | null }) {
+  const { t } = useI18n();
   const [expiredResult, setExpiredResult] = useState<LocatorActivationResult | null>(null);
 
   useEffect(() => {
@@ -18,16 +20,16 @@ export function LocatorActivationNotice({ result }: { result: LocatorActivationR
   }
 
   if (result.target === "exactThread" && result.status === "visibleFallback") {
-    return <output role="status" aria-live="polite">Opening the matching Codex task.</output>;
+    return <output role="status" aria-live="polite">{t("locator.opening")}</output>;
   }
 
   if (result.status === "visibleFallback" && result.resumeSessionId) {
     return (
       <output role="status" aria-live="polite">
-        Cookbench could not open the original session. It has kept the Stove visible here; use this session ID in your original tool: <code>{result.resumeSessionId}</code>
+        {t("locator.fallbackWithId")} <code>{result.resumeSessionId}</code>
       </output>
     );
   }
 
-  return <output role="status" aria-live="polite">Cookbench could not open the original session. It has kept the Stove visible here.</output>;
+  return <output role="status" aria-live="polite">{t("locator.fallback")}</output>;
 }

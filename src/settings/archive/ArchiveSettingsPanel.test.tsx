@@ -7,6 +7,7 @@ const { getArchivedSessions, restoreArchivedSession } = vi.hoisted(() => ({
 }));
 vi.mock("../../services/stoves", () => ({ getArchivedSessions, restoreArchivedSession }));
 import { ArchiveSettingsPanel } from "./ArchiveSettingsPanel";
+import { I18nProvider } from "../../i18n/i18n";
 
 const archived = {
   id: "local:machine:codex:session-1",
@@ -45,5 +46,18 @@ describe("ArchiveSettingsPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Restore" }));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("no longer available"));
     expect(screen.getByRole("listitem")).toBeInTheDocument();
+  });
+
+  it("translates archived session states without changing harness identity", async () => {
+    getArchivedSessions.mockResolvedValueOnce([archived]);
+    render(
+      <I18nProvider preference="zh-CN">
+        <ArchiveSettingsPanel />
+      </I18nProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByRole("list", { name: "归档会话" })).toBeInTheDocument());
+    expect(screen.getByText(/进行中/)).toBeVisible();
+    expect(screen.getByText(/Codex/)).toBeVisible();
   });
 });

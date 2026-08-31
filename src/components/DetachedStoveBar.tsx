@@ -1,6 +1,7 @@
 import type { StoveWire } from "../types/stove";
 import { HarnessMark } from "./HarnessMark";
 import { StoveBurner } from "./StoveBurner";
+import { useI18n } from "../i18n/i18n";
 import "./detached-stove-bar.css";
 
 export type DetachedStoveBarProps = {
@@ -16,10 +17,11 @@ export type DetachedStoveBarProps = {
 
 /** One movable view of one Stove; it intentionally shares the global burner. */
 export function DetachedStoveBar({ stove, onActivate, onClose, onClear, onPin, onArchive, onStartDrag, activeAlertStoveId = null }: DetachedStoveBarProps) {
+  const { t } = useI18n();
   return (
     <section
       className="detached-stove-bar"
-      aria-label={`Detached Stove bar for ${stove.harness.label}`}
+      aria-label={t("bar.detached", { name: stove.harness.label })}
       data-tauri-drag-region
       onPointerDown={(event) => {
         if (event.button > 0 || (event.target as Element).closest("button")) return;
@@ -41,8 +43,8 @@ export function DetachedStoveBar({ stove, onActivate, onClose, onClear, onPin, o
       <button
         className="detached-stove-bar__close"
         type="button"
-        aria-label="Close detached Stove"
-        title="Close"
+        aria-label={t("stove.closeDetached")}
+        title={t("common.close")}
         onClick={() => onClose?.(stove)}
       >
         <span aria-hidden="true" />
@@ -51,8 +53,8 @@ export function DetachedStoveBar({ stove, onActivate, onClose, onClear, onPin, o
         <button
           className="detached-stove-bar__clear"
           type="button"
-          aria-label={`Clear ${stove.harness.label} Stove`}
-          title={`Clear ${stove.harness.label} Stove`}
+          aria-label={t("stove.clear", { name: stove.harness.label })}
+          title={t("stove.clear", { name: stove.harness.label })}
           onClick={() => onClear(stove)}
         >
           <span aria-hidden="true">x</span>

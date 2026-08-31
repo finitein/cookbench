@@ -1,6 +1,7 @@
 //! Tauri 2 desktop-shell integration. Call `install` after the official
 //! autostart and global-shortcut plugins have been registered on the builder.
 
+use cookbench_core::persistence::AppLocale;
 use tauri::{
     menu::{IsMenuItem, Menu, MenuItem},
     tray::TrayIconBuilder,
@@ -10,16 +11,8 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 use super::{default_toggle_shortcut, tray_action, tray_menu, DesktopShellDiagnostic, TrayAction};
 
-pub fn install(app: &App) -> tauri::Result<Option<DesktopShellDiagnostic>> {
-    let items = tray_menu()
-        .into_iter()
-        .map(|item| MenuItem::with_id(app, item.id, item.title, true, None::<&str>))
-        .collect::<tauri::Result<Vec<_>>>()?;
-    let item_refs = items
-        .iter()
-        .map(|item| item as &dyn IsMenuItem<_>)
-        .collect::<Vec<_>>();
-    let menu = Menu::with_items(app, &item_refs)?;
+pub fn install(app: &App, locale: AppLocale) -> tauri::Result<Option<DesktopShellDiagnostic>> {
+    let menu = build_menu(app.handle(), locale)?;
     TrayIconBuilder::with_id("cookbench")
         .menu(&menu)
         .show_menu_on_left_click(false)
@@ -42,6 +35,25 @@ pub fn install(app: &App) -> tauri::Result<Option<DesktopShellDiagnostic>> {
             ),
         })),
     }
+}
+
+fn build_menu<R: Runtime>(app: &AppHandle<R>, locale: AppLocale) -> tauri::Result<Menu<R>> {
+    let items = tray_menu(locale)
+        .into_iter()
+        .map(|item| MenuItem::with_id(app, item.id, item.title, true, None::<&str>))
+        .collect::<tauri::Result<Vec<_>>>()?;
+    let item_refs = items
+        .iter()
+        .map(|item| item as &dyn IsMenuItem<_>)
+        .collect::<Vec<_>>();
+    Menu::with_items(app, &item_refs)
+}
+
+pub fn update_menu<R: Runtime>(app: &AppHandle<R>, locale: AppLocale) -> tauri::Result<()> {
+    let Some(tray) = app.tray_by_id("cookbench") else {
+        return Ok(());
+    };
+    tray.set_menu(Some(build_menu(app, locale)?))
 }
 
 fn dispatch_tray_action(app: &AppHandle, id: &str) {

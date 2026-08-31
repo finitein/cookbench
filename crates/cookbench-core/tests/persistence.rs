@@ -10,7 +10,7 @@ use cookbench_core::{
     domain::{EventMetadata, EventSource, HarnessId, HostIdentity, StoveIdentity, StoveState},
     notifications::NotificationEventKind,
     persistence::{
-        ArchiveReason, ArchivedSession, AtomicJsonFile, ClearCursor, GlobalBarPlacement,
+        AppLocale, ArchiveReason, ArchivedSession, AtomicJsonFile, ClearCursor, GlobalBarPlacement,
         PersistedConfig, PersistedState, PinnedSession, RetainedStove, RetainedStovePresentation,
         SessionRecord,
     },
@@ -251,6 +251,7 @@ fn config_never_serializes_credential_values() {
         GlobalBarPlacement::TopCenter
     );
     assert!(config.preferences.always_on_top);
+    assert_eq!(config.preferences.locale, AppLocale::System);
 }
 
 #[test]
@@ -261,6 +262,7 @@ fn legacy_config_defaults_local_notifications_to_sound_and_approved_events() {
     .unwrap();
 
     let local = config.preferences.local_notifications;
+    assert_eq!(config.preferences.locale, AppLocale::System);
     assert!(local.sound);
     assert!(!local.system_banner);
     assert!(!local.bar_flash);
@@ -274,6 +276,17 @@ fn legacy_config_defaults_local_notifications_to_sound_and_approved_events() {
             NotificationEventKind::Disconnected,
         ]
     );
+}
+
+#[test]
+fn interface_locale_round_trips_without_exposing_session_data() {
+    let mut config = PersistedConfig::default();
+    config.preferences.locale = AppLocale::ZhCn;
+
+    let encoded = serde_json::to_string(&config).unwrap();
+    assert!(encoded.contains("\"locale\":\"zh-CN\""));
+    let restored: PersistedConfig = serde_json::from_str(&encoded).unwrap();
+    assert_eq!(restored.preferences.locale, AppLocale::ZhCn);
 }
 
 #[test]

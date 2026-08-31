@@ -18,6 +18,8 @@ Cookbench 是 Codex、Claude Code、Pi 等编程 Agent 的轻量桌面伴侣。�
 - Cooked 由用户清除；可固定长期任务，并从 Archive 恢复过期或误删会话。
 - 可选声音、系统横幅、Bar 闪烁和系统提醒。完成闪烁持续到点击对应 Stove。
 - SSH 同时支持零安装只读模式和仅使用 SSH stdio、不开端口的单文件 bridge。
+- 保持超轻量；代码基于 MIT 许可证完整开源、便于 DIY；界面可跟随系统，或切换为
+  简体中文、English、日本語、한국어。
 
 ## 27 个 Harness Profile
 

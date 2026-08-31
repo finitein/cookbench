@@ -92,8 +92,11 @@ export function stoveSessionIdentity(stove: Pick<StoveWire, "id">): string {
   return `#${(hash >>> 0).toString(36).padStart(6, "0").slice(-6)}`;
 }
 
-export function stoveDisplayIdentity(stove: Pick<StoveWire, "id" | "projectLabel">): string {
-  return `${stove.projectLabel?.trim() || "Session"} ${stoveSessionIdentity(stove)}`;
+export function stoveDisplayIdentity(
+  stove: Pick<StoveWire, "id" | "projectLabel">,
+  sessionFallback = "Session",
+): string {
+  return `${stove.projectLabel?.trim() || sessionFallback} ${stoveSessionIdentity(stove)}`;
 }
 
 export function hasStructuredProgress(stove: StoveWire): stove is StoveWire & { progress: ProgressWire } {

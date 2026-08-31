@@ -995,12 +995,18 @@ impl AppState {
         if let Some(local) =
             app.try_state::<crate::commands::notifications::LocalAlertCommandState>()
         {
-            let preferences = self.persisted_config().preferences.local_notifications;
+            let config = self.persisted_config();
+            let preferences = config.preferences.local_notifications;
+            let locale = app
+                .try_state::<crate::i18n::NativeLocaleState>()
+                .map(|state| state.current())
+                .unwrap_or_else(|| crate::i18n::resolve_locale(config.preferences.locale));
             let payload = crate::notifications::local::LocalAlertPayload::new(
                 stove_id(&stove.identity),
                 &summary.project_label,
                 event,
-            );
+            )
+            .with_locale(locale);
             let effects = crate::notifications::local::TauriLocalAlertEffects::new(app);
             let _ = local.0.dispatch(&preferences, &payload, now_ms, &effects);
         }
