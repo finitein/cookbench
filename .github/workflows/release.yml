@@ -258,12 +258,15 @@ jobs:
           pattern: release-*
           path: release/artifacts
           merge-multiple: true
-      - name: Generate SHA-256 checksums, manifest, and first-party SPDX SBOM
+      - name: Generate SHA-256 checksums, manifest, installers, and first-party SPDX SBOM
         shell: bash
         run: |
           mkdir -p release/metadata
           (cd release/artifacts && sha256sum * > ../metadata/SHA256SUMS)
           node scripts/release/build-manifest.mjs --artifacts release/artifacts --output release/metadata --version "$VERSION" --channel "$RELEASE_CHANNEL"
+          install -m 0755 scripts/install.sh release/metadata/install.sh
+          install -m 0644 scripts/install.ps1 release/metadata/install.ps1
+          (cd release/metadata && sha256sum install.sh install.ps1 >> SHA256SUMS)
       - name: Generate registry submission metadata for signed stable releases
         if: env.RELEASE_CHANNEL == 'stable'
         shell: bash
@@ -274,7 +277,7 @@ jobs:
           path: release
           if-no-files-found: error
 
-  publish_draft:
+  publish_release:
     needs: [release_context, release_metadata]
     runs-on: ubuntu-22.04
     permissions:
@@ -288,16 +291,25 @@ jobs:
         with:
           name: release-metadata
           path: release
-      - name: Create a reviewable GitHub draft without claiming public registry availability
+      - name: Publish prerelease or create a reviewable stable draft
         shell: bash
         run: |
           cat > release-notes.md <<'EOF'
-          This is a reviewable Cookbench release draft.
+          Cookbench observes supported coding-agent sessions without replacing or controlling their harnesses.
 
-          Registry installation commands are not public until the generated Homebrew, winget, and signed APT metadata have been reviewed and merged by their respective publishers. Verify checksums, signatures, notarization, and the platform checklist before publishing.
+          macOS / Linux preview install:
+          `curl -fsSL https://github.com/finitein/cookbench/releases/download/TAG/install.sh | COOKBENCH_VERSION=TAG COOKBENCH_ALLOW_PRERELEASE=1 bash`
+
+          Windows PowerShell preview install:
+          `$env:COOKBENCH_VERSION='TAG'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/TAG/install.ps1 | iex`
+
+          Preview packages may be unsigned. The installers verify every downloaded package against `release-manifest.json`; compare release assets with `SHA256SUMS` when auditing manually. Registry commands remain unavailable until their signed submissions have been reviewed and accepted.
           EOF
-          args=("$TAG" release/artifacts/* release/metadata/* --draft --title "Cookbench $TAG" --notes-file release-notes.md)
+          sed -i "s/TAG/$TAG/g" release-notes.md
+          args=("$TAG" release/artifacts/* release/metadata/* --title "Cookbench $TAG" --notes-file release-notes.md)
           if [[ "$RELEASE_CHANNEL" == "prerelease" ]]; then
             args+=(--prerelease)
+          else
+            args+=(--draft)
           fi
           gh release create "${args[@]}"

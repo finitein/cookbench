@@ -4,6 +4,39 @@ Cookbench is a graphical companion for the Codex, Claude Code, and Pi tools you
 already run. It observes their native session files; it does not replace, host,
 start, stop, approve, or control those agents.
 
+## One-command Install
+
+Every release publishes small first-party bootstrap scripts beside
+`release-manifest.json` and `SHA256SUMS`. The scripts select the matching
+platform package, verify its SHA-256 digest, and only then install it.
+
+For a signed stable release:
+
+```bash
+# macOS (universal) or graphical Ubuntu/Linux (x86_64)
+curl -fsSL https://github.com/finitein/cookbench/releases/latest/download/install.sh | bash
+```
+
+```powershell
+# Windows PowerShell (x64)
+irm https://github.com/finitein/cookbench/releases/latest/download/install.ps1 | iex
+```
+
+Preview releases are intentionally opt-in. Pin the tag instead of silently
+following the newest preview:
+
+```bash
+curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.2.0/install.sh | COOKBENCH_VERSION=v0.2.0 COOKBENCH_ALLOW_PRERELEASE=1 bash
+```
+
+```powershell
+$env:COOKBENCH_VERSION='v0.2.0'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.2.0/install.ps1 | iex
+```
+
+Use `--dry-run` on macOS/Linux or set `COOKBENCH_DRY_RUN=1` on any platform to
+inspect artifact selection without installing it. Unsupported architectures
+fail closed rather than downloading a mismatched package.
+
 ## Registry Status
 
 The commands below are the supported public-install targets, but Cookbench is
@@ -21,9 +54,8 @@ winget install Cookbench.Cookbench
 sudo apt install cookbench
 ```
 
-Until then, use a reviewed release artifact and compare its SHA-256 value with
-the attached `SHA256SUMS` file. There is intentionally no `curl | shell`
-bootstrap command.
+Until then, use the checksum-verifying bootstrap above or a reviewed release
+artifact and compare its SHA-256 value with the attached `SHA256SUMS` file.
 
 ## macOS
 
@@ -55,10 +87,13 @@ add it to `sources.list.d`.
 ## Native Sources and Helpers
 
 Cookbench discovers each harness at its standard session root or a root chosen
-by the user. From Settings, optional Hook Health controls install only
-Cookbench-owned Codex, Claude Code, and Pi lifecycle entries and write bounded
-envelopes to the Cookbench spool. The native session files remain authoritative,
-and uninstall preserves unrelated harness configuration. The bridge is also
+by the user. The compatibility catalog covers 27 harnesses through native
+session observation, structured lifecycle hooks, or presence-only experimental
+detection. From Settings, Hook Health can automatically manage Cookbench-owned
+Codex, Claude Code, Pi, Kimi Code, and ZCode entries; other structured harnesses
+show an honest manual-integration state. Hooks write only bounded lifecycle
+metadata to the Cookbench spool. Native session files remain authoritative, and
+uninstall preserves unrelated harness configuration. The bridge is also
 optional: after explicit remote selection, Cookbench uploads one
 architecture-matched binary, verifies its
 SHA-256 digest, sends the selected read-only session roots through the bounded

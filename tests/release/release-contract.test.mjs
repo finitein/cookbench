@@ -37,7 +37,9 @@ test("tag release builds the declared macOS, Windows, and Ubuntu artifact matrix
   assert.match(workflow, /git rev-parse HEAD/);
   assert.doesNotMatch(workflow, /TAG="\$\{\{ inputs\.tag/);
   assert.match(workflow, /permissions:\n  contents: read/);
-  assert.match(workflow, /publish_draft:[\s\S]*permissions:\n      contents: write/);
+  assert.match(workflow, /publish_release:[\s\S]*permissions:\n      contents: write/);
+  assert.match(workflow, /if \[\[ "\$RELEASE_CHANNEL" == "prerelease" \]\]/);
+  assert.match(workflow, /args\+=\(--draft\)/);
 });
 
 test("release output is checksummed, described, and kept distinct from stable publishing", async () => {
