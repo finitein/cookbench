@@ -67,7 +67,7 @@ for helper in cookbench-bridge cookbench-hook; do
     exit 1
   fi
   if version_output="$("$helper_path" --version 2>/dev/null)"; then
-    if [[ "$version_output" != "$helper 0.1.0" ]]; then
+    if [[ "$version_output" != "$helper 0.2.0" ]]; then
       echo "$helper has unexpected version metadata: $version_output" >&2
       exit 1
     fi

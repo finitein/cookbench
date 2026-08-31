@@ -13,6 +13,7 @@ export default defineConfig({
     exclude: [
       "tests/e2e/**",
       "tests/release/**",
+      "tests/showcase/**",
       "gnome-extension/tests/**",
       "node_modules/**",
       "dist/**",

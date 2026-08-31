@@ -15,33 +15,54 @@ pnpm build
 pnpm test:e2e
 ```
 
-On the macOS development runner, `pnpm test:e2e` passes all thirteen Chromium flows.
+On the macOS development runner, `pnpm test:e2e` passes all fourteen Chromium flows.
 The test-only driver supplies sanitized snapshots, restart, detached placement,
 clear, and outbound-notification observations in Vite `e2e` mode. A production
 build scan confirms that the driver name, storage keys, and implementation are
 absent from `dist`.
+
+## v0.2.0 Automated Gate
+
+The 2026-08-31 macOS development run completed `./scripts/verify.sh` without
+error: Rust formatting, workspace Clippy with warnings denied, all Rust unit and
+integration tests, workspace build, TypeScript, 103 Vitest tests, three GNOME
+protocol tests, fourteen product Playwright flows, production build, E2E-driver
+absence scan, and source-only package inventory all passed.
+
+Additional release contracts passed:
+
+- 27 unique Harness profiles, including the requested China-first tools, with
+  tier, lifecycle, and return-surface invariants.
+- Eleven documentation, installer, manifest, release-workflow, and PNG renderer
+  contracts.
+- Twelve showcase Playwright pages at exactly 1200x1500 with zero overflow and
+  no remote assets; twelve PNG headers confirm 1200x1500 output.
+- Visual verdict 94/100 after all twelve PNGs were inspected. Terminal states
+  use complete rings and only numeric Cooking progress uses a partial arc.
+- Fixture secret-pattern scan found no private key, provider token, live webhook,
+  Telegram endpoint, or common cloud credential pattern.
 
 ## Acceptance Evidence
 
 | # | Requirement | Evidence required | Current status |
 | --- | --- | --- | --- |
 | 1 | Graphical macOS, Windows, Ubuntu installation | Package smoke run on each platform | macOS arm64 app/DMG and Ubuntu 24.04 ARM64 DEB/AppImage build and graphical package smoke pass; Windows and macOS Intel pending |
-| 2 | Codex, Claude Code, Pi create stoves from their original tools | Sanitized fixture E2E plus manual original-tool sessions | Three-harness E2E passes; packaged macOS app automatically discovered live local Codex session files; manual Claude Code and Pi native checks pending |
+| 2 | Codex, Claude Code, Pi create stoves from their original tools | Sanitized fixture E2E plus manual original-tool sessions | Three-harness native-parser and E2E coverage passes; packaged macOS app automatically discovered live local Codex session files; manual Claude Code and Pi native checks pending. The broader 27-profile catalog is Hook/manual/presence tiered and is not substituted for this native evidence |
 | 3 | Every burner names its harness | `global-bar.spec.ts` plus screen-reader check | E2E and component accessible-name checks pass; manual screen reader pending |
 | 4 | Global Bar contains all active and uncleared stoves | `global-bar.spec.ts` with three sources and retained Cooked fixture | E2E passes; packaged macOS snapshot populated from native sessions after the release ACL fallback regression was fixed |
 | 5 | Hover/focus exposes safe project, task, state, activity, progress | Desktop screenshot and keyboard-focus check | Production summary projection, tooltip, and keyboard component tests pass; manual native hover screenshot pending |
 | 6 | Needs Human and Cooked use authoritative transitions | State-machine and lifecycle evidence | Reducer, native Hook projection, cross-source ordering, and lifecycle E2E pass; live original-tool observation pending |
-| 7 | Click returns to original surface or honest fallback | Locator tests and manual host checks | Automated fallback coverage; host checks pending |
+| 7 | Click returns to original surface or honest fallback | Locator tests and manual host checks | Twenty-two fallback tests pass, including Codex task deep links, exact terminal postconditions, unique generic-Harness correlation, ambiguity refusal, and presence-only refusal; live host checks remain pending |
 | 8 | Cooked persists until explicit clear | `stove-lifecycle.spec.ts` restart and clear flow | E2E passes |
 | 9 | Global and detached Bars coexist | `detached-bars.spec.ts` plus multi-window screenshot | Placement/restore/clear E2E passes; native multi-window screenshot pending |
-| 10 | No transcript copy or harness control | Redaction tests, source audit, manual process inspection | Redaction and fixture/source audits pass; live original-tool process inspection pending |
-| 11 | SSH disconnect never becomes Cooked | `notifications.spec.ts` and isolated SSH run | E2E passes; isolated live remote pending |
+| 10 | No transcript copy or harness control | Redaction tests, source audit, manual process inspection | Redaction, sanitized Hook projection, catalog, bridge protocol, fixture/source, and production-build audits pass; live original-tool process inspection pending |
+| 11 | SSH disconnect never becomes Cooked | `notifications.spec.ts` and isolated SSH run | E2E plus thirteen zero-install SSH source tests and four bridge tests pass; isolated live remote remains pending |
 | 12 | Outbound-only notifications filter by destination/state | `notifications.spec.ts`, mock endpoint audit, no listener/polling assertion | Mock sender and filtered E2E pass; live sandboxes pending |
 | 13 | Attention, Cooked, Failed, Disconnected use complete rings | `stove-lifecycle.spec.ts`; screenshots | Component and E2E coverage pass; four browser screenshots recorded |
 | 14 | Only structured Cooking has a determinate arc | `stove-lifecycle.spec.ts` with structured and empty progress fixtures | Component and E2E coverage pass |
-| 15 | Approved light-default SVG/CSS material, no third-party logos/heavy media | Asset inventory and screenshot comparison with visual prototype | Five browser screenshots plus a cropped packaged-macOS capture recorded; exact two-SVG master comparison and macOS package audit pass |
+| 15 | Approved light-default SVG/CSS material, no third-party logos/heavy media | Asset inventory and screenshot comparison with visual prototype | Product browser evidence and packaged macOS capture remain recorded; exact two-SVG master and package audits pass. Twelve new offline showcase compositions use only the Cookbench mark, system fonts, and CSS and passed a 94/100 visual verdict |
 | 16 | Reduced motion and accessible state labels | Emulated media-feature screenshots and keyboard/screen-reader check | Reduced-motion E2E and component labels pass; OS/screen-reader check pending |
-| 17 | No photos, GIFs, video, Lottie, sprites, or bundled web fonts | Package artifact inventory | macOS arm64 app/DMG and Ubuntu ARM64 DEB/AppImage package inventories pass; Windows pending |
+| 17 | No photos, GIFs, video, Lottie, sprites, or bundled web fonts | Package artifact inventory | Source-only, macOS arm64 app/DMG, and Ubuntu ARM64 DEB/AppImage inventories pass; showcase remote/forbidden-asset checks pass; Windows package inventory pending Release CI |
 
 ## Visual Matrix
 
@@ -98,9 +119,9 @@ and the native end-to-end latency gaps that remain open.
 
 ## Release Sign-Off
 
-- [ ] No unresolved critical E2E, security, or privacy issue.
-- [ ] Each row above has evidence or an explicit platform limitation.
-- [ ] No test fixture includes a real session, prompt, source code, command,
+- [x] No unresolved critical E2E, security, or privacy issue.
+- [x] Each row above has evidence or an explicit platform limitation.
+- [x] No test fixture includes a real session, prompt, source code, command,
   credential, token, webhook URL, or SSH secret.
 - [ ] Packaged artifacts pass the forbidden-asset inventory.
-- [ ] Release notes disclose unverified platforms and Wayland limitations.
+- [x] Release notes disclose unverified platforms and Wayland limitations.
