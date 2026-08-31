@@ -5,6 +5,7 @@
 
 mod adapter;
 mod capabilities;
+mod catalog;
 pub mod claude;
 pub mod codex;
 mod fixture;
@@ -17,5 +18,8 @@ pub use adapter::{
     SessionLocator, SessionLocatorKind, WatchHandle,
 };
 pub use capabilities::AdapterCapabilities;
+pub use catalog::{
+    catalog, harness_profile, HarnessProfile, HookDialect, ReturnSurface, SupportTier,
+};
 pub use fixture::FixtureAdapter;
 pub use registry::{AdapterRegistry, RegistryError};
