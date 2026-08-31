@@ -8,6 +8,7 @@
     "lint": "tsc --noEmit",
     "build": "tsc --noEmit && vite build",
     "prepare:sidecars": "node scripts/prepare-sidecars.mjs",
+    "showcase:render": "node scripts/render-showcase.mjs",
     "tauri": "tauri",
     "test": "vitest",
     "test:e2e": "playwright test"

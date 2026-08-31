@@ -246,6 +246,7 @@ h3 {
 .ring.cooked { --ring: #158b52; }
 .ring.failed { --ring: #d84d36; }
 .ring.offline { --ring: #687582; }
+.ring.cooking { --ring: #ff6a2a; }
 
 .stove-name {
   color: #4d5863;
@@ -401,6 +402,11 @@ h3 {
   font-weight: 900;
 }
 
+.no-list li::before {
+  content: "×";
+  background: #d84d36;
+}
+
 .code {
   padding: 24px;
   border-radius: 8px;
@@ -461,6 +467,15 @@ h3 {
   font-size: 12px;
   font-weight: 800;
 }
+
+.bench-dot.complete {
+  border-color: var(--accent);
+}
+
+.bench-dot.cooked { border-color: #158b52; }
+.bench-dot.needs { border-color: #d87800; }
+.bench-dot.failed { border-color: #d84d36; }
+.bench-dot.neutral { border-color: #687582; }
 
 .shot {
   width: 100%;
