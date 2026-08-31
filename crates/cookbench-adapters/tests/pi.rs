@@ -3,7 +3,9 @@ use std::path::PathBuf;
 use cookbench_adapters::{HarnessAdapter, HostSource, ResumeAction, SessionLocatorKind};
 use cookbench_core::domain::{EventKind, HostIdentity};
 
-use cookbench_adapters::pi::{parse_session_file, ExtensionEnvelope, ExtensionEvent, PiAdapter};
+use cookbench_adapters::pi::{
+    parse_record, parse_session_file, ExtensionEnvelope, ExtensionEvent, PiAdapter,
+};
 
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -73,6 +75,71 @@ fn parses_lifecycle_and_todo_records_without_retaining_transcript_content() {
         .any(|kind| matches!(kind, EventKind::TurnCompleted)));
     assert_eq!(kinds.len(), 6, "unknown records must be ignored safely");
     assert_eq!(title.as_deref(), Some("Synthetic Pi task"));
+}
+
+#[test]
+fn parses_current_nested_message_records_once_and_preserves_native_identity() {
+    let parsed = parse_session_file(&fixture("current-schema/messages.jsonl")).unwrap();
+    let kinds = parsed
+        .events
+        .iter()
+        .map(|event| &event.kind)
+        .collect::<Vec<_>>();
+
+    assert_eq!(parsed.native_session_id, "pi-current-schema-001");
+    assert_eq!(parsed.title.as_deref(), Some("Synthetic current Pi task"));
+    assert_eq!(
+        kinds,
+        vec![
+            &EventKind::SessionDiscovered,
+            &EventKind::UserPromptSubmitted,
+            &EventKind::ToolStarted,
+            &EventKind::ToolCompleted { succeeded: true },
+            &EventKind::TurnCompleted,
+        ],
+        "nested content must not be recursively double-emitted"
+    );
+}
+
+#[test]
+fn parses_current_nested_message_failures_without_treating_length_as_completion() {
+    let failed = parse_record(
+        r#"{"type":"message","message":{"role":"assistant","stopReason":"error","content":[]}}"#,
+        8,
+    );
+    let aborted = parse_record(
+        r#"{"type":"message","message":{"role":"assistant","stopReason":"aborted","content":[]}}"#,
+        9,
+    );
+    let tool_failure = parse_record(
+        r#"{"type":"message","message":{"role":"toolResult","isError":true,"content":[]}}"#,
+        10,
+    );
+    let length = parse_record(
+        r#"{"type":"message","message":{"role":"assistant","stopReason":"length","content":[]}}"#,
+        11,
+    );
+
+    assert!(matches!(failed.as_slice(), [event] if matches!(event.kind, EventKind::SessionFailed)));
+    assert!(
+        matches!(aborted.as_slice(), [event] if matches!(event.kind, EventKind::SessionFailed))
+    );
+    assert!(
+        matches!(tool_failure.as_slice(), [event] if matches!(event.kind, EventKind::ToolCompleted { succeeded: false }))
+    );
+    assert!(
+        matches!(length.as_slice(), [event] if matches!(event.kind, EventKind::SessionFailed)),
+        "a terminal truncated response must not leave the Stove active"
+    );
+}
+
+#[test]
+fn ignores_session_info_shaped_user_content_when_deriving_metadata() {
+    let parsed =
+        parse_session_file(&fixture("current-schema/nested-metadata-shape.jsonl")).unwrap();
+
+    assert_eq!(parsed.native_session_id, "pi-safe-metadata-001");
+    assert_eq!(parsed.title, None);
 }
 
 #[test]

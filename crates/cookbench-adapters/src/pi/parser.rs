@@ -151,7 +151,7 @@ fn visit_metadata_value(value: &Value, state: &mut ParseState, depth: usize) {
     }
     match value {
         Value::Object(object) => {
-            populate_metadata(object, state);
+            populate_metadata(object, state, depth);
             for value in object.values() {
                 if value.is_array() || value.is_object() {
                     visit_metadata_value(value, state, depth + 1);
@@ -197,7 +197,9 @@ fn visit_value(value: &Value, state: &mut ParseState, depth: usize) {
         return;
     };
 
-    populate_metadata(object, state);
+    populate_metadata(object, state, depth);
+    let is_current_message = record_type(object).as_deref() == Some("message")
+        && object.get("message").and_then(Value::as_object).is_some();
     if state.events.len() < MAX_EVENTS_PER_SESSION {
         if let Some(kind) = event_kind(object) {
             state.sequence += 1;
@@ -212,6 +214,12 @@ fn visit_value(value: &Value, state: &mut ParseState, depth: usize) {
             ));
         }
     }
+    // Current Pi records wrap a complete message in an envelope. The envelope
+    // already determines the lifecycle event, so descending into its content
+    // would double-count tool blocks that carry their own `type` fields.
+    if is_current_message {
+        return;
+    }
     for value in object.values() {
         if value.is_array() || value.is_object() {
             visit_value(value, state, depth + 1);
@@ -219,9 +227,15 @@ fn visit_value(value: &Value, state: &mut ParseState, depth: usize) {
     }
 }
 
-fn populate_metadata(object: &serde_json::Map<String, Value>, state: &mut ParseState) {
-    let is_session_header = record_type(object)
-        .is_some_and(|kind| matches!(kind.as_str(), "session" | "session_start" | "sessionstart"));
+fn populate_metadata(
+    object: &serde_json::Map<String, Value>,
+    state: &mut ParseState,
+    depth: usize,
+) {
+    let record_type = record_type(object);
+    let is_session_header = record_type
+        .as_deref()
+        .is_some_and(|kind| matches!(kind, "session" | "session_start" | "sessionstart"));
     let id_fields = if is_session_header {
         &["sessionId", "session_id", "id"][..]
     } else {
@@ -232,7 +246,9 @@ fn populate_metadata(object: &serde_json::Map<String, Value>, state: &mut ParseS
     }
     if state.title.is_none() {
         let title_fields = if is_session_header {
-            &["sessionName", "session_name", "title", "name"][..]
+            &["sessionName", "session_name", "title"][..]
+        } else if depth == 0 && record_type.as_deref() == Some("session_info") {
+            &["name"][..]
         } else {
             &["sessionName", "session_name", "title"][..]
         };
@@ -254,6 +270,11 @@ fn populate_metadata(object: &serde_json::Map<String, Value>, state: &mut ParseS
 
 fn event_kind(object: &serde_json::Map<String, Value>) -> Option<EventKind> {
     let record_type = record_type(object)?;
+    if record_type == "message" {
+        if let Some(message) = object.get("message").and_then(Value::as_object) {
+            return current_message_event_kind(message);
+        }
+    }
     match record_type.as_str() {
         "session" | "session_start" | "sessionstart" => Some(EventKind::SessionDiscovered),
         "prompt" | "user_prompt" | "user_message" => Some(EventKind::UserPromptSubmitted),
@@ -283,6 +304,43 @@ fn event_kind(object: &serde_json::Map<String, Value>) -> Option<EventKind> {
             .map(|(completed, total)| EventKind::PlanUpdated { completed, total }),
         _ => None,
     }
+}
+
+fn current_message_event_kind(message: &serde_json::Map<String, Value>) -> Option<EventKind> {
+    let role = string_field(message, "role")?.to_ascii_lowercase();
+    match role.as_str() {
+        "user" => Some(EventKind::UserPromptSubmitted),
+        "toolresult" | "tool_result" => Some(EventKind::ToolCompleted {
+            succeeded: !is_failure(message),
+        }),
+        "assistant" => match string_field(message, "stopReason")
+            .or_else(|| string_field(message, "stop_reason"))
+            .map(|reason| reason.to_ascii_lowercase())
+            .as_deref()
+        {
+            Some("stop") => Some(EventKind::TurnCompleted),
+            Some("error" | "aborted" | "length") => Some(EventKind::SessionFailed),
+            Some("tooluse" | "tool_use") if has_tool_call(message) => Some(EventKind::ToolStarted),
+            _ if has_tool_call(message) => Some(EventKind::ToolStarted),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn has_tool_call(message: &serde_json::Map<String, Value>) -> bool {
+    message
+        .get("content")
+        .and_then(Value::as_array)
+        .is_some_and(|content| {
+            content.iter().any(|block| {
+                block.as_object().is_some_and(|block| {
+                    record_type(block).is_some_and(|kind| {
+                        matches!(kind.as_str(), "toolcall" | "tool_call" | "tool_use")
+                    })
+                })
+            })
+        })
 }
 
 fn record_type(object: &serde_json::Map<String, Value>) -> Option<String> {
@@ -336,6 +394,8 @@ fn is_normal_completion(object: &serde_json::Map<String, Value>) -> bool {
 fn is_failure(object: &serde_json::Map<String, Value>) -> bool {
     object.get("success").and_then(Value::as_bool) == Some(false)
         || object.get("failed").and_then(Value::as_bool) == Some(true)
+        || object.get("isError").and_then(Value::as_bool) == Some(true)
+        || object.get("is_error").and_then(Value::as_bool) == Some(true)
         || string_field(object, "status").is_some_and(|status| {
             matches!(
                 status.to_ascii_lowercase().as_str(),

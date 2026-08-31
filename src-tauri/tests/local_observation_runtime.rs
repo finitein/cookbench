@@ -110,7 +110,10 @@ fn reconstructs_three_native_harnesses_then_observes_appended_lifecycle_records(
     let pi = pi_root.join("pi-session.jsonl");
     write(&codex, "{\"type\":\"session_meta\",\"payload\":{\"id\":\"codex-1\",\"cwd\":\"/synthetic/codex\"}}\n{\"type\":\"turn_completed\"}\n");
     write(&claude, "{\"type\":\"user\",\"session_name\":\"synthetic claude\"}\n{\"type\":\"system\",\"subtype\":\"turn_duration\",\"durationMs\":4177}\n");
-    write(&pi, "{\"type\":\"session_start\",\"sessionId\":\"pi-1\",\"cwd\":\"/synthetic/pi\"}\n{\"type\":\"turn_completed\",\"status\":\"success\"}\n");
+    write(
+        &pi,
+        "{\"type\":\"session\",\"id\":\"pi-1\",\"cwd\":\"/synthetic/pi\"}\n{\"type\":\"message\",\"message\":{\"role\":\"user\",\"content\":[]}}\n{\"type\":\"message\",\"message\":{\"role\":\"assistant\",\"stopReason\":\"stop\",\"content\":[]}}\n",
+    );
 
     let sink = Arc::new(Sink::default());
     let config = LocalObservationConfig {
@@ -146,7 +149,7 @@ fn reconstructs_three_native_harnesses_then_observes_appended_lifecycle_records(
     assert!(!status_json.contains("turn_completed"));
     assert!(!status_json.contains("user_prompt"));
     let initial = sink.0.lock().unwrap();
-    assert_eq!(initial.len(), 9);
+    assert_eq!(initial.len(), 10);
     assert_eq!(
         initial
             .iter()
@@ -174,8 +177,8 @@ fn reconstructs_three_native_harnesses_then_observes_appended_lifecycle_records(
     runtime.observe_path(&claude);
     runtime.observe_path(&pi);
     let observed = sink.0.lock().unwrap();
-    assert_eq!(observed.len(), 12, "observed: {observed:?}");
-    assert!(observed[9..]
+    assert_eq!(observed.len(), 13, "observed: {observed:?}");
+    assert!(observed[10..]
         .iter()
         .all(|(_, _, _, event)| matches!(event.kind, EventKind::UserPromptSubmitted)));
     let wire_debug = format!(

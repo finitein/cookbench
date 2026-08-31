@@ -1,0 +1,6 @@
+{"type":"session","version":3,"id":"pi-current-schema-001","cwd":"/synthetic/pi-current","timestamp":"2026-09-01T00:00:00.000Z"}
+{"type":"session_info","name":"Synthetic current Pi task","timestamp":"2026-09-01T00:00:00.001Z"}
+{"type":"message","timestamp":"2026-09-01T00:00:00.002Z","message":{"role":"user","content":[]}}
+{"type":"message","timestamp":"2026-09-01T00:00:00.003Z","message":{"role":"assistant","stopReason":"toolUse","content":[{"type":"toolCall","name":"synthetic-tool"}]}}
+{"type":"message","timestamp":"2026-09-01T00:00:00.004Z","message":{"role":"toolResult","isError":false,"content":[]}}
+{"type":"message","timestamp":"2026-09-01T00:00:00.005Z","message":{"role":"assistant","stopReason":"stop","content":[]}}

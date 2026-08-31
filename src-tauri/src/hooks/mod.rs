@@ -882,14 +882,13 @@ fn pi_extension_source(helper: &Path) -> Result<String, HookError> {
     Ok(format!(
         r#"// Cookbench managed Pi extension v{}
 import {{ spawn }} from "node:child_process";
-import {{ basename }} from "node:path";
 
 const helper = {};
 
 function emit(eventType: string, ctx: any) {{
   const transcriptPath = ctx.sessionManager.getSessionFile();
-  if (!transcriptPath) return;
-  const sessionId = basename(transcriptPath).replace(/\.jsonl$/, "");
+  const sessionId = ctx.sessionManager.getSessionId();
+  if (!transcriptPath || typeof sessionId !== "string" || !sessionId || sessionId.length > 256) return;
   const payload = JSON.stringify({{
     event_type: eventType,
     session_id: sessionId,
@@ -904,12 +903,24 @@ function emit(eventType: string, ctx: any) {{
   child.stdin.end(payload);
 }}
 
+function agentEndEventType(event: any): string {{
+  const messages = Array.isArray(event?.messages) ? event.messages : [];
+  for (let index = messages.length - 1; index >= 0; index -= 1) {{
+    const message = messages[index];
+    if (!message || message.role !== "assistant") continue;
+    return ["error", "aborted", "length"].includes(message.stopReason)
+      ? "session_failed"
+      : "turn_completed";
+  }}
+  return "turn_completed";
+}}
+
 export default function cookbench(pi: any) {{
   pi.on("session_start", async (_event: any, ctx: any) => emit("session_discovered", ctx));
   pi.on("agent_start", async (_event: any, ctx: any) => emit("user_prompt_submitted", ctx));
   pi.on("tool_execution_start", async (_event: any, ctx: any) => emit("tool_started", ctx));
   pi.on("tool_execution_end", async (_event: any, ctx: any) => emit("tool_completed", ctx));
-  pi.on("agent_end", async (_event: any, ctx: any) => emit("turn_completed", ctx));
+  pi.on("agent_end", async (event: any, ctx: any) => emit(agentEndEventType(event), ctx));
   pi.on("session_shutdown", async (_event: any, ctx: any) => emit("process_exited", ctx));
 }}
 "#,
@@ -1849,6 +1860,18 @@ mod tests {
         apply_pi_with_helper(HookAction::Install, &path, &helper).unwrap();
         let extension = fs::read_to_string(&path).unwrap();
         assert!(extension.contains("agent_end"));
+        assert!(extension.contains("ctx.sessionManager.getSessionId()"));
+        assert!(!extension.contains("basename(transcriptPath)"));
+        assert!(!extension.contains("from \"node:path\""));
+        assert!(extension.contains("function agentEndEventType"));
+        assert!(extension.contains("message.role"));
+        assert!(extension.contains("message.stopReason"));
+        assert!(extension.contains("session_failed"));
+        assert!(extension.contains("agentEndEventType(event)"));
+        assert!(extension.contains("sessionId.length > 256"));
+        assert!(!extension.contains("message.content"));
+        assert!(!extension.contains("JSON.stringify(event"));
+        assert!(!extension.contains("JSON.stringify(messages"));
         assert!(
             extension.contains(&serde_json::to_string(helper.to_string_lossy().as_ref()).unwrap())
         );

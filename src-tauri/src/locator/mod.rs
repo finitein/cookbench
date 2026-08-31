@@ -12,10 +12,16 @@ pub mod vscode;
 pub mod windows;
 
 use std::{
-    process::{Command, Stdio},
+    fs::{self, File, OpenOptions},
+    io::{Read, Seek, SeekFrom},
+    process::{Command, Output, Stdio},
+    sync::atomic::{AtomicU64, Ordering},
     thread,
     time::{Duration, Instant},
 };
+
+#[cfg(windows)]
+use std::path::PathBuf;
 
 use cookbench_core::locator::{HostApplication, SessionLocator, TerminalKind};
 use serde::Serialize;
@@ -258,6 +264,122 @@ fn percent_encode_url_path_segment(value: &str) -> Option<String> {
 }
 
 const FOCUS_TIMEOUT: Duration = Duration::from_secs(2);
+const MAX_DRIVER_STREAM_BYTES: usize = 2 * 1024 * 1024;
+const DRIVER_CAPTURE_FILE_ATTEMPTS: u64 = 32;
+static DRIVER_CAPTURE_NONCE: AtomicU64 = AtomicU64::new(0);
+
+/// A private regular file keeps process output bounded without waiting for EOF
+/// from descendants that inherited the child's standard streams.
+struct DriverCapture {
+    reader: File,
+    #[cfg(windows)]
+    path: PathBuf,
+}
+
+impl DriverCapture {
+    fn create() -> Result<(File, Self), JumpOutcome> {
+        let directory = std::env::temp_dir();
+        for _ in 0..DRIVER_CAPTURE_FILE_ATTEMPTS {
+            let nonce = DRIVER_CAPTURE_NONCE.fetch_add(1, Ordering::Relaxed);
+            let path = directory.join(format!(
+                "cookbench-driver-{}-{nonce}.capture",
+                std::process::id()
+            ));
+            let mut options = OpenOptions::new();
+            options.read(true).write(true).create_new(true);
+            configure_driver_capture_writer_options(&mut options);
+            match options.open(&path) {
+                Ok(writer) => {
+                    let mut reader_options = OpenOptions::new();
+                    reader_options.read(true);
+                    configure_driver_capture_reader_options(&mut reader_options);
+                    let reader = match reader_options.open(&path) {
+                        Ok(reader) => reader,
+                        Err(_) => {
+                            let _ = fs::remove_file(&path);
+                            return Err(JumpOutcome::VerificationFailed);
+                        }
+                    };
+                    #[cfg(unix)]
+                    {
+                        fs::remove_file(&path).map_err(|_| JumpOutcome::VerificationFailed)?;
+                    }
+                    return Ok((
+                        writer,
+                        Self {
+                            reader,
+                            #[cfg(windows)]
+                            path,
+                        },
+                    ));
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(_) => return Err(JumpOutcome::VerificationFailed),
+            }
+        }
+        Err(JumpOutcome::VerificationFailed)
+    }
+
+    fn read_bounded(mut self) -> Result<Vec<u8>, JumpOutcome> {
+        self.reader
+            .seek(SeekFrom::Start(0))
+            .map_err(|_| JumpOutcome::VerificationFailed)?;
+        let mut output = Vec::with_capacity(MAX_DRIVER_STREAM_BYTES.min(8 * 1024));
+        let mut reader = (&mut self.reader).take((MAX_DRIVER_STREAM_BYTES as u64) + 1);
+        reader
+            .read_to_end(&mut output)
+            .map_err(|_| JumpOutcome::VerificationFailed)?;
+        (output.len() <= MAX_DRIVER_STREAM_BYTES)
+            .then_some(output)
+            .ok_or(JumpOutcome::VerificationFailed)
+    }
+
+    fn exceeds_limit(&self) -> Result<bool, JumpOutcome> {
+        self.reader
+            .metadata()
+            .map(|metadata| metadata.len() > MAX_DRIVER_STREAM_BYTES as u64)
+            .map_err(|_| JumpOutcome::VerificationFailed)
+    }
+}
+
+#[cfg(unix)]
+fn configure_driver_capture_writer_options(options: &mut OpenOptions) {
+    use std::os::unix::fs::OpenOptionsExt;
+    options.mode(0o600);
+}
+
+#[cfg(windows)]
+fn configure_driver_capture_writer_options(options: &mut OpenOptions) {
+    use std::os::windows::fs::OpenOptionsExt;
+    const FILE_SHARE_READ_WRITE_DELETE: u32 = 0x0000_0007;
+    const FILE_ATTRIBUTE_TEMPORARY: u32 = 0x0000_0100;
+    const FILE_FLAG_DELETE_ON_CLOSE: u32 = 0x0400_0000;
+    const GENERIC_READ_WRITE_DELETE: u32 = 0xC001_0000;
+    options
+        .share_mode(FILE_SHARE_READ_WRITE_DELETE)
+        .access_mode(GENERIC_READ_WRITE_DELETE)
+        .custom_flags(FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE);
+}
+
+#[cfg(all(not(unix), not(windows)))]
+fn configure_driver_capture_writer_options(_options: &mut OpenOptions) {}
+
+#[cfg(windows)]
+fn configure_driver_capture_reader_options(options: &mut OpenOptions) {
+    use std::os::windows::fs::OpenOptionsExt;
+    const FILE_SHARE_READ_WRITE_DELETE: u32 = 0x0000_0007;
+    options.share_mode(FILE_SHARE_READ_WRITE_DELETE);
+}
+
+#[cfg(not(windows))]
+fn configure_driver_capture_reader_options(_options: &mut OpenOptions) {}
+
+#[cfg(windows)]
+impl Drop for DriverCapture {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
 
 fn run(program: &str, args: &[String]) -> JumpOutcome {
     let output = match run_bounded(program, args) {
@@ -310,13 +432,15 @@ fn run_bounded_for_with_env(
     environment: &[(&str, &str)],
     timeout: Duration,
 ) -> Result<std::process::Output, JumpOutcome> {
+    let (stdout_writer, stdout_capture) = DriverCapture::create()?;
+    let (stderr_writer, stderr_capture) = DriverCapture::create()?;
     let mut command = Command::new(program);
     let mut child = command
         .args(args)
         .envs(environment.iter().copied())
         .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stdout(Stdio::from(stdout_writer))
+        .stderr(Stdio::from(stderr_writer))
         .spawn()
         .map_err(|error| match error.kind() {
             std::io::ErrorKind::NotFound => JumpOutcome::Unsupported,
@@ -325,14 +449,33 @@ fn run_bounded_for_with_env(
         })?;
     let deadline = Instant::now() + timeout;
     loop {
-        if child
-            .try_wait()
-            .map_err(|_| JumpOutcome::VerificationFailed)?
-            .is_some()
-        {
-            return child
-                .wait_with_output()
-                .map_err(|_| JumpOutcome::VerificationFailed);
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                return collect_output(status, stdout_capture, stderr_capture);
+            }
+            Ok(None) => {}
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(JumpOutcome::VerificationFailed);
+            }
+        }
+        match stdout_capture.exceeds_limit().and_then(|stdout_exceeded| {
+            stderr_capture
+                .exceeds_limit()
+                .map(|stderr_exceeded| stdout_exceeded || stderr_exceeded)
+        }) {
+            Ok(true) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(JumpOutcome::VerificationFailed);
+            }
+            Ok(false) => {}
+            Err(error) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(error);
+            }
         }
         if Instant::now() >= deadline {
             let _ = child.kill();
@@ -341,6 +484,18 @@ fn run_bounded_for_with_env(
         }
         thread::sleep(Duration::from_millis(10));
     }
+}
+
+fn collect_output(
+    status: std::process::ExitStatus,
+    stdout_capture: DriverCapture,
+    stderr_capture: DriverCapture,
+) -> Result<Output, JumpOutcome> {
+    Ok(Output {
+        status,
+        stdout: stdout_capture.read_bounded()?,
+        stderr: stderr_capture.read_bounded()?,
+    })
 }
 
 fn command_failure(stderr: &[u8]) -> JumpOutcome {
@@ -963,6 +1118,58 @@ mod driver_tests {
 
         let result = run_bounded_for(program, &args, Duration::from_millis(5));
         assert_eq!(result.unwrap_err(), JumpOutcome::TimedOut);
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn bounded_runner_does_not_wait_for_descendants_holding_inherited_output() {
+        let started = std::time::Instant::now();
+        let output = run_bounded_for(
+            "/bin/sh",
+            &["-c".to_owned(), "sleep 1 &".to_owned()],
+            Duration::from_millis(250),
+        )
+        .expect("the direct driver process should complete without waiting for descendants");
+
+        assert!(output.status.success());
+        assert!(started.elapsed() < Duration::from_millis(250));
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn bounded_runner_drains_large_finite_output_before_it_can_block() {
+        let output = run_bounded_for(
+            "/usr/bin/seq",
+            &["1".to_owned(), "30000".to_owned()],
+            Duration::from_secs(1),
+        )
+        .expect("large finite output should complete within the bounded window");
+
+        assert!(output.status.success());
+        assert!(output.stdout.len() > 64 * 1024);
+        assert!(output.stderr.is_empty());
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn bounded_runner_fails_closed_when_driver_output_exceeds_its_retention_limit() {
+        let result = run_bounded_for(
+            "/usr/bin/seq",
+            &["1".to_owned(), "400000".to_owned()],
+            Duration::from_secs(2),
+        );
+
+        assert_eq!(result.unwrap_err(), JumpOutcome::VerificationFailed);
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn bounded_runner_stops_a_driver_that_outgrows_its_capture_limit() {
+        let started = std::time::Instant::now();
+        let result = run_bounded_for("/usr/bin/yes", &[], Duration::from_secs(1));
+
+        assert_eq!(result.unwrap_err(), JumpOutcome::VerificationFailed);
+        assert!(started.elapsed() < Duration::from_secs(1));
     }
 
     #[test]
