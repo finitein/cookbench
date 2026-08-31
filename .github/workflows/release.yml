@@ -290,6 +290,7 @@ jobs:
       contents: write
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
       TAG: ${{ needs.release_context.outputs.tag }}
       RELEASE_CHANNEL: ${{ needs.release_context.outputs.channel }}
     steps:
@@ -312,7 +313,7 @@ jobs:
           Preview packages may be unsigned. The installers verify every downloaded package against `release-manifest.json`; compare release assets with `SHA256SUMS` when auditing manually. Registry commands remain unavailable until their signed submissions have been reviewed and accepted.
           EOF
           sed -i "s/TAG/$TAG/g" release-notes.md
-          args=("$TAG" release/artifacts/* release/metadata/* --title "Cookbench $TAG" --notes-file release-notes.md)
+          args=("$TAG" release/artifacts/* release/metadata/* --repo "$GH_REPO" --title "Cookbench $TAG" --notes-file release-notes.md)
           if [[ "$RELEASE_CHANNEL" == "prerelease" ]]; then
             args+=(--prerelease)
           else
