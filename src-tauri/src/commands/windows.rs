@@ -771,56 +771,65 @@ pub fn get_global_bar_dock_state(
     runtime.state()
 }
 
-#[tauri::command]
-pub async fn start_global_bar_drag(
-    app: AppHandle,
-    state: State<'_, crate::app_state::AppState>,
-    runtime: State<'_, GlobalBarDockRuntime>,
-) -> Result<GlobalBarDragStartWire, String> {
+fn begin_global_bar_drag(app: AppHandle, runtime: &GlobalBarDockRuntime) -> Result<u64, String> {
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| "Cookbench global Bar window is unavailable".to_owned())?;
     if let Some(dock) = runtime.drag_reveal_needed() {
         move_to_dock_geometry(&window, &dock, false)?;
         runtime.commit_revealed();
-        emit_dock_state(&app, &runtime);
+        emit_dock_state(&app, runtime);
     }
     let token = runtime.begin_drag_after_reveal();
     if let Err(error) = window.start_dragging() {
         runtime.cancel_drag(token);
         return Err(error.to_string());
     }
-    #[cfg(target_os = "macos")]
-    {
-        // AppKit's drag loop returns only after mouse release, so complete the
-        // one-shot token here instead of relying on a webview pointer event.
+    Ok(token)
+}
+
+#[cfg(target_os = "macos")]
+#[tauri::command]
+pub fn start_global_bar_drag(
+    app: AppHandle,
+    state: State<'_, crate::app_state::AppState>,
+    runtime: State<'_, GlobalBarDockRuntime>,
+) -> Result<GlobalBarDragStartWire, String> {
+    let token = begin_global_bar_drag(app.clone(), runtime.inner())?;
+    // This synchronous command preserves AppKit's blocking drag loop.
+    let state = finish_global_bar_drag_inner(token, &app, state.inner(), runtime.inner())?;
+    Ok(GlobalBarDragStartWire {
+        token,
+        completed: true,
+        state: Some(state),
+    })
+}
+
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+pub async fn start_global_bar_drag(
+    app: AppHandle,
+    state: State<'_, crate::app_state::AppState>,
+    runtime: State<'_, GlobalBarDockRuntime>,
+) -> Result<GlobalBarDragStartWire, String> {
+    let token = begin_global_bar_drag(app.clone(), runtime.inner())?;
+    let evidence =
+        tauri::async_runtime::spawn_blocking(crate::platform::wait_for_local_drag_release)
+            .await
+            .unwrap_or(crate::platform::DragReleaseEvidence::Unavailable);
+    if evidence == crate::platform::DragReleaseEvidence::Released {
         let state = finish_global_bar_drag_inner(token, &app, state.inner(), runtime.inner())?;
         Ok(GlobalBarDragStartWire {
             token,
             completed: true,
             state: Some(state),
         })
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let evidence =
-            tauri::async_runtime::spawn_blocking(crate::platform::wait_for_local_drag_release)
-                .await
-                .unwrap_or(crate::platform::DragReleaseEvidence::Unavailable);
-        if evidence == crate::platform::DragReleaseEvidence::Released {
-            let state = finish_global_bar_drag_inner(token, &app, state.inner(), runtime.inner())?;
-            Ok(GlobalBarDragStartWire {
-                token,
-                completed: true,
-                state: Some(state),
-            })
-        } else {
-            Ok(GlobalBarDragStartWire {
-                token,
-                completed: false,
-                state: None,
-            })
-        }
+    } else {
+        Ok(GlobalBarDragStartWire {
+            token,
+            completed: false,
+            state: None,
+        })
     }
 }
 

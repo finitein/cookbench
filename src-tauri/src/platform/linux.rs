@@ -42,7 +42,7 @@ pub(super) fn wait_for_left_release() -> DragReleaseEvidence {
     let mut root_y = 0;
     let mut win_x = 0;
     let mut win_y = 0;
-    let query = || unsafe {
+    let mut query = || unsafe {
         XQueryPointer(
             display,
             XDefaultRootWindow(display),
@@ -59,14 +59,16 @@ pub(super) fn wait_for_left_release() -> DragReleaseEvidence {
     let was_down = query() && mask & BUTTON1_MASK != 0;
     let started = Instant::now();
     let result = if !was_down {
-        DragReleaseEvidence::Unavailable
+        // The X11 query succeeded after our local drag began; a released
+        // Button1 is valid completion evidence for a very short drag.
+        super::classify_drag_release(false, false, false)
     } else {
         loop {
             if !query() || mask & BUTTON1_MASK == 0 {
-                break DragReleaseEvidence::Released;
+                break super::classify_drag_release(true, true, false);
             }
             if started.elapsed() >= Duration::from_secs(5) {
-                break DragReleaseEvidence::Unavailable;
+                break super::classify_drag_release(true, false, true);
             }
             std::thread::sleep(Duration::from_millis(16));
         }

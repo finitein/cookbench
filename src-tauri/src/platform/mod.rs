@@ -23,6 +23,22 @@ pub enum DragReleaseEvidence {
     Unavailable,
 }
 
+/// Converts a bounded platform probe into completion evidence. A successful
+/// first probe that already sees Button1 up represents a quick release.
+#[cfg(any(target_os = "windows", target_os = "linux", test))]
+pub(crate) fn classify_drag_release(
+    initially_down: bool,
+    released: bool,
+    timed_out: bool,
+) -> DragReleaseEvidence {
+    if released || !initially_down {
+        DragReleaseEvidence::Released
+    } else {
+        debug_assert!(timed_out);
+        DragReleaseEvidence::Unavailable
+    }
+}
+
 pub fn wait_for_local_drag_release() -> DragReleaseEvidence {
     #[cfg(target_os = "windows")]
     return windows::wait_for_left_release();
@@ -30,6 +46,27 @@ pub fn wait_for_local_drag_release() -> DragReleaseEvidence {
     return linux::wait_for_left_release();
     #[cfg(not(any(target_os = "windows", target_os = "linux")))]
     DragReleaseEvidence::Unavailable
+}
+
+#[cfg(test)]
+mod drag_release_tests {
+    use super::*;
+
+    #[test]
+    fn quick_release_is_completion_evidence() {
+        assert_eq!(
+            classify_drag_release(false, false, false),
+            DragReleaseEvidence::Released
+        );
+    }
+
+    #[test]
+    fn held_button_timeout_is_unavailable() {
+        assert_eq!(
+            classify_drag_release(true, false, true),
+            DragReleaseEvidence::Unavailable
+        );
+    }
 }
 
 pub use capabilities::{

@@ -13,18 +13,20 @@ pub(super) fn wait_for_left_release() -> DragReleaseEvidence {
     }
     // SAFETY: Win32 documents GetAsyncKeyState as a pure thread-safe query.
     let down = unsafe { GetAsyncKeyState(VK_LBUTTON) } < 0;
+    // A successful post-drag query with no button held is a legitimate quick
+    // release, not missing evidence.
     if !down {
-        return DragReleaseEvidence::Unavailable;
+        return super::classify_drag_release(false, false, false);
     }
     let started = Instant::now();
     while started.elapsed() < LIMIT {
         // SAFETY: see the query above; no pointer coordinates are read.
         if unsafe { GetAsyncKeyState(VK_LBUTTON) } >= 0 {
-            return DragReleaseEvidence::Released;
+            return super::classify_drag_release(true, true, false);
         }
         std::thread::sleep(Duration::from_millis(16));
     }
-    DragReleaseEvidence::Unavailable
+    super::classify_drag_release(true, false, true)
 }
 
 use super::OverlayError;
