@@ -467,6 +467,18 @@ impl AppState {
         &self,
         update: impl FnOnce(&mut PersistedConfig),
     ) -> Result<(), String> {
+        self.update_persisted_config_with(|config| {
+            update(config);
+            Ok(())
+        })
+        .map(|_| ())
+    }
+
+    /// Saves a candidate under the persistence lock and returns its exact committed snapshot.
+    pub fn update_persisted_config_with<T>(
+        &self,
+        update: impl FnOnce(&mut PersistedConfig) -> Result<T, String>,
+    ) -> Result<(T, PersistedConfig), String> {
         let mut guard = self
             .persistence
             .lock()
@@ -475,13 +487,13 @@ impl AppState {
             return Err("desktop persistence is not initialized".to_owned());
         };
         let mut candidate = runtime.config.clone();
-        update(&mut candidate);
+        let output = update(&mut candidate)?;
         runtime
             .service
             .save_config(&candidate)
             .map_err(|error| error.to_string())?;
         runtime.config = candidate;
-        Ok(())
+        Ok((output, runtime.config.clone()))
     }
 
     pub fn set_pinned_and_emit<R: tauri::Runtime>(
