@@ -85,10 +85,10 @@ global Bar を現在の monitor 上端へ drag すると dock します。上端
 します。detached Stove は従来どおり自由に動かせます。Wayland の dock は compositor の
 制約により best effort です。
 
-macOS では一つの combined status-bar item が同じ優先順で 0 から 8 個の Stove を表示でき、
-既定は 3 個です。見えている Stove を click して return し、right-click で complete list を
-開けます。これは presentation preference のみで、lifecycle evidence、privacy boundary、
-observe-not-command の product boundary は変えません。
+v0.4.1 safety hotfix では、mirrored dual display で再現した WindowServer crash を受け、dynamic
+macOS status-bar Stove rendering を一時停止します。検証済みの static Cookbench tray と menu は
+残ります。0 から 8 個（既定 3）の保存済み preference は将来の独立検証済み復帰に備えて保持し、
+Minimal mode と top docking は影響を受けません。
 
 ## Orchestration ではなく Observability のために
 
@@ -107,20 +107,20 @@ observe-not-command の product boundary は変えません。
 
 ## 1 Command で Install
 
-Cookbench v0.4.0 は unsigned preview です。first-party bootstrap は
+Cookbench v0.4.1 は unsigned preview です。first-party bootstrap は
 `release-manifest.json` を download し、この machine 用の native package を選び、SHA-256
 digest を検証してから install します。
 
 macOS universal または graphical Ubuntu/Linux x86_64:
 
 ```bash
-curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.4.0/install.sh | COOKBENCH_VERSION=v0.4.0 COOKBENCH_ALLOW_PRERELEASE=1 bash
+curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.4.1/install.sh | COOKBENCH_VERSION=v0.4.1 COOKBENCH_ALLOW_PRERELEASE=1 bash
 ```
 
 Windows x64 PowerShell:
 
 ```powershell
-$env:COOKBENCH_VERSION='v0.4.0'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.4.0/install.ps1 | iex
+$env:COOKBENCH_VERSION='v0.4.1'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.4.1/install.ps1 | iex
 ```
 
 macOS/Linux は `--dry-run`、全 platform では `COOKBENCH_DRY_RUN=1` を使うと install せずに
@@ -139,9 +139,9 @@ APT repository には publish していないため、動かない command を R
    **Settings > Hook Health** で実際に存在する lifecycle signal を確認します。
 4. Stove を click すると、利用可能な verified terminal / IDE target、guarded な Codex
    Desktop task navigation、または明示的な application / project fallback を使います。
-5. Settings で language、Full / Minimal、top docking、macOS status-bar Stove count、optional
-   hover detail、二日間の freshness、Archive、sound、system banner、Bar flash、desktop
-   attention を調整します。
+5. Settings で language、Full / Minimal、top docking、optional hover detail、二日間の
+   freshness、Archive、sound、system banner、Bar flash、desktop attention を調整します。
+   v0.4.1 は停止中の macOS status-bar Stove count preference を保持しつつ一時的に隠します。
 
 local notification の既定は sound のみです。Cooked Stove は click して acknowledge するまで
 flash を続けられます。一時 error message は Bar の下の恒久的な row を占有せず、20 秒で消え
@@ -325,7 +325,9 @@ font、CSS のみで editable HTML から offline 生成されています。sou
 
 </details>
 
-silent-first social 向け 23.5 秒縦型の [Minimal、top-dock、macOS status Stove feature film](videos/cookbench-focus-surfaces/renders/cookbench-focus-surfaces-vertical.mp4) も公開しています。
+silent-first social 向け 23.5 秒縦型の [v0.4.0 focus-surface film](videos/cookbench-focus-surfaces/renders/cookbench-focus-surfaces-vertical.mp4)
+は release archive として残します。dynamic macOS status Stove の部分は v0.4.1 で停止中ですが、
+Minimal mode と top docking は現在も有効です。
 
 ## Vibes ではなく Evidence
 

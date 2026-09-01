@@ -9,8 +9,6 @@ pub mod gnome_bridge;
 mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
-#[cfg(target_os = "macos")]
-pub(crate) use macos::status_item_image_x;
 mod overlay;
 #[cfg(target_os = "windows")]
 mod windows;
@@ -71,7 +69,7 @@ pub fn publish_presentation_snapshot<R: tauri::Runtime>(
     snapshot: &StoveSnapshot,
 ) {
     publish_optional_gnome_snapshot(snapshot);
-    crate::desktop_shell::runtime::queue_status_stoves_refresh(app, snapshot.clone());
+    let _ = app;
 }
 
 pub fn publish_optional_gnome_snapshot(snapshot: &StoveSnapshot) {

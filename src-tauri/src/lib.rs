@@ -171,7 +171,6 @@ pub fn run() {
             None,
         ))
         .manage(app_state::AppState::default())
-        .manage(desktop_shell::status_stoves::StatusStovesState::default())
         .manage(commands::windows::GlobalBarDockRuntime::default())
         .manage(i18n::NativeLocaleState::default())
         .manage(notification_runtime)

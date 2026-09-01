@@ -113,7 +113,9 @@ pub fn settings_wire(config: &PersistedConfig) -> DisplaySettingsWire {
         global_bar_placement: config.layout.global_bar_placement,
         global_bar_mode: config.layout.global_bar_mode,
         mac_status_stove_count: config.layout.mac_status_stove_count,
-        mac_status_available: cfg!(target_os = "macos"),
+        // Preserve the saved count while the native status Stove runtime is
+        // suspended for the v0.4.1 WindowServer safety hotfix.
+        mac_status_available: false,
         hover_details_enabled: config.layout.hover_details_enabled,
         locale: config.preferences.locale,
         detached_bars: config
@@ -174,7 +176,6 @@ pub fn patch_display_settings(
     }
     app.emit(DISPLAY_SETTINGS_CHANGED_EVENT, &wire)
         .map_err(|error| error.to_string())?;
-    crate::desktop_shell::runtime::refresh_status_stoves(&app);
     if effects.apply_window_preferences {
         let current = committed.layout;
         if effects.placement_changed {
@@ -485,7 +486,7 @@ mod tests {
                 global_bar_placement: GlobalBarPlacement::BottomRight,
                 global_bar_mode: GlobalBarMode::Full,
                 mac_status_stove_count: 3,
-                mac_status_available: cfg!(target_os = "macos"),
+                mac_status_available: false,
                 hover_details_enabled: false,
                 locale: AppLocale::System,
                 detached_bars: vec![DetachedBarWire {
@@ -496,11 +497,10 @@ mod tests {
     }
 
     #[test]
-    fn settings_wire_exposes_compile_time_mac_status_capability() {
-        assert_eq!(
-            settings_wire(&PersistedConfig::default()).mac_status_available,
-            cfg!(target_os = "macos")
-        );
+    fn settings_wire_suspends_mac_status_without_discarding_the_preference() {
+        let settings = settings_wire(&PersistedConfig::default());
+        assert!(!settings.mac_status_available);
+        assert_eq!(settings.mac_status_stove_count, 3);
     }
 
     #[test]

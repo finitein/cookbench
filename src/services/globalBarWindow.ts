@@ -21,6 +21,17 @@ export function clampGlobalBarSize({ width, height }: GlobalBarSize): GlobalBarS
   };
 }
 
+export function globalBarMinimumRequestKey(
+  size: GlobalBarSize,
+  preferredHeight?: number,
+): string {
+  const minimum = clampGlobalBarSize(size);
+  const preferred = preferredHeight != null && Number.isFinite(preferredHeight)
+    ? Math.max(minimum.height, Math.ceil(preferredHeight))
+    : "auto";
+  return `${minimum.width}:${minimum.height}:${preferred}`;
+}
+
 export type GlobalBarDockPhase = "undocked" | "dockedExpanded" | "dockedCollapsed";
 export type GlobalBarDockState = { phase: GlobalBarDockPhase; docked: boolean; collapsed: boolean; bestEffort: boolean };
 export type GlobalBarDragStart = { token: number; completed: boolean; releaseConfirmed: boolean; state?: GlobalBarDockState };

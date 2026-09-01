@@ -88,11 +88,11 @@ Pulling the Bar 24 px away undocks it. Detached Stoves keep their usual movable
 behavior. Wayland docking is best effort because the compositor owns that
 interaction.
 
-On macOS, the combined status-bar item can show 0 to 8 priority Stoves (3 by
-default) using the same order. Click a visible Stove to return to it, or
-right-click for the complete list. These are presentation preferences only:
-they do not change lifecycle evidence, privacy boundaries, or Cookbench's
-observe-not-command product boundary.
+The v0.4.1 safety hotfix temporarily suspends dynamic macOS status-bar Stove
+rendering after a WindowServer crash was reproduced on mirrored dual displays.
+The proven static Cookbench tray and menu remain available. A saved 0-to-8
+Stove count (default 3) is retained for a later, separately verified return;
+Minimal mode and top docking are unaffected.
 
 ## Built for Observability, Not Orchestration
 
@@ -111,20 +111,20 @@ the exact [privacy](docs/privacy.md), [security](docs/security.md), and
 
 ## Install in One Command
 
-Cookbench v0.4.0 is an unsigned preview. The first-party bootstrap downloads
+Cookbench v0.4.1 is an unsigned preview. The first-party bootstrap downloads
 `release-manifest.json`, selects the native package for this machine, verifies
 its SHA-256 digest, and only then installs it.
 
 macOS universal or graphical Ubuntu/Linux x86_64:
 
 ```bash
-curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.4.0/install.sh | COOKBENCH_VERSION=v0.4.0 COOKBENCH_ALLOW_PRERELEASE=1 bash
+curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.4.1/install.sh | COOKBENCH_VERSION=v0.4.1 COOKBENCH_ALLOW_PRERELEASE=1 bash
 ```
 
 Windows x64 PowerShell:
 
 ```powershell
-$env:COOKBENCH_VERSION='v0.4.0'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.4.0/install.ps1 | iex
+$env:COOKBENCH_VERSION='v0.4.1'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.4.1/install.ps1 | iex
 ```
 
 Use `--dry-run` on macOS/Linux or `COOKBENCH_DRY_RUN=1` on any platform to
@@ -144,9 +144,10 @@ commands that do not work yet.
    **Settings > Hook Health** to see which lifecycle signals actually exist.
 4. Click a Stove to use a verified terminal/IDE target where available, guarded
    Codex Desktop task navigation, or an explicit application/project fallback.
-5. Tune language, Full or Minimal display, top docking, macOS status-bar Stove
-   count, optional hover details, two-day freshness, Archive, sound, system
-   banners, Bar flash, and desktop attention from Settings.
+5. Tune language, Full or Minimal display, top docking, optional hover details,
+   two-day freshness, Archive, sound, system banners, Bar flash, and desktop
+   attention from Settings. v0.4.1 retains but temporarily hides the suspended
+   macOS status-bar Stove count preference.
 
 Local notifications default to sound only. A Cooked Stove may keep flashing
 until you acknowledge it by clicking that Stove. Temporary error messages
@@ -343,7 +344,9 @@ system fonts, and CSS only. The source and deterministic renderer live in
 
 </details>
 
-Watch the 23.5-second vertical [Minimal, top-dock, and macOS status Stove feature film](videos/cookbench-focus-surfaces/renders/cookbench-focus-surfaces-vertical.mp4), designed for silent-first social viewing.
+The 23.5-second vertical [v0.4.0 focus-surface film](videos/cookbench-focus-surfaces/renders/cookbench-focus-surfaces-vertical.mp4)
+is retained as a release archive. Its dynamic macOS status Stove segment is
+suspended in v0.4.1; Minimal mode and top docking remain current.
 
 ## Evidence, Not Vibes
 

@@ -32,14 +32,13 @@ test("language navigation is complete and reciprocal", async () => {
   }
 });
 
-test("all language landing pages document the same v0.4 focus-surface contract", async () => {
-  const required = ["Minimal", "Wayland", "12", "600", "3", "0", "8", "macOS"];
+test("all language landing pages document the v0.4.1 focus-surface safety contract", async () => {
+  const required = ["Minimal", "Wayland", "12", "600", "v0.4.1", "macOS", "WindowServer", "static"];
   for (const path of readmes) {
     const contents = await read(path);
     for (const term of required) {
       assert.ok(contents.includes(term), `${path} does not document ${term}`);
     }
-    assert.match(contents, /right-click|右键/i, `${path} does not document the complete status list`);
   }
 });
 
@@ -54,4 +53,14 @@ test("canonical compatibility document lists every catalog id exactly once", asy
   }
   assert.match(compatibility, /absence of activity.+never.+Cooked/is);
   assert.match(compatibility, /WorkBuddy.+presence.+only/is);
+});
+
+test("macOS runtime stays on the v0.3 static tray path for the WindowServer hotfix", async () => {
+  const runtime = await read("src-tauri/src/desktop_shell/runtime.rs");
+  const platform = await read("src-tauri/src/platform/mod.rs");
+
+  assert.doesNotMatch(runtime, /refresh_status_stoves/);
+  assert.doesNotMatch(runtime, /StatusStovesState/);
+  assert.doesNotMatch(runtime, /tray\.set_icon/);
+  assert.doesNotMatch(platform, /queue_status_stoves_refresh/);
 });

@@ -4,6 +4,7 @@ import {
   clampGlobalBarSize,
   createGlobalBarDockController,
   type GlobalBarDockTransport,
+  globalBarMinimumRequestKey,
   intrinsicGlobalBarMinimumHeight,
   prepareNativeGlobalBarDocument,
   recordGlobalBarPosition,
@@ -63,6 +64,15 @@ describe("global bar window sizing", () => {
       height: 248,
       preferredHeight: undefined,
     });
+  });
+
+  it("deduplicates unchanged native minimum-size requests", () => {
+    expect(globalBarMinimumRequestKey({ width: 280, height: 248.1 }, 567.1)).toBe(
+      globalBarMinimumRequestKey({ width: 279, height: 249 }, 568),
+    );
+    expect(globalBarMinimumRequestKey({ width: 280, height: 250 }, 568)).not.toBe(
+      globalBarMinimumRequestKey({ width: 280, height: 249 }, 568),
+    );
   });
 
   it("measures content rather than locking the current native window height", () => {
