@@ -134,6 +134,31 @@ enum CollapseCompensation {
     KeepVisible,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DragFinishPlan {
+    Reliable,
+    BestEffortVisible,
+}
+
+fn drag_finish_plan(reliable_positioning: bool) -> DragFinishPlan {
+    if reliable_positioning {
+        DragFinishPlan::Reliable
+    } else {
+        DragFinishPlan::BestEffortVisible
+    }
+}
+
+fn execute_drag_finish_plan<T>(
+    plan: DragFinishPlan,
+    best_effort: impl FnOnce() -> Result<T, String>,
+    reliable: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    match plan {
+        DragFinishPlan::BestEffortVisible => best_effort(),
+        DragFinishPlan::Reliable => reliable(),
+    }
+}
+
 #[derive(Default)]
 pub struct GlobalBarDockRuntime(Mutex<GlobalBarDockController>);
 
@@ -678,6 +703,23 @@ fn move_to_dock_geometry<R: Runtime>(
         .map_err(|error| error.to_string())
 }
 
+fn expanded_dock_position<R: Runtime>(
+    window: &tauri::WebviewWindow<R>,
+    dock: &GlobalBarTopDock,
+) -> Result<WindowPosition, String> {
+    let size = window.outer_size().map_err(|error| error.to_string())?;
+    resolve_top_dock(
+        dock,
+        WindowSize {
+            width: size.width,
+            height: size.height,
+        },
+        &dock_monitors(window)?,
+    )
+    .map(|geometry| geometry.expanded_position)
+    .ok_or_else(|| "no display is available for the Cookbench global Bar".to_owned())
+}
+
 fn compensate_stale_geometry<R: Runtime>(
     window: &tauri::WebviewWindow<R>,
     runtime: &GlobalBarDockRuntime,
@@ -686,12 +728,29 @@ fn compensate_stale_geometry<R: Runtime>(
     // A native move is not transactional. Once another interaction invalidates
     // its candidate, put the window at the current expanded dock instead of
     // leaving it physically hidden behind the trigger strip.
-    window.show().map_err(|error| error.to_string())?;
-    match runtime.collapse_compensation(fallback_position) {
-        CollapseCompensation::Expand(dock) => move_to_dock_geometry(window, &dock, false),
-        CollapseCompensation::MoveVisible(position) => window
-            .set_position(PhysicalPosition::new(position.x, position.y))
-            .map_err(|error| error.to_string()),
+    let compensation = runtime.collapse_compensation(fallback_position);
+    execute_geometry_compensation(
+        compensation,
+        || window.show().map_err(|error| error.to_string()),
+        |dock| move_to_dock_geometry(window, dock, false),
+        |position| {
+            window
+                .set_position(PhysicalPosition::new(position.x, position.y))
+                .map_err(|error| error.to_string())
+        },
+    )
+}
+
+fn execute_geometry_compensation(
+    compensation: CollapseCompensation,
+    show: impl FnOnce() -> Result<(), String>,
+    expand: impl FnOnce(&GlobalBarTopDock) -> Result<(), String>,
+    move_visible: impl FnOnce(WindowPosition) -> Result<(), String>,
+) -> Result<(), String> {
+    show()?;
+    match compensation {
+        CollapseCompensation::Expand(dock) => expand(&dock),
+        CollapseCompensation::MoveVisible(position) => move_visible(position),
         CollapseCompensation::KeepVisible => Ok(()),
     }
 }
@@ -737,76 +796,84 @@ pub fn finish_global_bar_drag(
     let Some(_runtime_prior) = runtime.consume_drag(token) else {
         return Ok(runtime.state());
     };
-    let original_position = (|| -> Result<WindowPosition, String> {
-        let window = app
-            .get_webview_window("main")
-            .ok_or_else(|| "Cookbench global Bar window is unavailable".to_owned())?;
-        let position = window.outer_position().map_err(|error| error.to_string())?;
-        Ok(WindowPosition {
-            x: position.x,
-            y: position.y,
-        })
-    })();
-    execute_drag_transition(
-        prior_dock.as_ref(),
-        original_position.as_ref().ok().copied(),
+    execute_drag_finish_plan(
+        drag_finish_plan(reliable_top_dock_positioning()),
         || {
-            let original_position = original_position.clone()?;
             let window = app
                 .get_webview_window("main")
                 .ok_or_else(|| "Cookbench global Bar window is unavailable".to_owned())?;
-            if !reliable_top_dock_positioning() {
-                window.show().map_err(|error| error.to_string())?;
-                emit_dock_state(&app, &runtime);
-                return Ok(runtime.state());
-            }
-            let native_size = window.outer_size().map_err(|error| error.to_string())?;
-            let position = original_position;
-            let size = WindowSize {
-                width: native_size.width,
-                height: native_size.height,
-            };
-            let monitors = dock_monitors(&window)?;
-            match top_dock_decision(TopDockInput {
-                position,
-                size,
-                monitors: &monitors,
-                prior_dock: prior_dock.as_ref(),
-                reliable_positioning: true,
-            }) {
-                TopDockDecision::Dock(dock) | TopDockDecision::RemainDocked(dock) => {
-                    move_to_dock_geometry(&window, &dock, false)?;
-                    state.update_persisted_config(|config| {
-                        config.layout.global_bar_top_dock = Some(dock.clone())
-                    })?;
-                    runtime.commit_dock(Some(dock));
-                }
-                TopDockDecision::Undock | TopDockDecision::Freeform => {
-                    let saved = global_bar_position(position, size, &monitors)?;
-                    state.update_persisted_config(|config| {
-                        config.layout.global_bar_top_dock = None;
-                        config.layout.global_bar_position = Some(saved);
-                    })?;
-                    runtime.commit_dock(None);
-                }
-                TopDockDecision::BestEffortVisible => {}
-            }
+            window.show().map_err(|error| error.to_string())?;
             emit_dock_state(&app, &runtime);
             Ok(runtime.state())
         },
-        |old| {
-            let window = app.get_webview_window("main").ok_or_else(|| {
-                "Cookbench global Bar window is unavailable for rollback".to_owned()
-            })?;
-            move_to_dock_geometry(&window, old, false)
-        },
-        |position| {
-            let window = app.get_webview_window("main").ok_or_else(|| {
-                "Cookbench global Bar window is unavailable for rollback".to_owned()
-            })?;
-            window
-                .set_position(PhysicalPosition::new(position.x, position.y))
-                .map_err(|error| error.to_string())
+        || {
+            let original_position = (|| -> Result<WindowPosition, String> {
+                let window = app
+                    .get_webview_window("main")
+                    .ok_or_else(|| "Cookbench global Bar window is unavailable".to_owned())?;
+                let position = window.outer_position().map_err(|error| error.to_string())?;
+                Ok(WindowPosition {
+                    x: position.x,
+                    y: position.y,
+                })
+            })();
+            execute_drag_transition(
+                prior_dock.as_ref(),
+                original_position.as_ref().ok().copied(),
+                || {
+                    let original_position = original_position.clone()?;
+                    let window = app
+                        .get_webview_window("main")
+                        .ok_or_else(|| "Cookbench global Bar window is unavailable".to_owned())?;
+                    let native_size = window.outer_size().map_err(|error| error.to_string())?;
+                    let position = original_position;
+                    let size = WindowSize {
+                        width: native_size.width,
+                        height: native_size.height,
+                    };
+                    let monitors = dock_monitors(&window)?;
+                    match top_dock_decision(TopDockInput {
+                        position,
+                        size,
+                        monitors: &monitors,
+                        prior_dock: prior_dock.as_ref(),
+                        reliable_positioning: true,
+                    }) {
+                        TopDockDecision::Dock(dock) | TopDockDecision::RemainDocked(dock) => {
+                            move_to_dock_geometry(&window, &dock, false)?;
+                            state.update_persisted_config(|config| {
+                                config.layout.global_bar_top_dock = Some(dock.clone())
+                            })?;
+                            runtime.commit_dock(Some(dock));
+                        }
+                        TopDockDecision::Undock | TopDockDecision::Freeform => {
+                            let saved = global_bar_position(position, size, &monitors)?;
+                            state.update_persisted_config(|config| {
+                                config.layout.global_bar_top_dock = None;
+                                config.layout.global_bar_position = Some(saved);
+                            })?;
+                            runtime.commit_dock(None);
+                        }
+                        TopDockDecision::BestEffortVisible => {}
+                    }
+                    emit_dock_state(&app, &runtime);
+                    Ok(runtime.state())
+                },
+                |old| {
+                    let window = app.get_webview_window("main").ok_or_else(|| {
+                        "Cookbench global Bar window is unavailable for rollback".to_owned()
+                    })?;
+                    move_to_dock_geometry(&window, old, false)
+                },
+                |position| {
+                    let window = app.get_webview_window("main").ok_or_else(|| {
+                        "Cookbench global Bar window is unavailable for rollback".to_owned()
+                    })?;
+                    window
+                        .set_position(PhysicalPosition::new(position.x, position.y))
+                        .map_err(|error| error.to_string())
+                },
+            )
         },
     )
 }
@@ -929,10 +996,13 @@ pub fn refresh_global_bar_dock_geometry(
         let window = app
             .get_webview_window("main")
             .ok_or_else(|| "Cookbench global Bar window is unavailable".to_owned())?;
+        let expanded_position = expanded_dock_position(&window, &candidate.dock)?;
+        let candidate = candidate.with_expanded_position(expanded_position);
         let collapsed = candidate.collapsed() && reliable_top_dock_positioning();
         move_to_dock_geometry(&window, &candidate.dock, collapsed)?;
         if !runtime.commit_geometry(&candidate) {
-            compensate_stale_geometry(&window, runtime.inner(), None).map_err(|error| {
+            compensate_stale_geometry(&window, runtime.inner(), candidate.expanded_position)
+                .map_err(|error| {
                 format!("Global Bar refresh was superseded; could not restore the expanded Bar: {error}")
             })?;
         }
@@ -1303,6 +1373,49 @@ mod dock_tests {
             runtime.collapse_compensation(collapse.expanded_position),
             CollapseCompensation::MoveVisible(on_screen)
         );
+    }
+
+    #[test]
+    fn stale_collapsed_refresh_moves_a_fake_window_back_on_screen() {
+        let runtime = GlobalBarDockRuntime::default();
+        runtime.commit_dock(Some(dock()));
+        let collapse = runtime.collapse_candidate().unwrap();
+        assert!(runtime.commit_geometry(&collapse));
+        let expanded = WindowPosition { x: 120, y: 24 };
+        let refresh = runtime
+            .refresh_candidate()
+            .unwrap()
+            .with_expanded_position(expanded);
+        runtime.commit_dock(None);
+        assert!(!runtime.commit_geometry(&refresh));
+
+        let mut physical_position = WindowPosition { x: 120, y: -97 };
+        execute_geometry_compensation(
+            runtime.collapse_compensation(refresh.expanded_position),
+            || Ok(()),
+            |_| Ok(()),
+            |position| {
+                physical_position = position;
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(physical_position, expanded);
+    }
+
+    #[test]
+    fn best_effort_finish_never_requests_global_coordinates() {
+        let coordinate_queries = std::cell::Cell::new(0);
+        let result = execute_drag_finish_plan(
+            drag_finish_plan(false),
+            || Ok("visible"),
+            || {
+                coordinate_queries.set(coordinate_queries.get() + 1);
+                Ok("reliable")
+            },
+        );
+        assert_eq!(result, Ok("visible"));
+        assert_eq!(coordinate_queries.get(), 0);
     }
 
     #[test]
