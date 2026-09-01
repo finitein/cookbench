@@ -6,6 +6,7 @@
 
 mod controller;
 pub mod runtime;
+pub mod status_stoves;
 
 pub use controller::{
     autostart_transition, default_autostart_enabled, default_toggle_shortcut, shortcut_plan,

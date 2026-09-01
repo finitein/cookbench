@@ -287,7 +287,7 @@ impl AppState {
             return Ok(false);
         };
         crate::events::emit_stove_change(app, change).map_err(AppStateError::Emit)?;
-        crate::platform::publish_optional_gnome_snapshot(&self.snapshot_locked());
+        crate::platform::publish_presentation_snapshot(app, &self.snapshot_locked());
         Ok(true)
     }
 
@@ -541,7 +541,7 @@ impl AppState {
             .ok_or(AppStateError::UnknownStove)?;
         crate::events::emit_stove_change(app, self.with_attention_order(change))
             .map_err(AppStateError::Emit)?;
-        crate::platform::publish_optional_gnome_snapshot(&self.snapshot_locked());
+        crate::platform::publish_presentation_snapshot(app, &self.snapshot_locked());
         drop(_serial);
         if !pinned {
             self.reconcile_expired_and_emit(app)?;
@@ -644,7 +644,7 @@ impl AppState {
             crate::events::emit_stove_change(app, self.with_attention_order(change))
                 .map_err(AppStateError::Emit)?;
         }
-        crate::platform::publish_optional_gnome_snapshot(&self.snapshot_locked());
+        crate::platform::publish_presentation_snapshot(app, &self.snapshot_locked());
         Ok(())
     }
 
@@ -708,7 +708,7 @@ impl AppState {
             let _ = windows.clear_stove(stove_id);
             let _ = crate::commands::windows::persist_layouts(self, &windows);
         }
-        crate::platform::publish_optional_gnome_snapshot(&self.snapshot_locked());
+        crate::platform::publish_presentation_snapshot(app, &self.snapshot_locked());
         Ok(())
     }
 
@@ -909,7 +909,7 @@ impl AppState {
             );
             crate::events::emit_stove_change(app, self.with_attention_order(change))
                 .map_err(AppStateError::Emit)?;
-            crate::platform::publish_optional_gnome_snapshot(&self.snapshot_locked());
+            crate::platform::publish_presentation_snapshot(app, &self.snapshot_locked());
             return Ok(());
         }
 
@@ -1015,7 +1015,7 @@ impl AppState {
         }
         crate::events::emit_stove_change(app, self.with_attention_order(change))
             .map_err(AppStateError::Emit)?;
-        crate::platform::publish_optional_gnome_snapshot(&self.snapshot_locked());
+        crate::platform::publish_presentation_snapshot(app, &self.snapshot_locked());
         if side_effects {
             if let Some(stove) = self
                 .stoves

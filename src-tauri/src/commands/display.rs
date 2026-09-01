@@ -174,6 +174,7 @@ pub fn patch_display_settings(
     }
     app.emit(DISPLAY_SETTINGS_CHANGED_EVENT, &wire)
         .map_err(|error| error.to_string())?;
+    crate::desktop_shell::runtime::refresh_status_stoves(&app);
     if effects.apply_window_preferences {
         let current = committed.layout;
         if effects.placement_changed {

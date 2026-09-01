@@ -9,6 +9,8 @@ pub mod gnome_bridge;
 mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(target_os = "macos")]
+pub(crate) use macos::status_item_image_x;
 mod overlay;
 #[cfg(target_os = "windows")]
 mod windows;
@@ -20,6 +22,17 @@ pub use capabilities::{
 pub use overlay::{OverlayController, OverlayError, TauriOverlayController};
 
 use crate::app_state::StoveSnapshot;
+
+/// Delivers one immutable Stove snapshot to platform-owned presentation
+/// surfaces. The snapshot has already been normalized and attention-ranked by
+/// `AppState`; platform renderers must not derive their own order.
+pub fn publish_presentation_snapshot<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    snapshot: &StoveSnapshot,
+) {
+    publish_optional_gnome_snapshot(snapshot);
+    crate::desktop_shell::runtime::refresh_status_stoves_snapshot(app, snapshot);
+}
 
 pub fn publish_optional_gnome_snapshot(snapshot: &StoveSnapshot) {
     #[cfg(target_os = "linux")]
