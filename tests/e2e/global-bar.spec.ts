@@ -173,7 +173,7 @@ test("expanding minimal mode restores every stove in canonical order", async ({ 
   const driver = await e2eDriver(page);
   const source = [stoveFixture(0), stoveFixture(1), stoveFixture(2)];
   await driver.replaceSnapshot({ stoves: source, attentionOrder: [source[2].id, source[0].id, source[1].id], globalBarMode: "minimal" });
-  await page.getByRole("button", { name: /expand/i }).click();
+  await page.getByTestId("minimal-global-bar").getByRole("button", { name: "Use full Bar" }).click();
   await expect(page.getByTestId("stove")).toHaveCount(3);
   const orderedIds = await page.locator(".global-bar__item [data-stove-id]").evaluateAll((items) => items.map((item) => item.getAttribute("data-stove-id")));
   expect(orderedIds).toEqual([source[2].id, source[0].id, source[1].id]);
