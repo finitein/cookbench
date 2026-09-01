@@ -123,6 +123,7 @@ export function createGlobalBarDockController(
     if (disposed || !resizePending) return;
     resizePending = false;
     resizeGeneration += 1;
+    releaseUnconfirmed = false;
     setGuards({ resizing: false });
     safe(transport.refreshGeometry());
   };
