@@ -107,20 +107,20 @@ product boundary를 바꾸지 않습니다.
 
 ## 한 줄로 설치
 
-Cookbench v0.3.0은 서명되지 않은 프리뷰입니다. 첫 번째 파티 bootstrap은
+Cookbench v0.4.0은 서명되지 않은 프리뷰입니다. 첫 번째 파티 bootstrap은
 `release-manifest.json`을 내려받아 이 시스템에 맞는 네이티브 패키지를 선택하고,
 SHA-256 digest를 검증한 다음 설치합니다.
 
 macOS universal 또는 그래픽 Ubuntu/Linux x86_64:
 
 ```bash
-curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.3.0/install.sh | COOKBENCH_VERSION=v0.3.0 COOKBENCH_ALLOW_PRERELEASE=1 bash
+curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.4.0/install.sh | COOKBENCH_VERSION=v0.4.0 COOKBENCH_ALLOW_PRERELEASE=1 bash
 ```
 
 Windows x64 PowerShell:
 
 ```powershell
-$env:COOKBENCH_VERSION='v0.3.0'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.3.0/install.ps1 | iex
+$env:COOKBENCH_VERSION='v0.4.0'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.4.0/install.ps1 | iex
 ```
 
 macOS/Linux에서는 `--dry-run`, 모든 플랫폼에서는 `COOKBENCH_DRY_RUN=1`으로 실제 설치

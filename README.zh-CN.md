@@ -99,19 +99,19 @@ Cookbench“只观察、不指挥”的产品边界。
 
 ## 一行命令安装
 
-Cookbench v0.3.0 是未签名预览版。第一方安装脚本先下载
+Cookbench v0.4.0 是未签名预览版。第一方安装脚本先下载
 `release-manifest.json`，为当前机器选择原生包，校验 SHA-256，确认无误后才安装。
 
 macOS 通用版或图形化 Ubuntu/Linux x86_64：
 
 ```bash
-curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.3.0/install.sh | COOKBENCH_VERSION=v0.3.0 COOKBENCH_ALLOW_PRERELEASE=1 bash
+curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.4.0/install.sh | COOKBENCH_VERSION=v0.4.0 COOKBENCH_ALLOW_PRERELEASE=1 bash
 ```
 
 Windows x64 PowerShell：
 
 ```powershell
-$env:COOKBENCH_VERSION='v0.3.0'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.3.0/install.ps1 | iex
+$env:COOKBENCH_VERSION='v0.4.0'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.4.0/install.ps1 | iex
 ```
 
 macOS/Linux 可使用 `--dry-run`，所有平台都可以设置 `COOKBENCH_DRY_RUN=1`，只检查

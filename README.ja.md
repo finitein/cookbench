@@ -107,20 +107,20 @@ observe-not-command の product boundary は変えません。
 
 ## 1 Command で Install
 
-Cookbench v0.3.0 は unsigned preview です。first-party bootstrap は
+Cookbench v0.4.0 は unsigned preview です。first-party bootstrap は
 `release-manifest.json` を download し、この machine 用の native package を選び、SHA-256
 digest を検証してから install します。
 
 macOS universal または graphical Ubuntu/Linux x86_64:
 
 ```bash
-curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.3.0/install.sh | COOKBENCH_VERSION=v0.3.0 COOKBENCH_ALLOW_PRERELEASE=1 bash
+curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.4.0/install.sh | COOKBENCH_VERSION=v0.4.0 COOKBENCH_ALLOW_PRERELEASE=1 bash
 ```
 
 Windows x64 PowerShell:
 
 ```powershell
-$env:COOKBENCH_VERSION='v0.3.0'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.3.0/install.ps1 | iex
+$env:COOKBENCH_VERSION='v0.4.0'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.4.0/install.ps1 | iex
 ```
 
 macOS/Linux は `--dry-run`、全 platform では `COOKBENCH_DRY_RUN=1` を使うと install せずに
