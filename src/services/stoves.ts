@@ -94,6 +94,7 @@ export async function subscribeToStoves(
   const sync = new StoveSync();
   let ready = false;
   let recovery: Promise<void> | null = null;
+  let highestObservedRevision = 0;
   const queued: StoveChange[] = [];
   const handle = (change: StoveChange) => {
     if (!ready) {
@@ -104,10 +105,20 @@ export async function subscribeToStoves(
     if (result === "applied") {
       onSnapshot(sync.current());
     } else if (result === "gap") {
-      recovery ??= transport.snapshot()
-        .then((snapshot) => onSnapshot(sync.replace(snapshot)))
-        .finally(() => { recovery = null; });
+      highestObservedRevision = Math.max(highestObservedRevision, change.revision);
+      recovery ??= recoverSnapshot();
     }
+  };
+  const recoverSnapshot = async (): Promise<void> => {
+    let previousRevision = sync.current().revision;
+    while (true) {
+      const snapshot = await transport.snapshot();
+      const current = sync.replace(snapshot);
+      onSnapshot(current);
+      if (current.revision >= highestObservedRevision || current.revision <= previousRevision) break;
+      previousRevision = current.revision;
+    }
+    recovery = null;
   };
   const unlisten = await transport.listen(handle).catch((): UnlistenFn => () => {});
   onSnapshot(sync.replace(await transport.snapshot()));

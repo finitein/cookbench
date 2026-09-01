@@ -85,13 +85,13 @@ describe("StoveSync", () => {
     expect(received[1]).toEqual({ revision: 3, stoves: [stove], attentionOrder: [stove.id] });
   });
 
-  it("coalesces concurrent revision gaps into one monotonic recovery", async () => {
+  it("retries recovery when a newer gap arrives before the first snapshot resolves", async () => {
     let handler: ((change: { revision: number; stove: StoveWire | null; removedStoveId: string | null; attentionOrder?: string[] }) => void) | undefined;
-    let resolveSnapshot: ((snapshot: StoveSnapshot) => void) | undefined;
+    const resolvers: Array<(snapshot: StoveSnapshot) => void> = [];
     const transport: StoveTransport = {
       snapshot: vi.fn()
         .mockResolvedValueOnce({ revision: 1, stoves: [] })
-        .mockImplementationOnce(() => new Promise<StoveSnapshot>((resolve) => { resolveSnapshot = resolve; })),
+        .mockImplementation(() => new Promise<StoveSnapshot>((resolve) => { resolvers.push(resolve); })),
       listen: vi.fn(async (next) => { handler = next; return () => {}; }),
     };
     const received: StoveSnapshot[] = [];
@@ -101,8 +101,32 @@ describe("StoveSync", () => {
     handler?.({ revision: 5, stove, removedStoveId: null, attentionOrder: [stove.id] });
     expect(transport.snapshot).toHaveBeenCalledTimes(2);
 
-    resolveSnapshot?.({ revision: 5, stoves: [stove], attentionOrder: [stove.id] });
+    resolvers.shift()?.({ revision: 3, stoves: [stove], attentionOrder: [stove.id] });
+    await vi.waitFor(() => expect(transport.snapshot).toHaveBeenCalledTimes(3));
+    resolvers.shift()?.({ revision: 5, stoves: [stove], attentionOrder: [stove.id] });
     await vi.waitFor(() => expect(received.at(-1)).toEqual({ revision: 5, stoves: [stove], attentionOrder: [stove.id] }));
+  });
+
+  it("replays queued startup gaps through the same recovery loop", async () => {
+    let handler: ((change: { revision: number; stove: StoveWire | null; removedStoveId: string | null; attentionOrder?: string[] }) => void) | undefined;
+    const resolvers: Array<(snapshot: StoveSnapshot) => void> = [];
+    const transport: StoveTransport = {
+      snapshot: vi.fn().mockImplementation(() => new Promise<StoveSnapshot>((resolve) => { resolvers.push(resolve); })),
+      listen: vi.fn(async (next) => { handler = next; return () => {}; }),
+    };
+    const received: StoveSnapshot[] = [];
+    const subscription = subscribeToStoves((next) => received.push(next), transport);
+    await vi.waitFor(() => expect(handler).toBeDefined());
+    await vi.waitFor(() => expect(resolvers).toHaveLength(1));
+    handler?.({ revision: 3, stove, removedStoveId: null, attentionOrder: [stove.id] });
+    handler?.({ revision: 5, stove, removedStoveId: null, attentionOrder: [stove.id] });
+    resolvers.shift()?.({ revision: 1, stoves: [] });
+    await subscription;
+    await vi.waitFor(() => expect(transport.snapshot).toHaveBeenCalledTimes(2));
+    resolvers.shift()?.({ revision: 3, stoves: [stove], attentionOrder: [stove.id] });
+    await vi.waitFor(() => expect(transport.snapshot).toHaveBeenCalledTimes(3));
+    resolvers.shift()?.({ revision: 5, stoves: [stove], attentionOrder: [stove.id] });
+    await vi.waitFor(() => expect(received.at(-1)?.revision).toBe(5));
   });
 
   it("delivers the authoritative snapshot when live event registration is unavailable", async () => {

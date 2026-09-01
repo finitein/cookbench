@@ -1888,6 +1888,7 @@ mod acknowledgement_tests {
         assert_eq!(state.snapshot().stoves[1].state, StoveStateWire::Cooked);
         assert!(acknowledge(&state, &cooked).is_none());
         assert!(acknowledge(&state, "unknown").is_none());
+        assert!(acknowledge(&state, &cooking).is_none());
         assert_eq!(state.snapshot().revision, before + 1);
     }
 
