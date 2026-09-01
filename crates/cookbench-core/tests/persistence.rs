@@ -14,8 +14,9 @@ use cookbench_core::{
     notifications::NotificationEventKind,
     persistence::{
         AppLocale, ArchiveReason, ArchivedSession, AtomicJsonFile, ClearCursor,
-        CookedAttentionCursor, GlobalBarMode, GlobalBarPlacement, PersistedConfig, PersistedState,
-        PinnedSession, RetainedStove, RetainedStovePresentation, SessionRecord,
+        CookedAttentionCursor, GlobalBarMode, GlobalBarPlacement, GlobalBarPosition,
+        GlobalBarTopDock, MonitorIdentity, PersistedConfig, PersistedState, PinnedSession,
+        RelativePosition, RetainedStove, RetainedStovePresentation, SessionRecord,
     },
 };
 
@@ -322,6 +323,30 @@ fn legacy_config_defaults_display_mode_and_mac_status_count() {
 
     assert_eq!(config.layout.global_bar_mode, GlobalBarMode::Full);
     assert_eq!(config.layout.mac_status_stove_count, 3);
+    assert_eq!(config.layout.global_bar_top_dock, None);
+}
+
+#[test]
+fn persisted_top_dock_round_trips_without_moving_the_freeform_position() {
+    let mut config = PersistedConfig::default();
+    config.layout.global_bar_position = Some(GlobalBarPosition {
+        monitor: MonitorIdentity {
+            id: "main".into(),
+            name: None,
+        },
+        relative_position: RelativePosition { x: 4000, y: 7000 },
+    });
+    config.layout.global_bar_top_dock = Some(GlobalBarTopDock {
+        monitor: MonitorIdentity {
+            id: "main".into(),
+            name: None,
+        },
+        relative_x: 4000,
+    });
+
+    let decoded: PersistedConfig =
+        serde_json::from_str(&serde_json::to_string(&config).unwrap()).unwrap();
+    assert_eq!(decoded.layout, config.layout);
 }
 
 #[test]

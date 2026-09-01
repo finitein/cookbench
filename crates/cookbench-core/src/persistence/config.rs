@@ -6,7 +6,7 @@ use crate::domain::HarnessId;
 use crate::notifications::NotificationEventKind;
 
 use super::Versioned;
-use super::{DetachedStoveLayout, MonitorIdentity, RelativePosition, WindowSize};
+use super::{DetachedStoveLayout, GlobalBarTopDock, MonitorIdentity, RelativePosition, WindowSize};
 
 /// The interface language selected by the user. `System` keeps first launch
 /// lightweight while explicit choices remain stable across every window.
@@ -96,6 +96,10 @@ pub struct BarLayout {
     pub global_bar_size: Option<WindowSize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub global_bar_position: Option<GlobalBarPosition>,
+    /// A Global Bar deliberately docked to the top of a monitor. The last
+    /// freeform position remains available above so undocking is reversible.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub global_bar_top_dock: Option<GlobalBarTopDock>,
     #[serde(default)]
     pub detached_stoves: Vec<String>,
     #[serde(default)]
@@ -183,6 +187,7 @@ impl Default for BarLayout {
             mac_status_stove_count: default_mac_status_stove_count(),
             global_bar_size: None,
             global_bar_position: None,
+            global_bar_top_dock: None,
             detached_stoves: Vec::new(),
             detached_layouts: Vec::new(),
         }
