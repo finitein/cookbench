@@ -48,25 +48,11 @@ pub fn wait_for_local_drag_release() -> DragReleaseEvidence {
     DragReleaseEvidence::Unavailable
 }
 
-#[cfg(test)]
-mod drag_release_tests {
-    use super::*;
-
-    #[test]
-    fn quick_release_is_completion_evidence() {
-        assert_eq!(
-            classify_drag_release(false, false, false),
-            DragReleaseEvidence::Released
-        );
-    }
-
-    #[test]
-    fn held_button_timeout_is_unavailable() {
-        assert_eq!(
-            classify_drag_release(true, false, true),
-            DragReleaseEvidence::Unavailable
-        );
-    }
+/// Performs any platform input initialization before a UI toolkit can touch
+/// its native event library.
+pub fn prepare_drag_release_support() {
+    #[cfg(target_os = "linux")]
+    linux::prepare_drag_release_support();
 }
 
 pub use capabilities::{
@@ -124,5 +110,26 @@ pub(crate) fn apply_platform_overlay<R: Runtime>(
     {
         let _ = window;
         Err(OverlayError::UnsupportedPlatform)
+    }
+}
+
+#[cfg(test)]
+mod drag_release_tests {
+    use super::*;
+
+    #[test]
+    fn quick_release_is_completion_evidence() {
+        assert_eq!(
+            classify_drag_release(false, false, false),
+            DragReleaseEvidence::Released
+        );
+    }
+
+    #[test]
+    fn held_button_timeout_is_unavailable() {
+        assert_eq!(
+            classify_drag_release(true, false, true),
+            DragReleaseEvidence::Unavailable
+        );
     }
 }

@@ -1,10 +1,33 @@
-use std::time::{Duration, Instant};
+use std::{
+    sync::OnceLock,
+    time::{Duration, Instant},
+};
 use tauri::{Runtime, WebviewWindow};
 
 use super::DragReleaseEvidence;
 
+static XLIB_THREADS_READY: OnceLock<bool> = OnceLock::new();
+
+/// Must run before Tauri/GTK initialize any Xlib-backed surface. Xlib only
+/// permits concurrent calls after this process-wide initialization succeeds.
+pub(super) fn prepare_drag_release_support() {
+    if is_wayland_session() {
+        return;
+    }
+    let _ = XLIB_THREADS_READY.get_or_init(|| {
+        unsafe extern "C" {
+            fn XInitThreads() -> i32;
+        }
+        // SAFETY: this function is called from crate::run before Builder/GTK.
+        unsafe { XInitThreads() != 0 }
+    });
+}
+
 pub(super) fn wait_for_left_release() -> DragReleaseEvidence {
     if is_wayland_session() {
+        return DragReleaseEvidence::Unavailable;
+    }
+    if XLIB_THREADS_READY.get().copied() != Some(true) {
         return DragReleaseEvidence::Unavailable;
     }
     // X11 pointer polling is deliberately bounded to this drag and does not

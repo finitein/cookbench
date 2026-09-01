@@ -46,7 +46,7 @@ export function useGlobalBarWindow() {
       const handle = document.createElement("div"); handle.className = "global-bar__resize-handle"; bar.append(handle);
       const detachResize = attachGlobalBarResizeHandle(handle, direction, () => {
         dock.startResize();
-      });
+      }, () => dock.settleResize());
       return () => { detachResize(); handle.remove(); };
     });
     let stopResizing: (() => void) | undefined;

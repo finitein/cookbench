@@ -149,6 +149,9 @@ fn start_expiry_runtime(app: tauri::AppHandle) -> ExpiryRuntimeHandle {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Must precede Builder creation: Linux's Xlib worker probes require
+    // XInitThreads to be the process's first Xlib call.
+    platform::prepare_drag_release_support();
     let notification_runtime = notifications::sender::ReqwestTransport::new()
         .map(|transport| {
             commands::notifications::NotificationCommandState(Arc::new(

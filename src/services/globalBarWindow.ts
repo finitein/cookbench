@@ -188,6 +188,7 @@ export function attachGlobalBarResizeHandle(
   handle: HTMLElement,
   direction: GlobalBarResizeDirection,
   onStart?: () => void,
+  onFailure?: () => void,
 ) {
   handle.dataset.resizeDirection = direction;
   handle.setAttribute("aria-hidden", "true");
@@ -195,7 +196,9 @@ export function attachGlobalBarResizeHandle(
     event.preventDefault();
     event.stopPropagation();
     onStart?.();
-    void import("@tauri-apps/api/window").then(({ getCurrentWindow }) => getCurrentWindow().startResizeDragging(direction)).catch(() => undefined);
+    void import("@tauri-apps/api/window")
+      .then(({ getCurrentWindow }) => getCurrentWindow().startResizeDragging(direction))
+      .catch(() => onFailure?.());
   };
   handle.addEventListener("pointerdown", resize);
   return () => handle.removeEventListener("pointerdown", resize);
