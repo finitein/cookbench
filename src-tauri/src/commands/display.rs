@@ -4,8 +4,8 @@
 //! or manage a harness session.
 
 use cookbench_core::persistence::{
-    AppLocale, GlobalBarMode, GlobalBarPlacement, GlobalBarPosition, MonitorIdentity,
-    MonitorWorkArea, PersistedConfig, RelativePosition, WindowPosition, MAX_MAC_STATUS_STOVE_COUNT,
+    AppLocale, GlobalBarMode, GlobalBarPlacement, GlobalBarPosition, MonitorWorkArea,
+    PersistedConfig, RelativePosition, WindowPosition, MAX_MAC_STATUS_STOVE_COUNT,
 };
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, State};
@@ -74,9 +74,9 @@ fn apply_display_patch(
     if let Some(count) = patch.mac_status_stove_count {
         validate_mac_status_stove_count(count)?;
     }
-    let placement_changed = patch
-        .global_bar_placement
-        .is_some_and(|value| config.layout.global_bar_placement != value);
+    // An explicit placement is a reset command, even when it selects the
+    // already active anchor. It must clear both saved geometric overrides.
+    let placement_changed = patch.global_bar_placement.is_some();
     if let Some(value) = patch.global_bar_visible {
         config.layout.global_bar_visible = value;
     }
@@ -367,10 +367,9 @@ fn restore_global_bar_position(
 }
 
 fn monitors_for_window(window: &tauri::WebviewWindow) -> Result<Vec<MonitorWorkArea>, String> {
-    let primary_name = window
+    let primary = window
         .primary_monitor()
-        .map_err(|error| error.to_string())?
-        .and_then(|monitor| monitor.name().cloned());
+        .map_err(|error| error.to_string())?;
     window
         .available_monitors()
         .map_err(|error| error.to_string())?
@@ -380,11 +379,21 @@ fn monitors_for_window(window: &tauri::WebviewWindow) -> Result<Vec<MonitorWorkA
             let name = monitor.name().cloned();
             let work_area = monitor.work_area();
             Ok(MonitorWorkArea {
-                primary: name == primary_name,
-                identity: MonitorIdentity {
-                    id: name.clone().unwrap_or_else(|| format!("monitor-{index}")),
+                primary: primary.as_ref().is_some_and(|value| {
+                    crate::commands::windows::same_native_monitor(value, &monitor)
+                }),
+                identity: crate::commands::windows::native_monitor_identity(
                     name,
-                },
+                    WindowPosition {
+                        x: work_area.position.x,
+                        y: work_area.position.y,
+                    },
+                    cookbench_core::persistence::WindowSize {
+                        width: work_area.size.width,
+                        height: work_area.size.height,
+                    },
+                    index,
+                ),
                 x: work_area.position.x,
                 y: work_area.position.y,
                 width: work_area.size.width,

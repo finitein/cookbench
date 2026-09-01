@@ -18,7 +18,38 @@ use tauri::{
     WebviewWindowBuilder,
 };
 
-use crate::window_registry::{DetachOutcome, DetachedWindowHost, RegistryError, WindowRegistry};
+use crate::{
+    platform::{apply_platform_overlay, OverlayError},
+    window_registry::{DetachOutcome, DetachedWindowHost, RegistryError, WindowRegistry},
+};
+
+pub(crate) fn native_monitor_identity(
+    name: Option<String>,
+    position: WindowPosition,
+    size: WindowSize,
+    index: usize,
+) -> MonitorIdentity {
+    // Display names are not unique (two identical external panels commonly
+    // report the same name). Include geometry before using the enumeration
+    // index as a final deterministic tie-breaker.
+    let name_key = name.as_deref().unwrap_or("unnamed");
+    MonitorIdentity {
+        id: format!(
+            "{name_key}:{}:{}:{}:{}:{index}",
+            position.x, position.y, size.width, size.height
+        ),
+        name,
+    }
+}
+
+pub(crate) fn same_native_monitor(left: &tauri::Monitor, right: &tauri::Monitor) -> bool {
+    let left_area = left.work_area();
+    let right_area = right.work_area();
+    left.name() == right.name()
+        && left_area.position == right_area.position
+        && left_area.size == right_area.size
+        && left.scale_factor() == right.scale_factor()
+}
 
 pub const GLOBAL_BAR_DOCK_STATE_CHANGED_EVENT: &str = "cookbench://global-bar-dock-state-changed";
 
@@ -49,7 +80,8 @@ impl GlobalBarDockGuards {
 struct GlobalBarDockController {
     phase: GlobalBarDockPhase,
     dock: Option<GlobalBarTopDock>,
-    active_drag: bool,
+    next_drag_token: u64,
+    active_drag: Option<u64>,
     guards: GlobalBarDockGuards,
 }
 
@@ -75,26 +107,39 @@ impl GlobalBarDockRuntime {
             best_effort: !reliable_top_dock_positioning(),
         }
     }
-    fn begin_drag(&self) -> bool {
+    fn drag_reveal_needed(&self) -> Option<GlobalBarTopDock> {
+        let controller = self.0.lock().expect("global bar dock lock poisoned");
+        (controller.phase == GlobalBarDockPhase::DockedCollapsed)
+            .then(|| controller.dock.clone())
+            .flatten()
+    }
+    fn begin_drag_after_reveal(&self) -> u64 {
         let mut controller = self.0.lock().expect("global bar dock lock poisoned");
-        let revealed = controller.phase == GlobalBarDockPhase::DockedCollapsed;
         if controller.dock.is_some() {
             controller.phase = GlobalBarDockPhase::DockedExpanded;
         }
-        controller.active_drag = true;
-        revealed
+        controller.next_drag_token = controller.next_drag_token.wrapping_add(1).max(1);
+        controller.active_drag = Some(controller.next_drag_token);
+        controller.next_drag_token
     }
-    fn consume_drag(&self) -> Option<Option<GlobalBarTopDock>> {
+    fn cancel_drag(&self, token: u64) {
         let mut controller = self.0.lock().expect("global bar dock lock poisoned");
-        if !controller.active_drag {
+        if controller.active_drag == Some(token) {
+            controller.active_drag = None;
+        }
+    }
+    fn consume_drag(&self, token: u64) -> Option<Option<GlobalBarTopDock>> {
+        let mut controller = self.0.lock().expect("global bar dock lock poisoned");
+        if controller.active_drag != Some(token) {
             return None;
         }
-        controller.active_drag = false;
+        controller.active_drag = None;
         Some(controller.dock.clone())
     }
     pub(crate) fn commit_dock(&self, dock: Option<GlobalBarTopDock>) {
         let mut controller = self.0.lock().expect("global bar dock lock poisoned");
         controller.dock = dock;
+        controller.active_drag = None;
         controller.phase = if controller.dock.is_some() {
             GlobalBarDockPhase::DockedExpanded
         } else {
@@ -104,26 +149,37 @@ impl GlobalBarDockRuntime {
     fn set_guards(&self, guards: GlobalBarDockGuards) -> bool {
         let mut controller = self.0.lock().expect("global bar dock lock poisoned");
         controller.guards = guards;
-        let reveal =
-            guards.blocks_collapse() && controller.phase == GlobalBarDockPhase::DockedCollapsed;
-        if reveal {
-            controller.phase = GlobalBarDockPhase::DockedExpanded;
-        }
-        reveal
+        guards.blocks_collapse() && controller.phase == GlobalBarDockPhase::DockedCollapsed
     }
-    fn request_collapse(&self) -> bool {
-        let mut controller = self.0.lock().expect("global bar dock lock poisoned");
+    fn collapse_candidate(&self) -> Option<GlobalBarTopDock> {
+        let controller = self.0.lock().expect("global bar dock lock poisoned");
         if controller.dock.is_none()
             || controller.phase != GlobalBarDockPhase::DockedExpanded
             || controller.guards.blocks_collapse()
             || !reliable_top_dock_positioning()
+        {
+            return None;
+        }
+        controller.dock.clone()
+    }
+    fn commit_collapsed(&self, dock: &GlobalBarTopDock) -> bool {
+        let mut controller = self.0.lock().expect("global bar dock lock poisoned");
+        if controller.phase != GlobalBarDockPhase::DockedExpanded
+            || controller.guards.blocks_collapse()
+            || controller.dock.as_ref() != Some(dock)
         {
             return false;
         }
         controller.phase = GlobalBarDockPhase::DockedCollapsed;
         true
     }
-    fn reveal(&self) -> bool {
+    fn reveal_needed(&self) -> Option<GlobalBarTopDock> {
+        let controller = self.0.lock().expect("global bar dock lock poisoned");
+        (controller.phase == GlobalBarDockPhase::DockedCollapsed)
+            .then(|| controller.dock.clone())
+            .flatten()
+    }
+    fn commit_revealed(&self) -> bool {
         let mut controller = self.0.lock().expect("global bar dock lock poisoned");
         if controller.dock.is_some() && controller.phase == GlobalBarDockPhase::DockedCollapsed {
             controller.phase = GlobalBarDockPhase::DockedExpanded;
@@ -414,23 +470,30 @@ impl<R: Runtime> MonitorProvider for TauriMonitorProvider<R> {
     type Error = tauri::Error;
 
     fn monitors(&self) -> Result<Vec<MonitorWorkArea>, Self::Error> {
-        let primary_name = self
-            .app
-            .primary_monitor()?
-            .and_then(|monitor| monitor.name().cloned());
+        let primary = self.app.primary_monitor()?;
         self.app
             .available_monitors()?
             .into_iter()
             .enumerate()
             .map(|(index, monitor)| {
                 let name = monitor.name().cloned();
-                // Tauri exposes a display name, but not a cross-platform UUID.
-                // A missing name intentionally falls back after topology changes.
-                let id = name.clone().unwrap_or_else(|| format!("monitor-{index}"));
                 let area = monitor.work_area();
                 Ok(MonitorWorkArea {
-                    primary: name == primary_name,
-                    identity: MonitorIdentity { id, name },
+                    primary: primary
+                        .as_ref()
+                        .is_some_and(|value| same_native_monitor(value, &monitor)),
+                    identity: native_monitor_identity(
+                        name,
+                        WindowPosition {
+                            x: area.position.x,
+                            y: area.position.y,
+                        },
+                        WindowSize {
+                            width: area.size.width,
+                            height: area.size.height,
+                        },
+                        index,
+                    ),
                     x: area.position.x,
                     y: area.position.y,
                     width: area.size.width,
@@ -460,10 +523,9 @@ fn reliable_top_dock_positioning() -> bool {
 fn dock_monitors<R: Runtime>(
     window: &tauri::WebviewWindow<R>,
 ) -> Result<Vec<DockMonitorWorkArea>, String> {
-    let primary_name = window
+    let primary = window
         .primary_monitor()
-        .map_err(|error| error.to_string())?
-        .and_then(|monitor| monitor.name().cloned());
+        .map_err(|error| error.to_string())?;
     window
         .available_monitors()
         .map_err(|error| error.to_string())?
@@ -474,11 +536,21 @@ fn dock_monitors<R: Runtime>(
             let area = monitor.work_area();
             Ok(DockMonitorWorkArea::new(
                 MonitorWorkArea {
-                    primary: name == primary_name,
-                    identity: MonitorIdentity {
-                        id: name.clone().unwrap_or_else(|| format!("monitor-{index}")),
+                    primary: primary
+                        .as_ref()
+                        .is_some_and(|value| same_native_monitor(value, &monitor)),
+                    identity: native_monitor_identity(
                         name,
-                    },
+                        WindowPosition {
+                            x: area.position.x,
+                            y: area.position.y,
+                        },
+                        WindowSize {
+                            width: area.size.width,
+                            height: area.size.height,
+                        },
+                        index,
+                    ),
                     x: area.position.x,
                     y: area.position.y,
                     width: area.size.width,
@@ -557,26 +629,31 @@ pub fn get_global_bar_dock_state(
 pub fn start_global_bar_drag(
     app: AppHandle,
     runtime: State<'_, GlobalBarDockRuntime>,
-) -> Result<(), String> {
+) -> Result<u64, String> {
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| "Cookbench global Bar window is unavailable".to_owned())?;
-    if runtime.begin_drag() {
-        if let Some(dock) = runtime.dock() {
-            move_to_dock_geometry(&window, &dock, false)?;
-        }
+    if let Some(dock) = runtime.drag_reveal_needed() {
+        move_to_dock_geometry(&window, &dock, false)?;
+        runtime.commit_revealed();
         emit_dock_state(&app, &runtime);
     }
-    window.start_dragging().map_err(|error| error.to_string())
+    let token = runtime.begin_drag_after_reveal();
+    if let Err(error) = window.start_dragging() {
+        runtime.cancel_drag(token);
+        return Err(error.to_string());
+    }
+    Ok(token)
 }
 
 #[tauri::command]
 pub fn finish_global_bar_drag(
+    token: u64,
     app: AppHandle,
     state: State<'_, crate::app_state::AppState>,
     runtime: State<'_, GlobalBarDockRuntime>,
 ) -> Result<GlobalBarDockStateWire, String> {
-    let Some(prior_dock) = runtime.consume_drag() else {
+    let Some(prior_dock) = runtime.consume_drag(token) else {
         return Ok(runtime.state());
     };
     let window = app
@@ -609,22 +686,39 @@ pub fn finish_global_bar_drag(
     });
     match decision {
         TopDockDecision::Dock(dock) | TopDockDecision::RemainDocked(dock) => {
-            let previous = state.persisted_config();
-            state.update_persisted_config(|config| {
+            move_to_dock_geometry(&window, &dock, false)?;
+            if let Err(error) = state.update_persisted_config(|config| {
                 config.layout.global_bar_top_dock = Some(dock.clone())
-            })?;
-            if let Err(error) = move_to_dock_geometry(&window, &dock, false) {
-                let _ = state.update_persisted_config(|config| config.layout = previous.layout);
+            }) {
+                let rollback = if let Some(old) = prior_dock.as_ref() {
+                    move_to_dock_geometry(&window, old, false)
+                } else {
+                    window
+                        .set_position(PhysicalPosition::new(position.x, position.y))
+                        .map_err(|move_error| move_error.to_string())
+                };
+                if let Err(rollback_error) = rollback {
+                    return Err(format!(
+                        "{error}; could not restore prior Global Bar position: {rollback_error}"
+                    ));
+                }
                 return Err(error);
             }
             runtime.commit_dock(Some(dock));
         }
         TopDockDecision::Undock | TopDockDecision::Freeform => {
             let saved = global_bar_position(position, size, &monitors)?;
-            state.update_persisted_config(|config| {
+            if let Err(error) = state.update_persisted_config(|config| {
                 config.layout.global_bar_top_dock = None;
                 config.layout.global_bar_position = Some(saved);
-            })?;
+            }) {
+                if let Some(old) = prior_dock.as_ref() {
+                    if let Err(rollback_error) = move_to_dock_geometry(&window, old, false) {
+                        return Err(format!("{error}; could not restore dock after persistence failure: {rollback_error}"));
+                    }
+                }
+                return Err(error);
+            }
             runtime.commit_dock(None);
         }
         TopDockDecision::BestEffortVisible => {}
@@ -665,18 +759,14 @@ pub fn request_global_bar_dock_collapse(
     app: AppHandle,
     runtime: State<'_, GlobalBarDockRuntime>,
 ) -> Result<GlobalBarDockStateWire, String> {
-    if runtime.request_collapse() {
+    if let Some(dock) = runtime.collapse_candidate() {
         let window = app
             .get_webview_window("main")
             .ok_or_else(|| "Cookbench global Bar window is unavailable".to_owned())?;
-        let Some(dock) = runtime.dock() else {
-            return Ok(runtime.state());
-        };
-        if let Err(error) = move_to_dock_geometry(&window, &dock, true) {
-            runtime.reveal();
-            return Err(error);
+        move_to_dock_geometry(&window, &dock, true)?;
+        if runtime.commit_collapsed(&dock) {
+            emit_dock_state(&app, &runtime);
         }
-        emit_dock_state(&app, &runtime);
     }
     Ok(runtime.state())
 }
@@ -689,10 +779,9 @@ pub fn reveal_global_bar_dock<R: Runtime>(
         .get_webview_window("main")
         .ok_or_else(|| "Cookbench global Bar window is unavailable".to_owned())?;
     window.show().map_err(|error| error.to_string())?;
-    if runtime.reveal() || runtime.dock().is_some() {
-        if let Some(dock) = runtime.dock() {
-            move_to_dock_geometry(&window, &dock, false)?;
-        }
+    if let Some(dock) = runtime.reveal_needed() {
+        move_to_dock_geometry(&window, &dock, false)?;
+        runtime.commit_revealed();
     }
     emit_dock_state(app, runtime);
     Ok(())
@@ -734,13 +823,22 @@ pub fn restore_global_bar_top_dock<R: Runtime>(
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| "Cookbench global Bar window is unavailable".to_owned())?;
-    runtime.commit_dock(Some(dock.clone()));
     if config.layout.global_bar_visible {
-        window.show().map_err(|error| error.to_string())?;
-        move_to_dock_geometry(&window, &dock, false)?;
+        if let Err(error) = (|| -> Result<(), String> {
+            window.show().map_err(|error| error.to_string())?;
+            match apply_platform_overlay(&window) {
+                Ok(()) | Err(OverlayError::BestEffortWayland) => (),
+                Err(error) => return Err(error.to_string()),
+            }
+            move_to_dock_geometry(&window, &dock, false)
+        })() {
+            runtime.commit_dock(None);
+            return Err(error);
+        }
     } else {
         window.hide().map_err(|error| error.to_string())?;
     }
+    runtime.commit_dock(Some(dock));
     emit_dock_state(app, runtime);
     Ok(true)
 }
@@ -952,11 +1050,14 @@ mod dock_tests {
     fn drag_token_is_single_use_and_reveals_a_collapsed_dock() {
         let runtime = GlobalBarDockRuntime::default();
         runtime.commit_dock(Some(dock()));
-        assert!(runtime.request_collapse());
-        assert!(runtime.begin_drag());
+        let collapse = runtime.collapse_candidate().unwrap();
+        assert!(runtime.commit_collapsed(&collapse));
+        assert_eq!(runtime.drag_reveal_needed(), Some(dock()));
+        runtime.commit_revealed();
+        let token = runtime.begin_drag_after_reveal();
         assert_eq!(runtime.state().phase, GlobalBarDockPhase::DockedExpanded);
-        assert_eq!(runtime.consume_drag(), Some(Some(dock())));
-        assert_eq!(runtime.consume_drag(), None);
+        assert_eq!(runtime.consume_drag(token), Some(Some(dock())));
+        assert_eq!(runtime.consume_drag(token), None);
     }
 
     #[test]
@@ -983,7 +1084,7 @@ mod dock_tests {
             let runtime = GlobalBarDockRuntime::default();
             runtime.commit_dock(Some(dock()));
             runtime.set_guards(guard);
-            assert!(!runtime.request_collapse());
+            assert!(runtime.collapse_candidate().is_none());
             assert_eq!(runtime.state().phase, GlobalBarDockPhase::DockedExpanded);
         }
     }
@@ -992,19 +1093,59 @@ mod dock_tests {
     fn guard_reveals_a_collapsed_dock() {
         let runtime = GlobalBarDockRuntime::default();
         runtime.commit_dock(Some(dock()));
-        assert!(runtime.request_collapse());
+        let collapse = runtime.collapse_candidate().unwrap();
+        assert!(runtime.commit_collapsed(&collapse));
         assert!(runtime.set_guards(GlobalBarDockGuards {
             focused: true,
             ..Default::default()
         }));
+        // Guard entry marks a reveal request; the phase changes only after
+        // native movement succeeds.
+        assert_eq!(runtime.state().phase, GlobalBarDockPhase::DockedCollapsed);
+        runtime.commit_revealed();
         assert_eq!(runtime.state().phase, GlobalBarDockPhase::DockedExpanded);
     }
 
     #[test]
     fn empty_runtime_never_collapses_or_reveals() {
         let runtime = GlobalBarDockRuntime::default();
-        assert!(!runtime.request_collapse());
-        assert!(!runtime.reveal());
+        assert!(runtime.collapse_candidate().is_none());
+        assert!(!runtime.commit_revealed());
         assert_eq!(runtime.state().phase, GlobalBarDockPhase::Undocked);
+    }
+
+    #[test]
+    fn overlapping_and_stale_drag_tokens_are_rejected() {
+        let runtime = GlobalBarDockRuntime::default();
+        let first = runtime.begin_drag_after_reveal();
+        let second = runtime.begin_drag_after_reveal();
+        assert_ne!(first, second);
+        assert_eq!(runtime.consume_drag(first), None);
+        runtime.cancel_drag(second);
+        assert_eq!(runtime.consume_drag(second), None);
+    }
+
+    #[test]
+    fn native_monitor_identity_keeps_duplicate_names_distinct() {
+        let first = native_monitor_identity(
+            Some("Panel".into()),
+            WindowPosition { x: 0, y: 0 },
+            WindowSize {
+                width: 1920,
+                height: 1080,
+            },
+            0,
+        );
+        let second = native_monitor_identity(
+            Some("Panel".into()),
+            WindowPosition { x: 1920, y: 0 },
+            WindowSize {
+                width: 1920,
+                height: 1080,
+            },
+            1,
+        );
+        assert_ne!(first.id, second.id);
+        assert_eq!(first.name, second.name);
     }
 }

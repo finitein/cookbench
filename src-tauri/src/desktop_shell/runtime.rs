@@ -96,6 +96,12 @@ pub fn toggle_bar<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         .get_webview_window("main")
         .ok_or(tauri::Error::WindowNotFound)?;
     if window.is_visible()? {
+        if app
+            .try_state::<crate::commands::windows::GlobalBarDockRuntime>()
+            .is_some_and(|runtime| runtime.state().collapsed)
+        {
+            return show_bar(app);
+        }
         window.hide()
     } else {
         window.show()?;
