@@ -358,6 +358,7 @@ impl AppState {
             }
         }
         let retained = loaded.state.retained.clone();
+        let cooked_attention_cursors = loaded.state.cooked_attention_cursors.clone();
         let pinned = loaded.state.pinned.clone();
         *self
             .persistence
@@ -368,6 +369,33 @@ impl AppState {
             state: loaded.state,
         });
         for completion in retained {
+            let completion_event = completion
+                .completion_event
+                .clone()
+                .or_else(|| {
+                    cooked_attention_cursors
+                        .iter()
+                        .find(|cursor| {
+                            cursor.locator == completion.locator
+                                && cursor.timestamp_ms == completion.completed_at_ms
+                        })
+                        .map(|cursor| {
+                            EventMetadata::new(
+                                cursor.source,
+                                cursor.confidence,
+                                cursor.sequence,
+                                cursor.timestamp_ms,
+                            )
+                        })
+                })
+                .unwrap_or_else(|| {
+                    EventMetadata::new(
+                        EventSource::StructuredSession,
+                        100,
+                        0,
+                        completion.completed_at_ms,
+                    )
+                });
             let project_root = if completion.presentation.project_root_display.is_empty() {
                 "(retained Cookbench completion)".to_owned()
             } else {
@@ -380,6 +408,7 @@ impl AppState {
             };
             let project =
                 ProjectIdentity::new(completion.locator.host.clone(), project_root.clone());
+            let completion_id = stove_id(&completion.locator);
             let _ = self.stoves.apply_observation(
                 completion.locator,
                 project,
@@ -393,18 +422,10 @@ impl AppState {
                     None,
                     None,
                 )),
-                StoveEvent::new(
-                    EventKind::TurnCompleted,
-                    completion.completion_event.unwrap_or_else(|| {
-                        EventMetadata::new(
-                            EventSource::StructuredSession,
-                            100,
-                            0,
-                            completion.completed_at_ms,
-                        )
-                    }),
-                ),
+                StoveEvent::new(EventKind::TurnCompleted, completion_event.clone()),
             );
+            self.stoves
+                .restore_completion_event(&completion_id, completion_event);
         }
         for pinned_session in pinned {
             if pinned_session.session.is_valid() {
@@ -1156,6 +1177,15 @@ impl From<StoreError> for AppStateError {
 }
 
 impl StoveStore {
+    fn restore_completion_event(&self, stove_id: &str, event: EventMetadata) {
+        let mut inner = self.inner.write().expect("stove store lock poisoned");
+        if let Some(entry) = inner.entries.get_mut(stove_id) {
+            if entry.stove.state == StoveState::Cooked {
+                entry.stove.last_event = Some(event);
+            }
+        }
+    }
+
     pub fn with_attention_order(
         &self,
         mut change: StoveChange,

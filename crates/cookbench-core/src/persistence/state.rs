@@ -221,12 +221,6 @@ impl CookedAttentionCursor {
             && self.confidence == event.confidence
             && self.sequence == event.sequence
             && self.timestamp_ms == event.timestamp_ms
-            || (stove.state == StoveState::Cooked
-                && self.locator == stove.identity
-                && self.source == event.source
-                && self.confidence == event.confidence
-                && event.sequence == 1
-                && self.timestamp_ms == event.timestamp_ms)
     }
 }
 
