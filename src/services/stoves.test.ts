@@ -46,6 +46,16 @@ describe("StoveSync", () => {
     expect(sync.current().attentionOrder).toEqual([stove.id, second.id]);
   });
 
+  it("does not roll back a newer revision when gap recovery snapshots resolve out of order", () => {
+    const sync = new StoveSync();
+    sync.replace({ revision: 8, stoves: [stove], attentionOrder: [stove.id] });
+
+    const stale = sync.replace({ revision: 6, stoves: [], attentionOrder: [] });
+
+    expect(stale).toEqual({ revision: 8, stoves: [stove], attentionOrder: [stove.id] });
+    expect(sync.current()).toEqual({ revision: 8, stoves: [stove], attentionOrder: [stove.id] });
+  });
+
   it("keeps only sanitized wire fields and applies ordered changes", () => {
     const sync = new StoveSync();
     sync.replace({ revision: 3, stoves: [stove] });
@@ -73,6 +83,26 @@ describe("StoveSync", () => {
     handler?.({ revision: 3, stove, removedStoveId: null, attentionOrder: [stove.id] });
     await vi.waitFor(() => expect(received).toHaveLength(2));
     expect(received[1]).toEqual({ revision: 3, stoves: [stove], attentionOrder: [stove.id] });
+  });
+
+  it("coalesces concurrent revision gaps into one monotonic recovery", async () => {
+    let handler: ((change: { revision: number; stove: StoveWire | null; removedStoveId: string | null; attentionOrder?: string[] }) => void) | undefined;
+    let resolveSnapshot: ((snapshot: StoveSnapshot) => void) | undefined;
+    const transport: StoveTransport = {
+      snapshot: vi.fn()
+        .mockResolvedValueOnce({ revision: 1, stoves: [] })
+        .mockImplementationOnce(() => new Promise<StoveSnapshot>((resolve) => { resolveSnapshot = resolve; })),
+      listen: vi.fn(async (next) => { handler = next; return () => {}; }),
+    };
+    const received: StoveSnapshot[] = [];
+    await subscribeToStoves((next) => received.push(next), transport);
+
+    handler?.({ revision: 3, stove, removedStoveId: null, attentionOrder: [stove.id] });
+    handler?.({ revision: 5, stove, removedStoveId: null, attentionOrder: [stove.id] });
+    expect(transport.snapshot).toHaveBeenCalledTimes(2);
+
+    resolveSnapshot?.({ revision: 5, stoves: [stove], attentionOrder: [stove.id] });
+    await vi.waitFor(() => expect(received.at(-1)).toEqual({ revision: 5, stoves: [stove], attentionOrder: [stove.id] }));
   });
 
   it("delivers the authoritative snapshot when live event registration is unavailable", async () => {

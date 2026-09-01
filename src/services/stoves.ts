@@ -45,6 +45,7 @@ export class StoveSync {
   private attentionOrder: string[] = [];
 
   replace(snapshot: StoveSnapshot): StoveSnapshot {
+    if (snapshot.revision < this.revision) return this.current();
     this.revision = snapshot.revision;
     this.stoves = new Map(snapshot.stoves.map((stove) => [stove.id, stove]));
     this.attentionOrder = normalizeAttentionOrder(snapshot.attentionOrder, this.stoves);
@@ -92,6 +93,7 @@ export async function subscribeToStoves(
 ): Promise<UnlistenFn> {
   const sync = new StoveSync();
   let ready = false;
+  let recovery: Promise<void> | null = null;
   const queued: StoveChange[] = [];
   const handle = (change: StoveChange) => {
     if (!ready) {
@@ -102,7 +104,9 @@ export async function subscribeToStoves(
     if (result === "applied") {
       onSnapshot(sync.current());
     } else if (result === "gap") {
-      void transport.snapshot().then((snapshot) => onSnapshot(sync.replace(snapshot)));
+      recovery ??= transport.snapshot()
+        .then((snapshot) => onSnapshot(sync.replace(snapshot)))
+        .finally(() => { recovery = null; });
     }
   };
   const unlisten = await transport.listen(handle).catch((): UnlistenFn => () => {});

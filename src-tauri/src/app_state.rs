@@ -257,6 +257,11 @@ impl std::error::Error for StoreError {}
 
 impl AppState {
     pub fn snapshot(&self) -> StoveSnapshot {
+        let _serial = self.apply_lock.lock().expect("stove apply lock poisoned");
+        self.snapshot_locked()
+    }
+
+    fn snapshot_locked(&self) -> StoveSnapshot {
         let cursors = self
             .persistence
             .lock()
@@ -268,7 +273,7 @@ impl AppState {
     }
 
     fn with_attention_order(&self, mut change: StoveChange) -> StoveChange {
-        change.attention_order = self.snapshot().attention_order;
+        change.attention_order = self.snapshot_locked().attention_order;
         change
     }
 
@@ -278,11 +283,23 @@ impl AppState {
         stove_id: &str,
     ) -> Result<bool, AppStateError> {
         let _serial = self.apply_lock.lock().expect("stove apply lock poisoned");
-        let Some(stove) = self.stoves.core_stove(stove_id) else {
+        let Some(change) = self.acknowledge_cooked_locked(stove_id)? else {
             return Ok(false);
         };
+        crate::events::emit_stove_change(app, change).map_err(AppStateError::Emit)?;
+        crate::platform::publish_optional_gnome_snapshot(&self.snapshot_locked());
+        Ok(true)
+    }
+
+    fn acknowledge_cooked_locked(
+        &self,
+        stove_id: &str,
+    ) -> Result<Option<StoveChange>, AppStateError> {
+        let Some(stove) = self.stoves.core_stove(stove_id) else {
+            return Ok(None);
+        };
         if stove.state != StoveState::Cooked {
-            return Ok(false);
+            return Ok(None);
         }
         {
             let mut persistence = self
@@ -298,24 +315,23 @@ impl AppState {
                 .iter()
                 .any(|cursor| cursor.acknowledges(&stove))
             {
-                return Ok(false);
+                return Ok(None);
             }
-            if !runtime.state.acknowledge_cooked(&stove, current_time_ms()) {
-                return Ok(false);
+            let mut candidate = runtime.state.clone();
+            if !candidate.acknowledge_cooked(&stove, current_time_ms()) {
+                return Ok(None);
             }
             runtime
                 .service
-                .save_state(&runtime.state)
+                .save_state(&candidate)
                 .map_err(|error| AppStateError::Persistence(error.to_string()))?;
+            runtime.state = candidate;
         }
         let change = self
             .stoves
             .touch(stove_id)
             .expect("Cooked Stove must remain visible while acknowledging attention");
-        crate::events::emit_stove_change(app, self.with_attention_order(change))
-            .map_err(AppStateError::Emit)?;
-        crate::platform::publish_optional_gnome_snapshot(&self.snapshot());
-        Ok(true)
+        Ok(Some(self.with_attention_order(change)))
     }
 
     pub fn initialize_persistence(&self, app_data_directory: &Path) {
@@ -485,7 +501,7 @@ impl AppState {
             .ok_or(AppStateError::UnknownStove)?;
         crate::events::emit_stove_change(app, self.with_attention_order(change))
             .map_err(AppStateError::Emit)?;
-        crate::platform::publish_optional_gnome_snapshot(&self.snapshot());
+        crate::platform::publish_optional_gnome_snapshot(&self.snapshot_locked());
         drop(_serial);
         if !pinned {
             self.reconcile_expired_and_emit(app)?;
@@ -588,7 +604,7 @@ impl AppState {
             crate::events::emit_stove_change(app, self.with_attention_order(change))
                 .map_err(AppStateError::Emit)?;
         }
-        crate::platform::publish_optional_gnome_snapshot(&self.snapshot());
+        crate::platform::publish_optional_gnome_snapshot(&self.snapshot_locked());
         Ok(())
     }
 
@@ -652,7 +668,7 @@ impl AppState {
             let _ = windows.clear_stove(stove_id);
             let _ = crate::commands::windows::persist_layouts(self, &windows);
         }
-        crate::platform::publish_optional_gnome_snapshot(&self.snapshot());
+        crate::platform::publish_optional_gnome_snapshot(&self.snapshot_locked());
         Ok(())
     }
 
@@ -952,7 +968,7 @@ impl AppState {
         }
         crate::events::emit_stove_change(app, self.with_attention_order(change))
             .map_err(AppStateError::Emit)?;
-        crate::platform::publish_optional_gnome_snapshot(&self.snapshot());
+        crate::platform::publish_optional_gnome_snapshot(&self.snapshot_locked());
         if side_effects {
             if let Some(stove) = self
                 .stoves
@@ -1791,6 +1807,172 @@ fn crossed_milestone(previous: Option<u8>, current: Option<u8>) -> Option<u8> {
     [25, 50, 75, 100]
         .into_iter()
         .rfind(|milestone| previous < *milestone && current >= *milestone)
+}
+
+#[cfg(test)]
+mod acknowledgement_tests {
+    use std::{
+        fs,
+        path::PathBuf,
+        sync::{
+            atomic::{AtomicU64, Ordering},
+            mpsc, Arc,
+        },
+        time::Duration,
+    };
+
+    use cookbench_core::domain::{
+        EventKind, EventMetadata, EventSource, HarnessId, HostIdentity, ProjectIdentity,
+        StoveEvent, StoveIdentity,
+    };
+
+    use super::{AppState, LocatorCapability, StoveStateWire};
+
+    static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
+
+    struct TestDirectory(PathBuf);
+
+    impl TestDirectory {
+        fn new() -> Self {
+            let suffix = NEXT_DIRECTORY.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!("cookbench-ack-{suffix}"));
+            fs::create_dir_all(&path).unwrap();
+            Self(path)
+        }
+    }
+
+    impl Drop for TestDirectory {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn add_stove(state: &AppState, session: &str, kind: EventKind, timestamp_ms: u64) -> String {
+        let identity =
+            StoveIdentity::new(HostIdentity::local("test-host"), HarnessId::Codex, session);
+        state
+            .stoves
+            .apply(
+                identity,
+                ProjectIdentity::new(HostIdentity::local("test-host"), "/synthetic/project"),
+                LocatorCapability::Unavailable,
+                StoveEvent::new(
+                    kind,
+                    EventMetadata::new(EventSource::StructuredSession, 100, 1, timestamp_ms),
+                ),
+            )
+            .unwrap();
+        format!("local:test-host:codex:{session}")
+    }
+
+    fn acknowledge(state: &AppState, stove_id: &str) -> Option<super::StoveChange> {
+        let _serial = state.apply_lock.lock().unwrap();
+        state.acknowledge_cooked_locked(stove_id).unwrap()
+    }
+
+    #[test]
+    fn acknowledgement_is_idempotent_and_keeps_cooked_stoves_visible() {
+        let directory = TestDirectory::new();
+        let state = AppState::default();
+        state.initialize_persistence(&directory.0);
+        let cooked = add_stove(&state, "cooked", EventKind::TurnCompleted, 100);
+        let cooking = add_stove(&state, "cooking", EventKind::ToolStarted, 200);
+        let before = state.snapshot().revision;
+
+        let change = acknowledge(&state, &cooked).expect("first acknowledgement");
+        assert_eq!(change.revision, before + 1);
+        assert_eq!(
+            change.attention_order,
+            vec![cooking.clone(), cooked.clone()]
+        );
+        assert_eq!(state.snapshot().stoves[1].state, StoveStateWire::Cooked);
+        assert!(acknowledge(&state, &cooked).is_none());
+        assert!(acknowledge(&state, "unknown").is_none());
+        assert_eq!(state.snapshot().revision, before + 1);
+    }
+
+    #[test]
+    fn failed_acknowledgement_save_does_not_change_state_or_revision() {
+        let directory = TestDirectory::new();
+        let state = AppState::default();
+        state.initialize_persistence(&directory.0);
+        let cooked = add_stove(&state, "cooked", EventKind::TurnCompleted, 100);
+        let before = state.snapshot();
+        let state_path = directory.0.join("state.json");
+        fs::create_dir(&state_path).unwrap();
+
+        let _serial = state.apply_lock.lock().unwrap();
+        assert!(state.acknowledge_cooked_locked(&cooked).is_err());
+        drop(_serial);
+        assert_eq!(state.snapshot(), before);
+
+        fs::remove_dir(&state_path).unwrap();
+        assert!(acknowledge(&state, &cooked).is_some());
+    }
+
+    #[test]
+    fn a_new_completion_re_elevates_an_acknowledged_stove() {
+        let directory = TestDirectory::new();
+        let state = AppState::default();
+        state.initialize_persistence(&directory.0);
+        let cooked = add_stove(&state, "cooked", EventKind::TurnCompleted, 100);
+        let cooking = add_stove(&state, "cooking", EventKind::ToolStarted, 200);
+        acknowledge(&state, &cooked);
+        assert_eq!(
+            state.snapshot().attention_order,
+            vec![cooking, cooked.clone()]
+        );
+
+        let identity =
+            StoveIdentity::new(HostIdentity::local("test-host"), HarnessId::Codex, "cooked");
+        state
+            .stoves
+            .apply(
+                identity.clone(),
+                ProjectIdentity::new(HostIdentity::local("test-host"), "/synthetic/project"),
+                LocatorCapability::Unavailable,
+                StoveEvent::new(
+                    EventKind::UserPromptSubmitted,
+                    EventMetadata::new(EventSource::StructuredSession, 100, 2, 300),
+                ),
+            )
+            .unwrap();
+        state
+            .stoves
+            .apply(
+                identity,
+                ProjectIdentity::new(HostIdentity::local("test-host"), "/synthetic/project"),
+                LocatorCapability::Unavailable,
+                StoveEvent::new(
+                    EventKind::TurnCompleted,
+                    EventMetadata::new(EventSource::StructuredSession, 100, 3, 400),
+                ),
+            )
+            .unwrap();
+        assert_eq!(state.snapshot().attention_order[0], cooked);
+    }
+
+    #[test]
+    fn snapshots_wait_for_the_same_critical_section_as_acknowledgements() {
+        let directory = TestDirectory::new();
+        let state = Arc::new(AppState::default());
+        state.initialize_persistence(&directory.0);
+        add_stove(&state, "cooked", EventKind::TurnCompleted, 100);
+        let guard = state.apply_lock.lock().unwrap();
+        let (sent, received) = mpsc::channel();
+        let reader = Arc::clone(&state);
+        let worker = std::thread::spawn(move || sent.send(reader.snapshot()).unwrap());
+
+        assert!(received.recv_timeout(Duration::from_millis(25)).is_err());
+        drop(guard);
+        let snapshot = received.recv_timeout(Duration::from_secs(1)).unwrap();
+        worker.join().unwrap();
+        assert_eq!(snapshot.stoves[0].id, "local:test-host:codex:cooked");
+        assert_eq!(
+            snapshot.attention_order,
+            vec![snapshot.stoves[0].id.clone()]
+        );
+    }
 }
 
 #[cfg(test)]
