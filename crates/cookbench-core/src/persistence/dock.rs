@@ -74,6 +74,10 @@ impl DockMonitorWorkArea {
     fn physical_threshold(&self, logical_pixels: u32) -> u32 {
         dock_threshold_physical(logical_pixels, self.scale_factor)
     }
+
+    fn dock_upper_threshold(&self) -> u32 {
+        dock_upper_threshold_physical(TOP_DOCK_THRESHOLD_LOGICAL_PX, self.scale_factor)
+    }
 }
 
 /// Inputs needed to choose a top-dock transition without querying native APIs.
@@ -92,6 +96,9 @@ pub enum TopDockDecision {
     RemainDocked(GlobalBarTopDock),
     Undock,
     Freeform,
+    /// Coordinates are unavailable or unreliable. Keep the persisted state
+    /// and window visible rather than guessing a placement transition.
+    BestEffortVisible,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -104,21 +111,30 @@ pub struct TopDockGeometry {
 /// Converts a logical threshold to physical coordinates, rounding outward so
 /// a high-DPI screen never has a smaller active region than requested.
 pub fn dock_threshold_physical(logical_pixels: u32, scale_factor: f64) -> u32 {
+    scaled_logical_pixels(logical_pixels, scale_factor).ceil() as u32
+}
+
+/// Converts an inclusive docking upper bound to physical pixels. Flooring
+/// ensures a physical coordinate is accepted only when it is no more than the
+/// requested logical distance from the monitor top.
+pub fn dock_upper_threshold_physical(logical_pixels: u32, scale_factor: f64) -> u32 {
+    scaled_logical_pixels(logical_pixels, scale_factor).floor() as u32
+}
+
+fn scaled_logical_pixels(logical_pixels: u32, scale_factor: f64) -> f64 {
     let scale = if scale_factor.is_finite() && scale_factor > 0.0 {
         scale_factor
     } else {
         1.0
     };
-    (f64::from(logical_pixels) * scale)
-        .ceil()
-        .min(f64::from(u32::MAX)) as u32
+    (f64::from(logical_pixels) * scale).min(f64::from(u32::MAX))
 }
 
 /// Chooses whether a moved Global Bar docks, stays docked, or returns to
 /// freeform placement. Unreliable coordinates intentionally never infer dock.
 pub fn top_dock_decision(input: TopDockInput<'_>) -> TopDockDecision {
     if !input.reliable_positioning {
-        return TopDockDecision::Freeform;
+        return TopDockDecision::BestEffortVisible;
     }
     let Some(monitor) =
         select_monitor(input.monitors, input.position, input.size, input.prior_dock)
@@ -137,7 +153,7 @@ pub fn top_dock_decision(input: TopDockInput<'_>) -> TopDockDecision {
                 input.size,
             ))
         }
-    } else if down_from_top <= monitor.physical_threshold(TOP_DOCK_THRESHOLD_LOGICAL_PX) {
+    } else if down_from_top <= monitor.dock_upper_threshold() {
         TopDockDecision::Dock(GlobalBarTopDock::from_absolute(
             &monitor.work_area,
             input.position,
@@ -169,7 +185,9 @@ pub fn resolve_top_dock(
         y: 0,
     };
     let x = relative.resolve(&monitor.work_area, size).x;
-    let trigger = monitor.physical_threshold(TOP_DOCK_TRIGGER_LOGICAL_PX) as i64;
+    let trigger = monitor
+        .physical_threshold(TOP_DOCK_TRIGGER_LOGICAL_PX)
+        .min(size.height) as i64;
     let collapsed_y = i64::from(monitor.work_area.y)
         .saturating_sub(i64::from(size.height))
         .saturating_add(trigger)
@@ -190,18 +208,17 @@ fn select_monitor<'a>(
     size: WindowSize,
     prior_dock: Option<&GlobalBarTopDock>,
 ) -> Option<&'a DockMonitorWorkArea> {
-    if let Some(dock) = prior_dock {
-        if let Some(monitor) = monitors
-            .iter()
-            .find(|candidate| candidate.work_area.identity.id == dock.monitor.id)
-        {
-            return Some(monitor);
-        }
-    }
     monitors
         .iter()
         .max_by_key(|candidate| intersection_area(position, size, &candidate.work_area))
         .filter(|candidate| intersection_area(position, size, &candidate.work_area) > 0)
+        .or_else(|| {
+            prior_dock.and_then(|dock| {
+                monitors
+                    .iter()
+                    .find(|candidate| candidate.work_area.identity.id == dock.monitor.id)
+            })
+        })
         .or_else(|| {
             monitors
                 .iter()
@@ -219,5 +236,8 @@ fn intersection_area(position: WindowPosition, size: WindowSize, monitor: &Monit
     let bottom = i64::from(position.y)
         .saturating_add(i64::from(size.height))
         .min(i64::from(monitor.y).saturating_add(i64::from(monitor.height)));
-    right.saturating_sub(left).max(0) * bottom.saturating_sub(top).max(0)
+    right
+        .saturating_sub(left)
+        .max(0)
+        .saturating_mul(bottom.saturating_sub(top).max(0))
 }

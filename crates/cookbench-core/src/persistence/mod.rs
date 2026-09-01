@@ -16,9 +16,10 @@ pub use config::{
     PersistedConfig, RemoteSourceConfig, UserPreferences, MAX_MAC_STATUS_STOVE_COUNT,
 };
 pub use dock::{
-    dock_threshold_physical, resolve_top_dock, top_dock_decision, DockMonitorWorkArea,
-    GlobalBarTopDock, TopDockDecision, TopDockGeometry, TopDockInput, TOP_DOCK_HIDE_DELAY_MS,
-    TOP_DOCK_THRESHOLD_LOGICAL_PX, TOP_DOCK_TRIGGER_LOGICAL_PX, TOP_UNDOCK_THRESHOLD_LOGICAL_PX,
+    dock_threshold_physical, dock_upper_threshold_physical, resolve_top_dock, top_dock_decision,
+    DockMonitorWorkArea, GlobalBarTopDock, TopDockDecision, TopDockGeometry, TopDockInput,
+    TOP_DOCK_HIDE_DELAY_MS, TOP_DOCK_THRESHOLD_LOGICAL_PX, TOP_DOCK_TRIGGER_LOGICAL_PX,
+    TOP_UNDOCK_THRESHOLD_LOGICAL_PX,
 };
 pub use layout::{
     DetachedStoveLayout, MonitorIdentity, MonitorWorkArea, RelativePosition,
