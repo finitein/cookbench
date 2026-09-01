@@ -5,14 +5,17 @@ use std::{
 };
 
 use cookbench_core::{
-    domain::{EventMetadata, EventSource, HarnessId, HostIdentity, StoveIdentity, StoveState},
+    domain::{
+        EventKind, EventMetadata, EventSource, HarnessId, HostIdentity, ProjectIdentity, Stove,
+        StoveEvent, StoveIdentity, StoveState,
+    },
     persistence::{
         ArchiveReason, ArchivedSession, ClearCursor, PersistedConfig, PersistedState,
         PinnedSession, RetainedStove, RetainedStovePresentation, SessionRecord,
     },
 };
 use cookbench_desktop_lib::{
-    app_state::{AppState, StoveStateWire},
+    app_state::{AppState, LocatorCapability, StoveStateWire},
     persistence::{DesktopPersistence, LoadIssue, NativeSessionObservation, PersistenceErrorKind},
 };
 
@@ -49,6 +52,62 @@ fn event(sequence: u64, timestamp_ms: u64) -> EventMetadata {
 
 fn session(state: StoveState) -> SessionRecord {
     session_with_id("session-42", state)
+}
+
+#[test]
+fn acknowledged_structured_and_hook_completions_stay_demoted_after_restart() {
+    for (session_id, source, sequence) in [
+        ("structured-sequence", EventSource::StructuredSession, 7),
+        ("hook-completion", EventSource::Hook, 11),
+    ] {
+        let directory = TestDirectory::new();
+        let persistence = DesktopPersistence::in_app_data(&directory.0);
+        let identity = StoveIdentity::new(
+            HostIdentity::local("test-host"),
+            HarnessId::Codex,
+            session_id,
+        );
+        let event = EventMetadata::new(source, 100, sequence, 800);
+        let mut persisted = PersistedState::default();
+        persistence
+            .persist_transition_with_presentation(
+                &mut persisted,
+                identity.clone(),
+                StoveState::Cooked,
+                &event,
+                RetainedStovePresentation::new("cookbench", "/safe/cookbench"),
+            )
+            .unwrap();
+        let mut cooked = Stove::new(
+            identity,
+            ProjectIdentity::new(HostIdentity::local("test-host"), "/safe/cookbench"),
+        );
+        cooked.state = StoveState::Cooked;
+        cooked.last_event = Some(event);
+        assert!(persisted.acknowledge_cooked(&cooked, 900));
+        persistence.save_state(&persisted).unwrap();
+
+        let app_state = AppState::default();
+        app_state.initialize_persistence(&directory.0);
+        app_state
+            .stoves
+            .apply(
+                StoveIdentity::new(HostIdentity::local("test-host"), HarnessId::Codex, "active"),
+                ProjectIdentity::new(HostIdentity::local("test-host"), "/safe/active"),
+                LocatorCapability::Unavailable,
+                StoveEvent::new(
+                    EventKind::ToolStarted,
+                    EventMetadata::new(EventSource::StructuredSession, 100, 1, 850),
+                ),
+            )
+            .unwrap();
+        let snapshot = app_state.snapshot();
+        assert_eq!(snapshot.stoves[0].id, "local:test-host:codex:active");
+        assert_eq!(
+            snapshot.stoves[1].id,
+            format!("local:test-host:codex:{session_id}")
+        );
+    }
 }
 
 fn session_with_id(native_session_id: &str, state: StoveState) -> SessionRecord {
