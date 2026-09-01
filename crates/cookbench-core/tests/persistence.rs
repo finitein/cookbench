@@ -165,10 +165,11 @@ fn persisted_schema_contains_only_safe_retained_fields() {
     }
 
     let retained = value["retained"][0].as_object().unwrap();
-    assert_eq!(retained.len(), 3);
+    assert_eq!(retained.len(), 4);
     assert!(retained.contains_key("locator"));
     assert!(retained.contains_key("completed_at_ms"));
     assert!(retained.contains_key("presentation"));
+    assert!(retained.contains_key("completion_event"));
 }
 
 #[test]

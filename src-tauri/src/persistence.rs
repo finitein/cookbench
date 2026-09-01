@@ -421,11 +421,10 @@ impl DesktopPersistence {
             .retained
             .retain(|retained| retained.locator != locator);
         if stove_state == StoveState::Cooked {
-            state.retained.push(RetainedStove::with_presentation(
-                locator,
-                event.timestamp_ms,
-                presentation,
-            ));
+            state.retained.push(
+                RetainedStove::with_presentation(locator, event.timestamp_ms, presentation)
+                    .with_completion_event(event.clone()),
+            );
             cap_retained(state);
         }
         if state.retained == previous {

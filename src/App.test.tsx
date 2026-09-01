@@ -65,4 +65,17 @@ describe("App", () => {
     expect(acknowledgeCookedStove).not.toHaveBeenCalled();
     expect(activateStove).toHaveBeenCalledWith(stove.id);
   });
+
+  it("continues to the locator after a failed Cooked acknowledgement", async () => {
+    const stove = makeStove(0, { state: "cooked" });
+    acknowledgeCookedStove.mockRejectedValueOnce(new Error("synthetic persistence failure"));
+    useStoves.mockReturnValue({ revision: 1, stoves: [stove] });
+
+    render(<App />);
+    await act(async () => screen.getByTestId("stove").click());
+
+    expect(acknowledgeCookedStove.mock.invocationCallOrder[0])
+      .toBeLessThan(activateStove.mock.invocationCallOrder[0]);
+    expect(activateStove).toHaveBeenCalledWith(stove.id);
+  });
 });

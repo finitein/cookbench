@@ -13,6 +13,8 @@ use super::Versioned;
 pub struct RetainedStove {
     pub locator: StoveIdentity,
     pub completed_at_ms: u64,
+    #[serde(default)]
+    pub completion_event: Option<EventMetadata>,
     /// Display-only metadata required to reconstruct a retained Stove before
     /// its native session is rediscovered. It never contains task text.
     #[serde(default)]
@@ -24,6 +26,7 @@ impl RetainedStove {
         Self {
             locator,
             completed_at_ms,
+            completion_event: None,
             presentation: RetainedStovePresentation::default(),
         }
     }
@@ -36,8 +39,14 @@ impl RetainedStove {
         Self {
             locator,
             completed_at_ms,
+            completion_event: None,
             presentation,
         }
+    }
+
+    pub fn with_completion_event(mut self, event: EventMetadata) -> Self {
+        self.completion_event = Some(event);
+        self
     }
 }
 
@@ -212,6 +221,12 @@ impl CookedAttentionCursor {
             && self.confidence == event.confidence
             && self.sequence == event.sequence
             && self.timestamp_ms == event.timestamp_ms
+            || (stove.state == StoveState::Cooked
+                && self.locator == stove.identity
+                && event.source == EventSource::StructuredSession
+                && event.confidence == 100
+                && event.sequence == 1
+                && self.timestamp_ms == event.timestamp_ms)
     }
 }
 

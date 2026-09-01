@@ -35,12 +35,12 @@ function CookbenchApp({ displaySettings }: { displaySettings: ReturnType<typeof 
       // Browser fixtures do not expose the native Tauri command surface.
     });
   }, [displaySettings, locale]);
-  const activate = (stove: StoveWire) => {
+  const activate = async (stove: StoveWire) => {
     dismissLocalAlert(stove.id);
     if (stove.state === "cooked") {
-      void acknowledgeCookedStove(stove.id);
+      await acknowledgeCookedStove(stove.id).catch(() => undefined);
     }
-    void activateStove(stove.id)
+    await activateStove(stove.id)
       .then(setActivation)
       .catch(() => setActivation({ target: "unavailable", status: "unavailable", resumeSessionId: null }));
   };

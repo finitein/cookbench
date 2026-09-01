@@ -395,12 +395,14 @@ impl AppState {
                 )),
                 StoveEvent::new(
                     EventKind::TurnCompleted,
-                    EventMetadata::new(
-                        EventSource::StructuredSession,
-                        100,
-                        0,
-                        completion.completed_at_ms,
-                    ),
+                    completion.completion_event.unwrap_or_else(|| {
+                        EventMetadata::new(
+                            EventSource::StructuredSession,
+                            100,
+                            0,
+                            completion.completed_at_ms,
+                        )
+                    }),
                 ),
             );
         }
