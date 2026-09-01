@@ -401,6 +401,46 @@ fn legacy_cursor_without_a_completion_fingerprint_fails_open() {
     );
 }
 
+#[test]
+fn clearing_a_legacy_completion_does_not_guess_a_raw_replay_cursor() {
+    let directory = TestDirectory::new();
+    let persistence = DesktopPersistence::in_app_data(&directory.0);
+    let presentation_event = EventMetadata::new(EventSource::StructuredSession, 100, 2, 0);
+    let mut persisted = PersistedState::default();
+    persisted.retained.push(RetainedStove {
+        locator: locator(),
+        completed_at_ms: 0,
+        completion_event: Some(presentation_event),
+        completion_source_event: None,
+        presentation: RetainedStovePresentation::new("legacy", "/safe/legacy"),
+    });
+    persistence.save_state(&persisted).unwrap();
+
+    let app = tauri::test::mock_app();
+    let state = AppState::default();
+    state.initialize_persistence(&directory.0);
+    state
+        .clear_cooked_and_emit(app.handle(), "local:test-host:codex:session-42")
+        .unwrap();
+    assert!(DesktopPersistence::in_app_data(&directory.0)
+        .load()
+        .state
+        .clear_cursors
+        .is_empty());
+
+    state
+        .apply_and_emit(
+            app.handle(),
+            locator(),
+            ProjectIdentity::new(HostIdentity::local("test-host"), "/safe/legacy"),
+            LocatorCapability::Unavailable,
+            None,
+            StoveEvent::new(EventKind::UserPromptSubmitted, event(2, 0)),
+        )
+        .unwrap();
+    assert_eq!(state.snapshot().stoves[0].state, StoveStateWire::Cooking);
+}
+
 fn session_with_id(native_session_id: &str, state: StoveState) -> SessionRecord {
     SessionRecord::new(
         StoveIdentity::new(
@@ -537,7 +577,7 @@ fn manual_clear_survives_restart_and_stale_replay_stays_hidden() {
         .pin_session(&mut state, session(StoveState::Cooked), 850)
         .unwrap();
     persistence
-        .clear_cooked(&mut state, locator(), &event(9, 900))
+        .clear_cooked(&mut state, locator(), Some(&event(9, 900)))
         .unwrap();
 
     let restarted = DesktopPersistence::in_app_data(&directory.0).load();
@@ -555,7 +595,7 @@ fn newer_prompt_relights_after_manual_clear() {
     let persistence = DesktopPersistence::in_app_data(&directory.0);
     let mut state = PersistedState::default();
     persistence
-        .clear_cooked(&mut state, locator(), &event(9, 900))
+        .clear_cooked(&mut state, locator(), Some(&event(9, 900)))
         .unwrap();
 
     persistence
@@ -781,7 +821,7 @@ fn expired_inventory_does_not_resurrect_a_cleared_session() {
     let persistence = DesktopPersistence::in_app_data(&directory.0);
     let mut state = PersistedState::default();
     persistence
-        .clear_cooked(&mut state, locator(), &event(9, 900))
+        .clear_cooked(&mut state, locator(), Some(&event(9, 900)))
         .unwrap();
     let mut expired = session(StoveState::Disconnected);
     expired.observed_at_ms = 800;

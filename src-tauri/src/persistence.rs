@@ -447,7 +447,7 @@ impl DesktopPersistence {
         &self,
         state: &mut PersistedState,
         locator: StoveIdentity,
-        clear_event: &EventMetadata,
+        clear_source_event: Option<&EventMetadata>,
     ) -> Result<(), PersistenceError> {
         state
             .retained
@@ -462,11 +462,13 @@ impl DesktopPersistence {
         state
             .clear_cursors
             .retain(|cursor| cursor.locator != locator);
-        state.clear_cursors.push(ClearCursor::new(
-            locator,
-            clear_event.sequence,
-            clear_event.timestamp_ms,
-        ));
+        if let Some(clear_source_event) = clear_source_event {
+            state.clear_cursors.push(ClearCursor::new(
+                locator,
+                clear_source_event.sequence,
+                clear_source_event.timestamp_ms,
+            ));
+        }
         cap_clear_cursors(state);
         self.save_state(state)
     }

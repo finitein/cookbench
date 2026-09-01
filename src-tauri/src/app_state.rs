@@ -1046,17 +1046,20 @@ impl AppState {
                     .into(),
             );
         }
-        let previous = stove
+        let raw_previous = stove
             .last_event
             .as_ref()
-            .and_then(|event| self.stoves.source_cursor(&stove.identity, event.source))
-            .or_else(|| stove.last_event.clone())
+            .and_then(|event| self.stoves.source_cursor(&stove.identity, event.source));
+        let clear_reference = raw_previous
+            .as_ref()
+            .or(stove.last_event.as_ref())
+            .cloned()
             .unwrap_or_else(|| EventMetadata::new(EventSource::Inference, 0, 0, current_time_ms()));
         let clear = EventMetadata::new(
             EventSource::Inference,
             100,
-            previous.sequence.saturating_add(1),
-            current_time_ms().max(previous.timestamp_ms.saturating_add(1)),
+            clear_reference.sequence.saturating_add(1),
+            current_time_ms().max(clear_reference.timestamp_ms.saturating_add(1)),
         );
         {
             let mut persistence = self
@@ -1066,7 +1069,11 @@ impl AppState {
             if let Some(runtime) = persistence.as_mut() {
                 runtime
                     .service
-                    .clear_cooked(&mut runtime.state, stove.identity.clone(), &previous)
+                    .clear_cooked(
+                        &mut runtime.state,
+                        stove.identity.clone(),
+                        raw_previous.as_ref(),
+                    )
                     .map_err(|error| AppStateError::Persistence(error.to_string()))?;
             }
         }
