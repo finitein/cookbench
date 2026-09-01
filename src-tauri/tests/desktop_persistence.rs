@@ -74,6 +74,7 @@ fn pre_release_replay_cache_is_migrated_without_losing_clear_cursors() {
         version: 1,
         retained: vec![RetainedStove::new(locator(), 800)],
         clear_cursors: vec![ClearCursor::new(locator(), 7, 700)],
+        cooked_attention_cursors: Vec::new(),
         pinned: Vec::new(),
         archived: Vec::new(),
         tracked: Vec::new(),

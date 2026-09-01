@@ -10,9 +10,9 @@ use cookbench_core::{
     domain::{EventMetadata, EventSource, HarnessId, HostIdentity, StoveIdentity, StoveState},
     notifications::NotificationEventKind,
     persistence::{
-        AppLocale, ArchiveReason, ArchivedSession, AtomicJsonFile, ClearCursor, GlobalBarPlacement,
-        PersistedConfig, PersistedState, PinnedSession, RetainedStove, RetainedStovePresentation,
-        SessionRecord,
+        AppLocale, ArchiveReason, ArchivedSession, AtomicJsonFile, ClearCursor,
+        CookedAttentionCursor, GlobalBarPlacement, PersistedConfig, PersistedState, PinnedSession,
+        RetainedStove, RetainedStovePresentation, SessionRecord,
     },
 };
 
@@ -48,6 +48,14 @@ fn locator() -> StoveIdentity {
         HostIdentity::local("test-machine"),
         HarnessId::Codex,
         "native-session-1",
+    )
+}
+
+fn locator_with(native_session_id: impl Into<String>) -> StoveIdentity {
+    StoveIdentity::new(
+        HostIdentity::local("test-machine"),
+        HarnessId::Codex,
+        native_session_id,
     )
 }
 
@@ -171,6 +179,7 @@ fn newer_prompt_relights_the_same_cleared_native_session() {
         version: PersistedState::CURRENT_VERSION,
         retained: Vec::new(),
         clear_cursors: vec![ClearCursor::new(locator(), 10, 10_000)],
+        cooked_attention_cursors: Vec::new(),
         pinned: Vec::new(),
         archived: Vec::new(),
         tracked: Vec::new(),
@@ -328,6 +337,35 @@ fn v2_state_defaults_new_session_collections() {
     assert!(state.pinned.is_empty());
     assert!(state.archived.is_empty());
     assert!(state.tracked.is_empty());
+    assert!(state.cooked_attention_cursors.is_empty());
+}
+
+#[test]
+fn cooked_attention_cursors_are_bounded_and_keep_the_newest_acknowledgements() {
+    let mut state = PersistedState::default();
+    for sequence in 0..=PersistedState::MAX_COOKED_ATTENTION_CURSORS as u64 {
+        state.acknowledge_cooked(CookedAttentionCursor {
+            locator: locator_with(format!("native-session-{sequence}")),
+            source: EventSource::Hook,
+            confidence: 100,
+            sequence,
+            timestamp_ms: sequence,
+            acknowledged_at_ms: sequence,
+        });
+    }
+
+    assert_eq!(
+        state.cooked_attention_cursors.len(),
+        PersistedState::MAX_COOKED_ATTENTION_CURSORS
+    );
+    assert!(!state
+        .cooked_attention_cursors
+        .iter()
+        .any(|cursor| cursor.sequence == 0));
+    assert!(state
+        .cooked_attention_cursors
+        .iter()
+        .any(|cursor| cursor.sequence == PersistedState::MAX_COOKED_ATTENTION_CURSORS as u64));
 }
 
 #[test]
@@ -337,6 +375,7 @@ fn session_records_keep_only_safe_metadata() {
         version: PersistedState::CURRENT_VERSION,
         retained: Vec::new(),
         clear_cursors: Vec::new(),
+        cooked_attention_cursors: Vec::new(),
         pinned: vec![PinnedSession {
             session: record.clone(),
             pinned_at_ms: 50,

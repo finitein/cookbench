@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use crate::domain::{EventMetadata, StoveIdentity, StoveState};
+use crate::domain::{
+    EventMetadata, EventSource, HarnessId, HostKind, Stove, StoveIdentity, StoveState,
+};
 
 use super::Versioned;
 
@@ -155,6 +157,51 @@ pub struct ClearCursor {
     pub timestamp_ms: u64,
 }
 
+/// A metadata-only acknowledgement of one observed Cooked completion.
+///
+/// The completion event identity is retained so a later completion in the
+/// same native session is surfaced as new attention again.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct CookedAttentionCursor {
+    pub locator: StoveIdentity,
+    pub source: EventSource,
+    pub confidence: u8,
+    pub sequence: u64,
+    pub timestamp_ms: u64,
+    pub acknowledged_at_ms: u64,
+}
+
+impl CookedAttentionCursor {
+    pub fn from_stove(stove: &Stove) -> Option<Self> {
+        if stove.state != StoveState::Cooked {
+            return None;
+        }
+
+        let event = stove.last_event.as_ref()?;
+        Some(Self {
+            locator: stove.identity.clone(),
+            source: event.source,
+            confidence: event.confidence,
+            sequence: event.sequence,
+            timestamp_ms: event.timestamp_ms,
+            acknowledged_at_ms: event.timestamp_ms,
+        })
+    }
+
+    pub fn acknowledges(&self, stove: &Stove) -> bool {
+        let Some(event) = stove.last_event.as_ref() else {
+            return false;
+        };
+
+        stove.state == StoveState::Cooked
+            && self.locator == stove.identity
+            && self.source == event.source
+            && self.confidence == event.confidence
+            && self.sequence == event.sequence
+            && self.timestamp_ms == event.timestamp_ms
+    }
+}
+
 impl ClearCursor {
     pub fn new(locator: StoveIdentity, sequence: u64, timestamp_ms: u64) -> Self {
         Self {
@@ -183,6 +230,8 @@ pub struct PersistedState {
     #[serde(default)]
     pub clear_cursors: Vec<ClearCursor>,
     #[serde(default)]
+    pub cooked_attention_cursors: Vec<CookedAttentionCursor>,
+    #[serde(default)]
     pub pinned: Vec<PinnedSession>,
     #[serde(default)]
     pub archived: Vec<ArchivedSession>,
@@ -194,12 +243,14 @@ pub struct PersistedState {
 
 impl PersistedState {
     pub const CURRENT_VERSION: u32 = 3;
+    pub const MAX_COOKED_ATTENTION_CURSORS: usize = 256;
 
     pub fn with_retained(retained: Vec<RetainedStove>) -> Self {
         Self {
             version: Self::CURRENT_VERSION,
             retained,
             clear_cursors: Vec::new(),
+            cooked_attention_cursors: Vec::new(),
             pinned: Vec::new(),
             archived: Vec::new(),
             tracked: Vec::new(),
@@ -211,6 +262,59 @@ impl PersistedState {
             .iter()
             .any(|cursor| cursor.hides(locator, event))
     }
+
+    /// Replaces any acknowledgement for the same native session and retains a
+    /// deterministic, bounded set of the newest acknowledgements.
+    pub fn acknowledge_cooked(&mut self, cursor: CookedAttentionCursor) {
+        self.cooked_attention_cursors
+            .retain(|existing| existing.locator != cursor.locator);
+        self.cooked_attention_cursors.push(cursor);
+        self.cooked_attention_cursors.sort_by(|left, right| {
+            right
+                .acknowledged_at_ms
+                .cmp(&left.acknowledged_at_ms)
+                .then_with(|| right.timestamp_ms.cmp(&left.timestamp_ms))
+                .then_with(|| right.sequence.cmp(&left.sequence))
+                .then_with(|| right.source.cmp(&left.source))
+                .then_with(|| right.confidence.cmp(&left.confidence))
+                .then_with(|| compare_stove_identity(&right.locator, &left.locator))
+        });
+        self.cooked_attention_cursors
+            .truncate(Self::MAX_COOKED_ATTENTION_CURSORS);
+    }
+}
+
+fn compare_stove_identity(left: &StoveIdentity, right: &StoveIdentity) -> std::cmp::Ordering {
+    host_kind_order(&left.host.kind)
+        .cmp(&host_kind_order(&right.host.kind))
+        .then_with(|| left.host.id.cmp(&right.host.id))
+        .then_with(|| compare_harness(&left.harness, &right.harness))
+        .then_with(|| left.native_session_id.cmp(&right.native_session_id))
+}
+
+fn host_kind_order(kind: &HostKind) -> u8 {
+    match kind {
+        HostKind::Local => 0,
+        HostKind::Ssh => 1,
+    }
+}
+
+fn compare_harness(left: &HarnessId, right: &HarnessId) -> std::cmp::Ordering {
+    harness_order(left)
+        .cmp(&harness_order(right))
+        .then_with(|| match (left, right) {
+            (HarnessId::Other(left), HarnessId::Other(right)) => left.cmp(right),
+            _ => std::cmp::Ordering::Equal,
+        })
+}
+
+fn harness_order(harness: &HarnessId) -> u8 {
+    match harness {
+        HarnessId::Codex => 0,
+        HarnessId::ClaudeCode => 1,
+        HarnessId::Pi => 2,
+        HarnessId::Other(_) => 3,
+    }
 }
 
 impl Default for PersistedState {
@@ -219,6 +323,7 @@ impl Default for PersistedState {
             version: Self::CURRENT_VERSION,
             retained: Vec::new(),
             clear_cursors: Vec::new(),
+            cooked_attention_cursors: Vec::new(),
             pinned: Vec::new(),
             archived: Vec::new(),
             tracked: Vec::new(),

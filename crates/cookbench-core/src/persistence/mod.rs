@@ -19,6 +19,6 @@ pub use layout::{
     RestoredDetachedStoveLayout, WindowPosition, WindowSize,
 };
 pub use state::{
-    ArchiveReason, ArchivedSession, ClearCursor, PersistedState, PinnedSession, RetainedStove,
-    RetainedStovePresentation, SessionRecord,
+    ArchiveReason, ArchivedSession, ClearCursor, CookedAttentionCursor, PersistedState,
+    PinnedSession, RetainedStove, RetainedStovePresentation, SessionRecord,
 };
