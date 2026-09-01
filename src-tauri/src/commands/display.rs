@@ -97,6 +97,7 @@ fn apply_display_patch(
     }
     if placement_changed {
         config.layout.global_bar_position = None;
+        config.layout.global_bar_top_dock = None;
     }
     Ok(DisplayPatchEffects {
         apply_window_preferences: patch.global_bar_visible.is_some()
@@ -175,6 +176,16 @@ pub fn patch_display_settings(
         .map_err(|error| error.to_string())?;
     if effects.apply_window_preferences {
         let current = committed.layout;
+        if effects.placement_changed {
+            if let Some(runtime) = app.try_state::<crate::commands::windows::GlobalBarDockRuntime>()
+            {
+                runtime.commit_dock(None);
+                let _ = app.emit(
+                    crate::commands::windows::GLOBAL_BAR_DOCK_STATE_CHANGED_EVENT,
+                    runtime.state(),
+                );
+            }
+        }
         apply_global_bar_preferences(
             &app,
             current.global_bar_visible,
@@ -185,6 +196,12 @@ pub fn patch_display_settings(
                 current.global_bar_position.as_ref()
             },
         )?;
+        if current.global_bar_visible {
+            if let Some(runtime) = app.try_state::<crate::commands::windows::GlobalBarDockRuntime>()
+            {
+                crate::commands::windows::reveal_global_bar_dock(&app, runtime.inner())?;
+            }
+        }
         if effects.set_visibility {
             windows
                 .set_global_bar_visible(current.global_bar_visible)
@@ -251,6 +268,17 @@ pub fn record_global_bar_position(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
+    // Dock moves are programmatic. Their coordinates must never replace the
+    // last freeform restore point; explicit dock transitions use the native
+    // drag-token command instead.
+    if state
+        .persisted_config()
+        .layout
+        .global_bar_top_dock
+        .is_some()
+    {
+        return Ok(());
+    }
     let position = capture_global_bar_position_at(&app, WindowPosition { x, y })?;
     state.update_persisted_config(|config| config.layout.global_bar_position = Some(position))
 }

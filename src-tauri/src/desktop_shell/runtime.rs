@@ -77,6 +77,10 @@ pub fn show_bar<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         .get_webview_window("main")
         .ok_or(tauri::Error::WindowNotFound)?;
     window.show()?;
+    if let Some(runtime) = app.try_state::<crate::commands::windows::GlobalBarDockRuntime>() {
+        crate::commands::windows::reveal_global_bar_dock(app, runtime.inner())
+            .map_err(|error| tauri::Error::Anyhow(std::io::Error::other(error).into()))?;
+    }
     window.set_focus()?;
     Ok(())
 }
@@ -95,6 +99,10 @@ pub fn toggle_bar<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         window.hide()
     } else {
         window.show()?;
+        if let Some(runtime) = app.try_state::<crate::commands::windows::GlobalBarDockRuntime>() {
+            crate::commands::windows::reveal_global_bar_dock(app, runtime.inner())
+                .map_err(|error| tauri::Error::Anyhow(std::io::Error::other(error).into()))?;
+        }
         window.set_focus()
     }
 }

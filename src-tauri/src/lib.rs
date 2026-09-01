@@ -168,6 +168,7 @@ pub fn run() {
             None,
         ))
         .manage(app_state::AppState::default())
+        .manage(commands::windows::GlobalBarDockRuntime::default())
         .manage(i18n::NativeLocaleState::default())
         .manage(notification_runtime)
         .manage(commands::notifications::LocalAlertCommandState(Arc::new(
@@ -192,6 +193,13 @@ pub fn run() {
             commands::windows::record_detached_stove_position,
             commands::windows::record_global_bar_size,
             commands::windows::set_global_bar_minimum_size,
+            commands::windows::get_global_bar_dock_state,
+            commands::windows::start_global_bar_drag,
+            commands::windows::finish_global_bar_drag,
+            commands::windows::set_global_bar_dock_guards,
+            commands::windows::request_global_bar_dock_collapse,
+            commands::windows::reveal_global_bar_dock_command,
+            commands::windows::refresh_global_bar_dock_geometry,
             commands::display::get_display_settings,
             commands::display::configure_display_settings,
             commands::display::patch_display_settings,
@@ -326,13 +334,26 @@ pub fn run() {
             ) {
                 eprintln!("Cookbench could not restore global Bar size: {error}");
             }
-            if let Err(error) = commands::display::apply_global_bar_preferences(
+            let restored_dock = commands::windows::restore_global_bar_top_dock(
                 &app.handle().clone(),
-                layout.global_bar_visible,
-                layout.global_bar_placement,
-                layout.global_bar_position.as_ref(),
-            ) {
-                eprintln!("Cookbench could not restore global Bar display preferences: {error}");
+                &state,
+                &app.state::<commands::windows::GlobalBarDockRuntime>(),
+            )
+            .unwrap_or_else(|error| {
+                eprintln!("Cookbench could not restore Global Bar top dock: {error}");
+                false
+            });
+            if !restored_dock {
+                if let Err(error) = commands::display::apply_global_bar_preferences(
+                    &app.handle().clone(),
+                    layout.global_bar_visible,
+                    layout.global_bar_placement,
+                    layout.global_bar_position.as_ref(),
+                ) {
+                    eprintln!(
+                        "Cookbench could not restore global Bar display preferences: {error}"
+                    );
+                }
             }
             match desktop_shell::runtime::install(app, native_locale.current()) {
                 Ok(Some(diagnostic)) => {
