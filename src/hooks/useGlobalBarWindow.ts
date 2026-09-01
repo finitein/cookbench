@@ -16,10 +16,15 @@ export function useGlobalBarWindow() {
     const dock = createGlobalBarDockController(createGlobalBarDockTransport(), (state) => {
       document.documentElement.dataset.cookbenchDockState = state.phase;
     });
+    dock.setGuards({
+      pointerInside: bar.matches(":hover"),
+      focused: bar.contains(document.activeElement),
+      menuOpen: bar.dataset.menuOpen === "true",
+    });
     let stopDock = () => {};
     void dock.initialize().then((unlisten) => { if (disposed) unlisten(); else stopDock = unlisten; });
     const detach = attachGlobalBarDragHandle(bar, () => dock.start());
-    const endDrag = () => dock.endDrag();
+    const endDrag = () => { dock.endDrag(); dock.setGuards({ resizing: false }); dock.refresh(); };
     window.addEventListener("pointerup", endDrag);
     window.addEventListener("pointercancel", endDrag);
     const enter = () => { dock.setGuards({ pointerInside: true }); if (dock.state().collapsed) dock.reveal(); };
@@ -40,7 +45,6 @@ export function useGlobalBarWindow() {
       return () => { detachResize(); handle.remove(); };
     });
     let stopResizing: (() => void) | undefined;
-    let stopMoving: (() => void) | undefined;
     let resizeTimer: ReturnType<typeof setTimeout> | undefined;
     const persistNativeSize = () => {
       if (resizeTimer) clearTimeout(resizeTimer);
@@ -55,7 +59,6 @@ export function useGlobalBarWindow() {
       }, 180);
     };
     try { void getCurrentWindow().onResized(persistNativeSize).then((unlisten) => { if (disposed) unlisten(); else stopResizing = unlisten; }); } catch { /* browser fixture */ }
-    try { void getCurrentWindow().onMoved(() => dock.noteMoved()).then((unlisten) => { if (disposed) unlisten(); else stopMoving = unlisten; }); } catch { /* browser fixture */ }
     let minimumTimer: ReturnType<typeof setTimeout> | undefined;
     const updateMinimum = () => {
       if (minimumTimer) clearTimeout(minimumTimer);
@@ -74,7 +77,7 @@ export function useGlobalBarWindow() {
     }).catch(() => undefined).finally(updateMinimum);
     return () => {
       disposed = true; if (resizeTimer) clearTimeout(resizeTimer); if (minimumTimer) clearTimeout(minimumTimer);
-      stopResizing?.(); stopMoving?.(); stopDock(); dock.dispose(); delete document.documentElement.dataset.cookbenchDockState;
+      stopResizing?.(); stopDock(); dock.dispose(); delete document.documentElement.dataset.cookbenchDockState;
       menuObserver.disconnect(); observer.disconnect(); mutations.disconnect(); detach(); resizeCleanups.forEach((cleanup) => cleanup());
       window.removeEventListener("pointerup", endDrag); window.removeEventListener("pointercancel", endDrag);
       bar.removeEventListener("pointerenter", enter); bar.removeEventListener("pointerleave", leave);

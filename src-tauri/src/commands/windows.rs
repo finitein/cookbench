@@ -171,6 +171,14 @@ pub struct GlobalBarDockStateWire {
     pub best_effort: bool,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GlobalBarDragStartWire {
+    pub token: u64,
+    pub completed: bool,
+    pub state: Option<GlobalBarDockStateWire>,
+}
+
 impl GlobalBarDockRuntime {
     pub(crate) fn state(&self) -> GlobalBarDockStateWire {
         let controller = self.0.lock().expect("global bar dock lock poisoned");
@@ -766,8 +774,9 @@ pub fn get_global_bar_dock_state(
 #[tauri::command]
 pub fn start_global_bar_drag(
     app: AppHandle,
+    state: State<'_, crate::app_state::AppState>,
     runtime: State<'_, GlobalBarDockRuntime>,
-) -> Result<u64, String> {
+) -> Result<GlobalBarDragStartWire, String> {
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| "Cookbench global Bar window is unavailable".to_owned())?;
@@ -781,7 +790,23 @@ pub fn start_global_bar_drag(
         runtime.cancel_drag(token);
         return Err(error.to_string());
     }
-    Ok(token)
+    #[cfg(target_os = "macos")]
+    {
+        // AppKit's drag loop returns only after mouse release, so complete the
+        // one-shot token here instead of relying on a webview pointer event.
+        let state = finish_global_bar_drag_inner(token, &app, state.inner(), runtime.inner())?;
+        Ok(GlobalBarDragStartWire {
+            token,
+            completed: true,
+            state: Some(state),
+        })
+    }
+    #[cfg(not(target_os = "macos"))]
+    Ok(GlobalBarDragStartWire {
+        token,
+        completed: false,
+        state: None,
+    })
 }
 
 #[tauri::command]
@@ -790,6 +815,15 @@ pub fn finish_global_bar_drag(
     app: AppHandle,
     state: State<'_, crate::app_state::AppState>,
     runtime: State<'_, GlobalBarDockRuntime>,
+) -> Result<GlobalBarDockStateWire, String> {
+    finish_global_bar_drag_inner(token, &app, state.inner(), runtime.inner())
+}
+
+fn finish_global_bar_drag_inner(
+    token: u64,
+    app: &AppHandle,
+    state: &crate::app_state::AppState,
+    runtime: &GlobalBarDockRuntime,
 ) -> Result<GlobalBarDockStateWire, String> {
     // Persistence is the recovery authority. Snapshot it before consuming the
     // one-shot token so a failed native finish always knows where to return.
@@ -804,7 +838,7 @@ pub fn finish_global_bar_drag(
                 .get_webview_window("main")
                 .ok_or_else(|| "Cookbench global Bar window is unavailable".to_owned())?;
             window.show().map_err(|error| error.to_string())?;
-            emit_dock_state(&app, &runtime);
+            emit_dock_state(app, runtime);
             Ok(runtime.state())
         },
         || {
@@ -857,7 +891,7 @@ pub fn finish_global_bar_drag(
                         }
                         TopDockDecision::BestEffortVisible => {}
                     }
-                    emit_dock_state(&app, &runtime);
+                    emit_dock_state(app, runtime);
                     Ok(runtime.state())
                 },
                 |old| {

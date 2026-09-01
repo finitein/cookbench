@@ -23,11 +23,12 @@ export function clampGlobalBarSize({ width, height }: GlobalBarSize): GlobalBarS
 
 export type GlobalBarDockPhase = "undocked" | "dockedExpanded" | "dockedCollapsed";
 export type GlobalBarDockState = { phase: GlobalBarDockPhase; docked: boolean; collapsed: boolean; bestEffort: boolean };
+export type GlobalBarDragStart = { token: number; completed: boolean; state?: GlobalBarDockState };
 export type GlobalBarDockGuards = { pointerInside: boolean; focused: boolean; menuOpen: boolean; resizing: boolean };
 export type GlobalBarDockTransport = {
   getState(): Promise<GlobalBarDockState>;
   listen(handler: (state: GlobalBarDockState) => void): Promise<() => void>;
-  startDrag(): Promise<number>;
+  startDrag(): Promise<GlobalBarDragStart>;
   finishDrag(token: number): Promise<GlobalBarDockState>;
   setGuards(input: GlobalBarDockGuards): Promise<GlobalBarDockState>;
   collapse(): Promise<GlobalBarDockState>;
@@ -44,7 +45,7 @@ export function createGlobalBarDockTransport(): GlobalBarDockTransport {
       const { listen } = await import("@tauri-apps/api/event");
       return listen<GlobalBarDockState>("cookbench://global-bar-dock-state-changed", ({ payload }) => handler(payload));
     },
-    startDrag: () => invoke<number>("start_global_bar_drag"),
+    startDrag: () => invoke<GlobalBarDragStart>("start_global_bar_drag"),
     finishDrag: (token) => invoke<GlobalBarDockState>("finish_global_bar_drag", { token }),
     setGuards: (input) => invoke<GlobalBarDockState>("set_global_bar_dock_guards", { input }),
     collapse: () => invoke<GlobalBarDockState>("request_global_bar_dock_collapse"),
@@ -59,8 +60,8 @@ export function createGlobalBarDockController(transport: GlobalBarDockTransport,
   let guards = { ...EMPTY_DOCK_GUARDS };
   let collapseTimer: ReturnType<typeof setTimeout> | undefined;
   let activeToken: number | undefined;
+  let pendingStart = false;
   let pointerEnded = false;
-  let quietTimer: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
   const apply = (next: GlobalBarDockState) => { state = next; onState?.(next); scheduleCollapse(); };
   const clearCollapse = () => { if (collapseTimer) clearTimeout(collapseTimer); collapseTimer = undefined; };
@@ -68,10 +69,10 @@ export function createGlobalBarDockController(transport: GlobalBarDockTransport,
   const safe = (promise: Promise<GlobalBarDockState>) => void promise.then(apply).catch(() => undefined);
   const scheduleCollapse = () => {
     clearCollapse();
-    if (disposed || hasGuard() || state.phase !== "dockedExpanded" || state.bestEffort || activeToken != null) return;
+    if (disposed || hasGuard() || state.phase !== "dockedExpanded" || state.bestEffort || activeToken != null || pendingStart) return;
     collapseTimer = setTimeout(() => {
       collapseTimer = undefined;
-      if (!disposed && !hasGuard() && state.phase === "dockedExpanded" && !state.bestEffort && activeToken == null) safe(transport.collapse());
+      if (!disposed && !hasGuard() && state.phase === "dockedExpanded" && !state.bestEffort && activeToken == null && !pendingStart) safe(transport.collapse());
     }, 600);
   };
   const setGuards = (next: Partial<GlobalBarDockGuards>) => {
@@ -84,8 +85,6 @@ export function createGlobalBarDockController(transport: GlobalBarDockTransport,
     if (activeToken == null) return;
     const token = activeToken;
     activeToken = undefined;
-    if (quietTimer) clearTimeout(quietTimer);
-    quietTimer = undefined;
     pointerEnded = false;
     clearCollapse();
     safe(transport.finishDrag(token));
@@ -93,22 +92,27 @@ export function createGlobalBarDockController(transport: GlobalBarDockTransport,
   };
   return {
     start() {
-      if (activeToken != null || disposed) return;
+      if (activeToken != null || pendingStart || disposed) return;
+      pendingStart = true;
       pointerEnded = false;
-      void transport.startDrag().then((token) => {
-        if (disposed) { void transport.finishDrag(token).catch(() => undefined); return; }
-        activeToken = token;
+      clearCollapse();
+      void transport.startDrag().then((result) => {
+        pendingStart = false;
+        if (disposed) {
+          if (!result.completed) void transport.finishDrag(result.token).catch(() => undefined);
+          return;
+        }
+        if (result.state) apply(result.state);
+        if (result.completed) { pointerEnded = false; scheduleCollapse(); return; }
+        activeToken = result.token;
         if (pointerEnded) finish();
-      }).catch(() => undefined);
+      }).catch(() => { pendingStart = false; pointerEnded = false; scheduleCollapse(); });
     },
     endDrag() { pointerEnded = true; finish(); },
-    noteMoved() {
-      if (activeToken == null || disposed) return;
-      if (quietTimer) clearTimeout(quietTimer);
-      quietTimer = setTimeout(() => finish(), 700);
-    },
     setGuards,
-    refresh() { safe(transport.refreshGeometry()); },
+    interactionActive: () => pendingStart || activeToken != null || guards.resizing,
+    canRefresh: () => !disposed && !pendingStart && activeToken == null && !guards.resizing,
+    refresh() { if (!pendingStart && activeToken == null && !guards.resizing) safe(transport.refreshGeometry()); },
     reveal() { safe(transport.reveal()); },
     async initialize() {
       await transport.getState().then(apply).catch(() => undefined);
@@ -119,7 +123,7 @@ export function createGlobalBarDockController(transport: GlobalBarDockTransport,
     },
     state: () => state,
     dispose(unlisten?: () => void) {
-      disposed = true; clearCollapse(); if (quietTimer) clearTimeout(quietTimer); unlisten?.();
+      disposed = true; clearCollapse(); unlisten?.();
       void transport.setGuards(EMPTY_DOCK_GUARDS).catch(() => undefined);
       if (activeToken != null) { const token = activeToken; activeToken = undefined; void transport.finishDrag(token).catch(() => undefined); }
     },
@@ -127,7 +131,6 @@ export function createGlobalBarDockController(transport: GlobalBarDockTransport,
 }
 
 export function attachGlobalBarDragHandle(handle: HTMLElement, onDragStart?: () => void) {
-  handle.setAttribute("data-tauri-drag-region", "");
   const drag = (event: PointerEvent) => {
     if ((event.target as Element | null)?.closest(
       "button, a, input, select, textarea, [data-resize-direction]",

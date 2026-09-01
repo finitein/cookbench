@@ -39,6 +39,7 @@ describe("global bar window sizing", () => {
     button.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
 
     expect(startDrag).toHaveBeenCalledTimes(1);
+    expect(surface).not.toHaveAttribute("data-tauri-drag-region");
     detach();
   });
 
@@ -101,7 +102,7 @@ describe("global bar dock controller", () => {
   function transport(): GlobalBarDockTransport {
     return {
       getState: vi.fn().mockResolvedValue(expanded), listen: vi.fn().mockResolvedValue(() => {}),
-      startDrag: vi.fn().mockResolvedValue(7), finishDrag: vi.fn().mockResolvedValue(expanded),
+      startDrag: vi.fn().mockResolvedValue({ token: 7, completed: false }), finishDrag: vi.fn().mockResolvedValue(expanded),
       setGuards: vi.fn().mockResolvedValue(expanded), collapse: vi.fn().mockResolvedValue({ ...expanded, phase: "dockedCollapsed", collapsed: true }),
       reveal: vi.fn().mockResolvedValue(expanded), refreshGeometry: vi.fn().mockResolvedValue(expanded),
     };
@@ -116,10 +117,10 @@ describe("global bar dock controller", () => {
   });
 
   it("finishes a token exactly once when pointerup comes before native start resolves", async () => {
-    let resolve!: (token: number) => void;
-    const native = transport(); native.startDrag = vi.fn(() => new Promise<number>((done) => { resolve = done; }));
+    let resolve!: (result: { token: number; completed: boolean }) => void;
+    const native = transport(); native.startDrag = vi.fn(() => new Promise<{ token: number; completed: boolean }>((done) => { resolve = done; }));
     const controller = createGlobalBarDockController(native);
-    controller.start(); controller.endDrag(); resolve(9); await Promise.resolve(); await Promise.resolve();
+    controller.start(); controller.endDrag(); resolve({ token: 9, completed: false }); await Promise.resolve(); await Promise.resolve();
     expect(native.finishDrag).toHaveBeenCalledTimes(1); expect(native.finishDrag).toHaveBeenCalledWith(9);
     controller.dispose();
   });
