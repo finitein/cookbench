@@ -198,7 +198,17 @@ pub fn accessibility_label_for_locale(
     if states.is_empty() {
         "Cookbench".into()
     } else {
-        format!("Cookbench: {} Stoves, {}", states.len(), states.join(", "))
+        let count = states.len();
+        let states = states.join(", ");
+        match locale {
+            AppLocale::ZhCn => format!("Cookbench：{count} 个炉灶，{states}"),
+            AppLocale::Ja => format!("Cookbench: {count} 台のストーブ、{states}"),
+            AppLocale::Ko => format!("Cookbench: 스토브 {count}개, {states}"),
+            AppLocale::System | AppLocale::En => {
+                let noun = if count == 1 { "Stove" } else { "Stoves" };
+                format!("Cookbench: {count} {noun}, {states}")
+            }
+        }
     }
 }
 
@@ -488,6 +498,37 @@ mod tests {
         assert_eq!(
             accessibility_label(&snapshot(&["a", "b"]), 1),
             "Cookbench: 1 Stoves, Cooking"
+        );
+    }
+
+    #[test]
+    fn accessibility_template_uses_natural_locale_count_forms() {
+        let empty = snapshot(&[]);
+        let one = snapshot(&["a"]);
+        let two = snapshot(&["a", "b"]);
+        assert_eq!(
+            accessibility_label_for_locale(&empty, 3, AppLocale::En),
+            "Cookbench"
+        );
+        assert_eq!(
+            accessibility_label_for_locale(&one, 1, AppLocale::En),
+            "Cookbench: 1 Stove, Cooking"
+        );
+        assert_eq!(
+            accessibility_label_for_locale(&two, 2, AppLocale::En),
+            "Cookbench: 2 Stoves, Cooking, Cooking"
+        );
+        assert_eq!(
+            accessibility_label_for_locale(&one, 1, AppLocale::ZhCn),
+            "Cookbench：1 个炉灶，运行中"
+        );
+        assert_eq!(
+            accessibility_label_for_locale(&one, 1, AppLocale::Ja),
+            "Cookbench: 1 台のストーブ、実行中"
+        );
+        assert_eq!(
+            accessibility_label_for_locale(&one, 1, AppLocale::Ko),
+            "Cookbench: 스토브 1개, 진행 중"
         );
     }
 
