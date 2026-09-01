@@ -85,10 +85,10 @@ Bar는 가로·세로 스크롤바 뒤로 작업을 숨기지 않고 여러 행�
 undock됩니다. detached Stove는 기존처럼 자유롭게 움직입니다. Wayland dock은 compositor
 제약 때문에 best effort입니다.
 
-macOS에서는 하나의 combined status-bar item이 같은 우선순위로 0~8개의 Stove를 표시하며,
-기본값은 3개입니다. 보이는 Stove를 click해 return하고 right-click으로 complete list를 엽니다.
-이는 presentation preference일 뿐 lifecycle evidence, privacy boundary, observe-not-command
-product boundary를 바꾸지 않습니다.
+v0.4.1 safety hotfix는 mirrored dual display에서 재현된 WindowServer crash 때문에 dynamic macOS
+status-bar Stove rendering을 일시 중단합니다. 검증된 static Cookbench tray와 menu는 그대로
+유지됩니다. 저장된 0~8개 수량 preference(기본값 3)는 추후 별도 안전 검증 후 복원할 수 있도록
+보존하며 Minimal mode와 top docking은 영향을 받지 않습니다.
 
 ## Orchestration이 아닌 Observability를 위해 만들었습니다
 
@@ -107,20 +107,20 @@ product boundary를 바꾸지 않습니다.
 
 ## 한 줄로 설치
 
-Cookbench v0.4.0은 서명되지 않은 프리뷰입니다. 첫 번째 파티 bootstrap은
+Cookbench v0.4.1은 서명되지 않은 프리뷰입니다. 첫 번째 파티 bootstrap은
 `release-manifest.json`을 내려받아 이 시스템에 맞는 네이티브 패키지를 선택하고,
 SHA-256 digest를 검증한 다음 설치합니다.
 
 macOS universal 또는 그래픽 Ubuntu/Linux x86_64:
 
 ```bash
-curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.4.0/install.sh | COOKBENCH_VERSION=v0.4.0 COOKBENCH_ALLOW_PRERELEASE=1 bash
+curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.4.1/install.sh | COOKBENCH_VERSION=v0.4.1 COOKBENCH_ALLOW_PRERELEASE=1 bash
 ```
 
 Windows x64 PowerShell:
 
 ```powershell
-$env:COOKBENCH_VERSION='v0.4.0'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.4.0/install.ps1 | iex
+$env:COOKBENCH_VERSION='v0.4.1'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.4.1/install.ps1 | iex
 ```
 
 macOS/Linux에서는 `--dry-run`, 모든 플랫폼에서는 `COOKBENCH_DRY_RUN=1`으로 실제 설치
@@ -139,8 +139,9 @@ APT 저장소에 배포되지 않으므로, 동작하지 않는 설치 명령은
    실제로 어떤 생명주기 신호가 존재하는지 확인합니다.
 4. Stove를 클릭하면 가능한 경우 검증된 터미널/IDE 대상을 사용하고, 그렇지 않으면 보호된
    Codex Desktop 작업 탐색 또는 명시적 애플리케이션/프로젝트 fallback을 사용합니다.
-5. Settings에서 언어, Full / Minimal, top docking, macOS status-bar Stove count, 선택적 Hover
-   상세 정보, 2일 freshness, Archive, 소리, 시스템 배너, Bar 점멸, 데스크톱 주의 요청을 조절합니다.
+5. Settings에서 언어, Full / Minimal, top docking, 선택적 Hover 상세 정보, 2일 freshness,
+   Archive, 소리, 시스템 배너, Bar 점멸, 데스크톱 주의 요청을 조절합니다. v0.4.1은 중단된
+   macOS status-bar Stove count preference를 보존하면서 일시적으로 숨깁니다.
 
 로컬 알림의 기본값은 소리만 켜짐입니다. Cooked Stove는 클릭해 확인할 때까지 계속 점멸할 수
 있습니다. 일시 오류 메시지는 Bar 아래를 영구 점유하지 않고 20초 뒤 사라집니다.
@@ -322,7 +323,9 @@ CSS만으로 수정 가능한 HTML에서 offline 생성되었습니다. 소스�
 
 </details>
 
-silent-first 소셜용 23.5초 세로형 [Minimal, top-dock, macOS status Stove 기능 영상](videos/cookbench-focus-surfaces/renders/cookbench-focus-surfaces-vertical.mp4)도 확인할 수 있습니다.
+silent-first 소셜용 23.5초 세로형 [v0.4.0 focus-surface 영상](videos/cookbench-focus-surfaces/renders/cookbench-focus-surfaces-vertical.mp4)은
+release archive로 보존됩니다. dynamic macOS status Stove 구간은 v0.4.1에서 중단되지만 Minimal
+mode와 top docking은 현재도 유효합니다.
 
 ## 느낌이 아니라 증거
 

@@ -21,6 +21,32 @@ clear, and outbound-notification observations in Vite `e2e` mode. A production
 build scan confirms that the driver name, storage keys, and implementation are
 absent from `dist`.
 
+## v0.4.1 WindowServer Safety Hotfix Gate
+
+v0.4.1 restores the static macOS tray path that v0.3.0 used successfully on the
+same affected Mac and mirrored dual-display setup. It disconnects dynamic
+status image replacement, menu reconstruction from snapshots, native status
+click mapping, and every snapshot-driven status refresh. The saved status Stove
+count remains persisted but is reported unavailable to Settings. Minimal mode
+and top docking remain enabled.
+
+The hotfix also deduplicates identical Global Bar minimum-size requests and
+refreshes dock geometry only when the Bar is docked. Source regression tests
+guard both the absence of the dynamic macOS runtime path and the new size
+request convergence behavior. The 2026-09-02 local `./scripts/verify.sh` run
+passed Rust formatting, workspace Clippy with warnings denied, all Rust tests
+and builds, TypeScript checking, 156 Vitest tests in 25 files, three GNOME
+protocol tests, 23 Playwright flows, production build isolation, and the
+source-package audit. Rust compilation was limited to one job.
+
+Verification on the affected Mac is deliberately non-launching: no Cookbench
+process, native UI smoke test, login-window restart, reboot, or display-mode
+change is permitted. Release evidence may include formatting, linting, unit and
+integration tests, production builds, source/package audits, GitHub Actions,
+artifact checksum validation, bundle metadata inspection, and offline
+installation. Native launch confirmation remains pending until it can be done
+on an isolated test Mac without risking the user's active system.
+
 ## v0.4.0 Release Candidate Gate
 
 v0.4.0 is an **unsigned prerelease candidate**. The 2026-09-02 macOS development

@@ -3,7 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   attachGlobalBarDragHandle, attachGlobalBarResizeHandle, createGlobalBarDockController,
   createGlobalBarDockTransport, prepareNativeGlobalBarDocument, intrinsicGlobalBarMinimumHeight,
-  recordGlobalBarSize, setGlobalBarMinimumSize,
+  globalBarMinimumRequestKey, recordGlobalBarSize, setGlobalBarMinimumSize,
 } from "../services/globalBarWindow";
 
 /** Keeps native Global Bar actions tied to local pointer, focus, and resize gestures. */
@@ -67,11 +67,20 @@ export function useGlobalBarWindow() {
     };
     try { void getCurrentWindow().onResized(persistNativeSize).then((unlisten) => { if (disposed) unlisten(); else stopResizing = unlisten; }); } catch { /* browser fixture */ }
     let minimumTimer: ReturnType<typeof setTimeout> | undefined;
+    let lastMinimumRequest: string | undefined;
     const updateMinimum = () => {
       if (minimumTimer) clearTimeout(minimumTimer);
       minimumTimer = setTimeout(() => {
+        const minimum = { width: 280, height: intrinsicGlobalBarMinimumHeight(bar) };
+        const request = globalBarMinimumRequestKey(minimum, preferredHeight);
+        if (request === lastMinimumRequest) return;
+        lastMinimumRequest = request;
         suppressResizeUntil = Date.now() + 500;
-        void setGlobalBarMinimumSize({ width: 280, height: intrinsicGlobalBarMinimumHeight(bar) }, preferredHeight).then(() => dock.refresh()).catch(() => undefined);
+        void setGlobalBarMinimumSize(minimum, preferredHeight).then(() => {
+          if (dock.state().docked) dock.refresh();
+        }).catch(() => {
+          if (lastMinimumRequest === request) lastMinimumRequest = undefined;
+        });
       }, 60);
     };
     const observer = new ResizeObserver(updateMinimum);

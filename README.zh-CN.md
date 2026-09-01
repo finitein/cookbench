@@ -79,9 +79,10 @@ Human、Failed、Disconnected、未确认的 Cooked、活跃工作、已确认�
 隐藏，鼠标进入顶端 3 px 即会展示；向下拉开 24 px 会解除吸附。独立 Stove 保持原有的自由
 移动能力。Wayland 的窗口行为由合成器决定，因此吸附是尽力支持。
 
-在 macOS 上，合并的状态栏项可按同一优先级展示 0 到 8 个 Stove，默认 3 个。点击可见
-Stove 可返回，右键打开完整列表。这些只改变呈现，不改变生命周期证据、隐私边界或
-Cookbench“只观察、不指挥”的产品边界。
+v0.4.1 安全热修版暂时停用动态 macOS 状态栏 Stove 渲染；该路径已在双屏镜像环境复现
+WindowServer 崩溃。经过验证的 static Cookbench 托盘图标和菜单仍然保留。原有 0 到 8 个
+Stove 的数量偏好（默认 3 个）不会丢失，待独立验证安全后再恢复；Minimal 模式和顶端吸附
+不受影响。
 
 ## 为可观测性而生，不做编排层
 
@@ -99,19 +100,19 @@ Cookbench“只观察、不指挥”的产品边界。
 
 ## 一行命令安装
 
-Cookbench v0.4.0 是未签名预览版。第一方安装脚本先下载
+Cookbench v0.4.1 是未签名预览版。第一方安装脚本先下载
 `release-manifest.json`，为当前机器选择原生包，校验 SHA-256，确认无误后才安装。
 
 macOS 通用版或图形化 Ubuntu/Linux x86_64：
 
 ```bash
-curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.4.0/install.sh | COOKBENCH_VERSION=v0.4.0 COOKBENCH_ALLOW_PRERELEASE=1 bash
+curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.4.1/install.sh | COOKBENCH_VERSION=v0.4.1 COOKBENCH_ALLOW_PRERELEASE=1 bash
 ```
 
 Windows x64 PowerShell：
 
 ```powershell
-$env:COOKBENCH_VERSION='v0.4.0'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.4.0/install.ps1 | iex
+$env:COOKBENCH_VERSION='v0.4.1'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.4.1/install.ps1 | iex
 ```
 
 macOS/Linux 可使用 `--dry-run`，所有平台都可以设置 `COOKBENCH_DRY_RUN=1`，只检查
@@ -128,8 +129,9 @@ macOS/Linux 可使用 `--dry-run`，所有平台都可以设置 `COOKBENCH_DRY_R
    **Settings > Hook Health** 查看机器上实际存在的生命周期信号。
 4. 点击 Stove，在可用时返回已验证的终端/IDE 目标，或使用受保护的 Codex Desktop
    任务导航及明确标注的应用/项目降级目标。
-5. 在 Settings 中调整语言、Full 或 Minimal、顶端吸附、macOS 状态栏 Stove 数量、
-   悬浮详情、两天新鲜度、Archive、声音、系统横幅、Bar 闪烁与桌面提醒。
+5. 在 Settings 中调整语言、Full 或 Minimal、顶端吸附、悬浮详情、两天新鲜度、Archive、
+   声音、系统横幅、Bar 闪烁与桌面提醒。v0.4.1 会保留但暂时隐藏已停用的 macOS 状态栏
+   Stove 数量偏好。
 
 本地通知默认只开启声音。Cooked Stove 可以持续闪烁，直到你点击它进行确认。
 临时报错会在 20 秒后自动消失，不会长期占据 Bar 下方的一整行。
@@ -298,7 +300,8 @@ cargo test --workspace
 
 </details>
 
-观看适配小红书、抖音静音浏览的 23.5 秒竖版[极简模式、顶端吸附与 macOS 状态栏功能片](videos/cookbench-focus-surfaces/renders/cookbench-focus-surfaces-vertical.mp4)。
+适配小红书、抖音静音浏览的 23.5 秒竖版[v0.4.0 功能片](videos/cookbench-focus-surfaces/renders/cookbench-focus-surfaces-vertical.mp4)
+作为发布档案保留；其中动态 macOS 状态栏片段已在 v0.4.1 暂停，Minimal 模式和顶端吸附仍然有效。
 
 ## 证据，而不是氛围
 
