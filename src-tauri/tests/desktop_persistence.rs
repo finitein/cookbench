@@ -6,7 +6,7 @@ use std::{
 
 use cookbench_core::{
     domain::{
-        EventKind, EventMetadata, EventSource, HarnessId, HostIdentity, ProjectIdentity, Stove,
+        EventKind, EventMetadata, EventSource, HarnessId, HostIdentity, ProjectIdentity,
         StoveEvent, StoveIdentity, StoveState,
     },
     persistence::{
@@ -55,59 +55,189 @@ fn session(state: StoveState) -> SessionRecord {
 }
 
 #[test]
-fn acknowledged_structured_and_hook_completions_stay_demoted_after_restart() {
-    for (session_id, source, sequence) in [
-        ("structured-sequence", EventSource::StructuredSession, 7),
-        ("hook-completion", EventSource::Hook, 11),
-    ] {
-        let directory = TestDirectory::new();
-        let persistence = DesktopPersistence::in_app_data(&directory.0);
-        let identity = StoveIdentity::new(
-            HostIdentity::local("test-host"),
-            HarnessId::Codex,
-            session_id,
-        );
-        let event = EventMetadata::new(source, 100, sequence, 800);
-        let mut persisted = PersistedState::default();
-        persistence
-            .persist_transition_with_presentation(
-                &mut persisted,
-                identity.clone(),
-                StoveState::Cooked,
-                &event,
-                RetainedStovePresentation::new("cookbench", "/safe/cookbench"),
-            )
-            .unwrap();
-        let mut cooked = Stove::new(
-            identity,
-            ProjectIdentity::new(HostIdentity::local("test-host"), "/safe/cookbench"),
-        );
-        cooked.state = StoveState::Cooked;
-        cooked.last_event = Some(event);
-        assert!(persisted.acknowledge_cooked(&cooked, 900));
-        persistence.save_state(&persisted).unwrap();
+fn production_path_normalizes_hook_completion_before_persisting_acknowledgement() {
+    let directory = TestDirectory::new();
+    let app = tauri::test::mock_app();
+    let state = AppState::default();
+    state.initialize_persistence(&directory.0);
+    let identity = StoveIdentity::new(HostIdentity::local("test-host"), HarnessId::Codex, "hook");
+    let project = ProjectIdentity::new(HostIdentity::local("test-host"), "/safe/hook");
 
-        let app_state = AppState::default();
-        app_state.initialize_persistence(&directory.0);
-        app_state
-            .stoves
-            .apply(
-                StoveIdentity::new(HostIdentity::local("test-host"), HarnessId::Codex, "active"),
-                ProjectIdentity::new(HostIdentity::local("test-host"), "/safe/active"),
+    state
+        .apply_and_emit(
+            app.handle(),
+            identity.clone(),
+            project.clone(),
+            LocatorCapability::Unavailable,
+            None,
+            StoveEvent::new(EventKind::ToolStarted, event(41, 1)),
+        )
+        .unwrap();
+    state
+        .apply_and_emit(
+            app.handle(),
+            identity.clone(),
+            project,
+            LocatorCapability::Unavailable,
+            None,
+            StoveEvent::new(
+                EventKind::TurnCompleted,
+                EventMetadata::new(EventSource::Hook, 90, 900, 2),
+            ),
+        )
+        .unwrap();
+
+    let persisted = DesktopPersistence::in_app_data(&directory.0).load().state;
+    assert_eq!(
+        persisted.retained[0]
+            .completion_event
+            .as_ref()
+            .unwrap()
+            .sequence,
+        2
+    );
+    assert!(state
+        .acknowledge_cooked_and_emit(app.handle(), "local:test-host:codex:hook")
+        .unwrap());
+
+    let restarted = AppState::default();
+    restarted.initialize_persistence(&directory.0);
+    restarted
+        .stoves
+        .apply(
+            StoveIdentity::new(HostIdentity::local("test-host"), HarnessId::Codex, "active"),
+            ProjectIdentity::new(HostIdentity::local("test-host"), "/safe/active"),
+            LocatorCapability::Unavailable,
+            StoveEvent::new(EventKind::ToolStarted, event(1, 3)),
+        )
+        .unwrap();
+    assert_eq!(
+        restarted.snapshot().attention_order,
+        vec![
+            "local:test-host:codex:active".to_owned(),
+            "local:test-host:codex:hook".to_owned(),
+        ]
+    );
+}
+
+#[test]
+fn newer_normalized_completion_with_the_same_timestamp_re_elevates_after_restart() {
+    let directory = TestDirectory::new();
+    let app = tauri::test::mock_app();
+    let state = AppState::default();
+    state.initialize_persistence(&directory.0);
+    let identity = StoveIdentity::new(
+        HostIdentity::local("test-host"),
+        HarnessId::Codex,
+        "same-time",
+    );
+    let project = ProjectIdentity::new(HostIdentity::local("test-host"), "/safe/same-time");
+
+    for (kind, raw_sequence) in [
+        (EventKind::ToolStarted, 700),
+        (EventKind::TurnCompleted, 701),
+    ] {
+        state
+            .apply_and_emit(
+                app.handle(),
+                identity.clone(),
+                project.clone(),
                 LocatorCapability::Unavailable,
+                None,
                 StoveEvent::new(
-                    EventKind::ToolStarted,
-                    EventMetadata::new(EventSource::StructuredSession, 100, 1, 850),
+                    kind,
+                    EventMetadata::new(EventSource::Hook, 90, raw_sequence, 0),
                 ),
             )
             .unwrap();
-        let snapshot = app_state.snapshot();
-        assert_eq!(snapshot.stoves[0].id, "local:test-host:codex:active");
-        assert_eq!(
-            snapshot.stoves[1].id,
-            format!("local:test-host:codex:{session_id}")
-        );
     }
+    assert!(state
+        .acknowledge_cooked_and_emit(app.handle(), "local:test-host:codex:same-time")
+        .unwrap());
+    for (kind, raw_sequence) in [
+        (EventKind::UserPromptSubmitted, 702),
+        (EventKind::TurnCompleted, 703),
+    ] {
+        state
+            .apply_and_emit(
+                app.handle(),
+                identity.clone(),
+                project.clone(),
+                LocatorCapability::Unavailable,
+                None,
+                StoveEvent::new(
+                    kind,
+                    EventMetadata::new(EventSource::Hook, 90, raw_sequence, 0),
+                ),
+            )
+            .unwrap();
+    }
+    let persisted = DesktopPersistence::in_app_data(&directory.0).load().state;
+    assert_eq!(persisted.cooked_attention_cursors[0].sequence, 2);
+    assert_eq!(
+        persisted.retained[0]
+            .completion_event
+            .as_ref()
+            .unwrap()
+            .sequence,
+        4
+    );
+
+    let restarted = AppState::default();
+    restarted.initialize_persistence(&directory.0);
+    restarted
+        .stoves
+        .apply(
+            StoveIdentity::new(HostIdentity::local("test-host"), HarnessId::Codex, "active"),
+            ProjectIdentity::new(HostIdentity::local("test-host"), "/safe/active"),
+            LocatorCapability::Unavailable,
+            StoveEvent::new(EventKind::ToolStarted, event(1, 1)),
+        )
+        .unwrap();
+    assert_eq!(
+        restarted.snapshot().attention_order[0],
+        "local:test-host:codex:same-time"
+    );
+}
+
+#[test]
+fn legacy_cursor_without_a_completion_fingerprint_fails_open() {
+    let directory = TestDirectory::new();
+    let persistence = DesktopPersistence::in_app_data(&directory.0);
+    // Released v0.3 had no cooked_attention_cursors, so guessing a missing
+    // completion identity could hide a completion the user has never seen.
+    fs::write(
+        persistence.state_path(),
+        r#"{
+          "version": 3,
+          "retained": [{
+            "locator": {"host":{"kind":"Local","id":"test-host"},"harness":"Codex","native_session_id":"legacy"},
+            "completed_at_ms": 0,
+            "presentation": {"project_label":"legacy","project_root_display":"/safe/legacy"}
+          }],
+          "cooked_attention_cursors": [{
+            "locator": {"host":{"kind":"Local","id":"test-host"},"harness":"Codex","native_session_id":"legacy"},
+            "source":"Hook","confidence":90,"sequence":0,"timestamp_ms":0,"acknowledged_at_ms":1
+          }]
+        }"#,
+    )
+    .unwrap();
+
+    let state = AppState::default();
+    state.initialize_persistence(&directory.0);
+    state
+        .stoves
+        .apply(
+            StoveIdentity::new(HostIdentity::local("test-host"), HarnessId::Codex, "active"),
+            ProjectIdentity::new(HostIdentity::local("test-host"), "/safe/active"),
+            LocatorCapability::Unavailable,
+            StoveEvent::new(EventKind::ToolStarted, event(1, 1)),
+        )
+        .unwrap();
+    assert_eq!(
+        state.snapshot().attention_order[0],
+        "local:test-host:codex:legacy"
+    );
 }
 
 fn session_with_id(native_session_id: &str, state: StoveState) -> SessionRecord {
