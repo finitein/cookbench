@@ -1,4 +1,4 @@
-import type { HarnessKind, StoveState, StoveWire } from "../types/stove";
+import type { HarnessKind, StoveWire } from "../types/stove";
 
 export const STOVE_SLOT_WIDTH = 86;
 
@@ -20,30 +20,10 @@ export function stoveCapacityForWidth(width: number): number {
   return Math.max(1, Math.floor(width / STOVE_SLOT_WIDTH));
 }
 
-function stateRank(state: StoveState): number {
-  switch (state) {
-    case "needsHuman":
-      return 0;
-    case "starting":
-    case "planning":
-    case "cooking":
-      return 1;
-    case "cooked":
-    case "failed":
-    case "disconnected":
-      return 2;
-  }
-}
-
-/**
- * A stable state sort deliberately retains the runtime's source order within a
- * state. The wire format does not carry a separate last-activity timestamp.
- */
 export function sortStovesForBench(stoves: readonly StoveWire[]): StoveWire[] {
-  return stoves
-    .map((stove, index) => ({ stove, index }))
-    .sort((left, right) => stateRank(left.stove.state) - stateRank(right.stove.state) || left.index - right.index)
-    .map(({ stove }) => stove);
+  // The desktop process owns attention ordering. Keep this small UI helper as
+  // an identity copy so grouped benches cannot silently compete with it.
+  return [...stoves];
 }
 
 function orderedHarnesses(stoves: readonly StoveWire[]): HarnessKind[] {

@@ -68,6 +68,29 @@ pub struct MonitorWorkArea {
     pub primary: bool,
 }
 
+/// Resolves a persisted monitor without stranding legacy name-only records.
+/// An exact ID wins; a display name is used only when it identifies exactly
+/// one currently connected monitor.
+pub fn resolve_saved_monitor<'a>(
+    saved: &MonitorIdentity,
+    monitors: &'a [MonitorWorkArea],
+) -> Option<&'a MonitorWorkArea> {
+    monitors
+        .iter()
+        .find(|candidate| candidate.identity.id == saved.id)
+        .or_else(|| {
+            saved.name.as_ref().and_then(|name| {
+                let mut matches = monitors
+                    .iter()
+                    .filter(|candidate| candidate.identity.name.as_ref() == Some(name));
+                let only = matches.next()?;
+                matches.next().is_none().then_some(only)
+            })
+        })
+        .or_else(|| monitors.iter().find(|candidate| candidate.primary))
+        .or_else(|| monitors.first())
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct DetachedStoveLayout {
     /// Opaque Cookbench stove key; no transcript or prompt content is stored.
@@ -102,11 +125,7 @@ impl DetachedStoveLayout {
     /// Restores on the saved monitor when possible and otherwise uses the
     /// primary display (or the first reported display), always clamped on-screen.
     pub fn restore(&self, monitors: &[MonitorWorkArea]) -> Option<RestoredDetachedStoveLayout> {
-        let monitor = monitors
-            .iter()
-            .find(|candidate| candidate.identity.id == self.monitor.id)
-            .or_else(|| monitors.iter().find(|candidate| candidate.primary))
-            .or_else(|| monitors.first())?;
+        let monitor = resolve_saved_monitor(&self.monitor, monitors)?;
         let used_fallback_monitor = monitor.identity.id != self.monitor.id;
         let mut layout = self.clone();
         if used_fallback_monitor {

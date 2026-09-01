@@ -100,6 +100,53 @@
   padding-left: 5px;
 }
 
+.global-bar__mode-toggle,
+.global-bar__priority-trigger {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid #c5d0da;
+  border-radius: 4px;
+  background: #fff;
+  color: var(--bar-muted);
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+  place-items: center;
+}
+.global-bar__mode-toggle:hover,
+.global-bar__mode-toggle:focus-visible,
+.global-bar__priority-trigger:hover,
+.global-bar__priority-trigger:focus-visible { outline: 2px solid #316f98; outline-offset: 1px; }
+.global-bar__mode-toggle--full { position: absolute; right: 8px; top: 8px; }
+
+.global-bar--minimal { grid-template-columns: 52px minmax(0, 1fr); min-height: 92px; padding-right: 10px; }
+.global-bar--minimal .global-bar__brand { min-height: 70px; }
+.global-bar__minimal { position: relative; display: grid; min-height: 70px; padding-left: 8px; place-items: center start; }
+.global-bar__minimal-burner { width: 74px; height: 74px; }
+.global-bar__minimal-mark { width: 42px; height: 42px; object-fit: contain; }
+.global-bar__minimal-empty { display: grid; width: 74px; height: 74px; padding: 0; border: 0; border-radius: 50%; background: transparent; cursor: pointer; place-items: center; }
+.global-bar__minimal-empty:focus-visible { outline: 2px solid #316f98; outline-offset: 2px; }
+.global-bar--minimal .global-bar__mode-toggle { position: absolute; top: 1px; right: 30px; }
+.global-bar__priority-trigger { position: absolute; top: 1px; right: 1px; font-weight: 750; }
+
+.stove-burner-wrap--compact { width: 74px; height: 74px; }
+.stove-burner-wrap--compact .stove-burner { display: grid; width: 74px; height: 74px; padding: 0; border-radius: 50%; grid-template-rows: 1fr; place-items: center; }
+.stove-burner-wrap--compact .stove-burner__ring { width: 74px; height: 74px; }
+.stove-burner-wrap--compact .progress-ring,
+.stove-burner-wrap--compact .progress-ring svg { width: 68px; height: 68px; }
+.stove-burner-wrap--compact .stove-burner__identity { top: 6px; left: 3px; }
+.stove-burner-wrap--compact .host-badge { top: 5px; right: 3px; }
+.stove-burner-wrap--compact .stove-burner__control { opacity: 0; }
+
+.stove-priority-menu { position: absolute; z-index: 20; top: calc(100% + 5px); left: 0; width: min(300px, calc(100vw - 24px)); max-height: 360px; overflow-x: hidden; overflow-y: auto; border: 1px solid #c5d0da; border-radius: 6px; background: #fff; box-shadow: 0 10px 25px rgb(65 88 112 / 20%); padding: 5px; }
+.stove-priority-menu__title { margin: 4px 6px; color: var(--bar-muted); font-size: 10px; font-weight: 700; }
+.stove-priority-menu__item { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; width: 100%; gap: 6px; align-items: center; padding: 6px; border: 0; border-radius: 4px; background: transparent; color: var(--bar-ink); cursor: pointer; font: inherit; text-align: left; }
+.stove-priority-menu__item:hover,.stove-priority-menu__item:focus-visible { background: #eef5f8; outline: 2px solid #316f98; outline-offset: -2px; }
+.stove-priority-menu__rank,.stove-priority-menu__state { color: var(--bar-muted); font-size: 11px; }
+.stove-priority-menu__identity { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 700; }
+
 .global-bar__bench {
   display: grid;
   min-width: 0;
@@ -165,6 +212,17 @@
 }
 
 .global-bar:hover > .global-bar__resize-handle { opacity: 1; }
+:root[data-cookbench-dock-state="dockedCollapsed"] .global-bar__resize-handle { display: none; }
+:root[data-cookbench-dock-state="dockedCollapsed"] .global-bar::after {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  content: "";
+  background: rgb(49 111 152 / 18%);
+  pointer-events: auto;
+}
 .global-bar__resize-handle[data-resize-direction="North"],
 .global-bar__resize-handle[data-resize-direction="South"] {
   right: 12px;

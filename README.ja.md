@@ -72,6 +72,24 @@ Bar は horizontal / vertical scrollbar の奥に work を隠す代わりに複�
 または手動で外した Session が入り、Restore は誤操作から復帰させます。Cooked 以外の表示
 Stove は、元の Harness Session を削除せずに外せます。
 
+## Desk を絞り込み、全体は失わない
+
+**Full** は既定のままです。すべての表示 Stove を並べ、密度が上がれば Bench へ広がります。
+**Minimal** を選ぶと、共有 attention priority の一番上だけを一つの円形 Stove として表示
+します。順序は Needs Human、Failed、Disconnected、未確認 Cooked、active work、確認済み
+Cooked で、同順位は新しい state evidence を優先します。timed carousel はなく、priority
+menu からほかの Stove にも到達できます。
+
+global Bar を現在の monitor 上端へ drag すると dock します。上端から 12 px 以内で drop
+すると dock し、600 ms 後に auto-hide、上端 3 px で再表示します。24 px 下へ引くと undock
+します。detached Stove は従来どおり自由に動かせます。Wayland の dock は compositor の
+制約により best effort です。
+
+macOS では一つの combined status-bar item が同じ優先順で 0 から 8 個の Stove を表示でき、
+既定は 3 個です。見えている Stove を click して return し、right-click で complete list を
+開けます。これは presentation preference のみで、lifecycle evidence、privacy boundary、
+observe-not-command の product boundary は変えません。
+
 ## Orchestration ではなく Observability のために
 
 | Cookbench がすること | Cookbench が意図的にしないこと |
@@ -89,20 +107,20 @@ Stove は、元の Harness Session を削除せずに外せます。
 
 ## 1 Command で Install
 
-Cookbench v0.3.0 は unsigned preview です。first-party bootstrap は
+Cookbench v0.4.0 は unsigned preview です。first-party bootstrap は
 `release-manifest.json` を download し、この machine 用の native package を選び、SHA-256
 digest を検証してから install します。
 
 macOS universal または graphical Ubuntu/Linux x86_64:
 
 ```bash
-curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.3.0/install.sh | COOKBENCH_VERSION=v0.3.0 COOKBENCH_ALLOW_PRERELEASE=1 bash
+curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.4.0/install.sh | COOKBENCH_VERSION=v0.4.0 COOKBENCH_ALLOW_PRERELEASE=1 bash
 ```
 
 Windows x64 PowerShell:
 
 ```powershell
-$env:COOKBENCH_VERSION='v0.3.0'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.3.0/install.ps1 | iex
+$env:COOKBENCH_VERSION='v0.4.0'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.4.0/install.ps1 | iex
 ```
 
 macOS/Linux は `--dry-run`、全 platform では `COOKBENCH_DRY_RUN=1` を使うと install せずに
@@ -121,8 +139,9 @@ APT repository には publish していないため、動かない command を R
    **Settings > Hook Health** で実際に存在する lifecycle signal を確認します。
 4. Stove を click すると、利用可能な verified terminal / IDE target、guarded な Codex
    Desktop task navigation、または明示的な application / project fallback を使います。
-5. Settings で language、optional hover detail、二日間の freshness、Archive、sound、system
-   banner、Bar flash、desktop attention を調整します。
+5. Settings で language、Full / Minimal、top docking、macOS status-bar Stove count、optional
+   hover detail、二日間の freshness、Archive、sound、system banner、Bar flash、desktop
+   attention を調整します。
 
 local notification の既定は sound のみです。Cooked Stove は click して acknowledge するまで
 flash を続けられます。一時 error message は Bar の下の恒久的な row を占有せず、20 秒で消え
@@ -284,7 +303,7 @@ cargo test --workspace
 local release gate 全体は `./scripts/verify.sh` です。package claim を行う前に
 [Releasing Cookbench](docs/releasing.md) を読んでください。
 
-## 13 枚で見る Cookbench
+## 14 枚で見る Cookbench
 
 AI newcomer、日常的な Agent user、多数の並列 Session を本当の bench で管理したい人向けに、
 中国語の complete visual tour を以下へ収録しています。すべての card は Cookbench mark、system
@@ -292,7 +311,7 @@ font、CSS のみで editable HTML から offline 生成されています。sou
 は [docs/showcase](docs/showcase/README.md) にあります。
 
 <details>
-<summary><strong>13 枚の product tour を開く</strong></summary>
+<summary><strong>14 枚の product tour を開く</strong></summary>
 
 <table>
   <tr><td><img src="docs/showcase/rendered/01-overview.png" alt="Cookbench プロジェクト概要"></td><td><img src="docs/showcase/rendered/02-one-glance.png" alt="すべての Agent Session を一目で確認"></td></tr>
@@ -301,10 +320,12 @@ font、CSS のみで editable HTML から offline 生成されています。sou
   <tr><td><img src="docs/showcase/rendered/07-ssh.png" alt="read-only SSH observation"></td><td><img src="docs/showcase/rendered/08-privacy.png" alt="local-first privacy boundary"></td></tr>
   <tr><td><img src="docs/showcase/rendered/09-hooks.png" alt="Hook の install と health"></td><td><img src="docs/showcase/rendered/10-workflow.png" alt="pin archive restore と notification"></td></tr>
   <tr><td><img src="docs/showcase/rendered/11-multibench.png" alt="responsive multi-bench layout"></td><td><img src="docs/showcase/rendered/12-install.png" alt="1 command install"></td></tr>
-  <tr><td><img src="docs/showcase/rendered/13-footprint.png" alt="低い memory と storage footprint"></td><td></td></tr>
+  <tr><td><img src="docs/showcase/rendered/13-footprint.png" alt="低い memory と storage footprint"></td><td><img src="docs/showcase/rendered/14-focus-surfaces.png" alt="Minimal mode、top docking、macOS status Stove"></td></tr>
 </table>
 
 </details>
+
+silent-first social 向け 23.5 秒縦型の [Minimal、top-dock、macOS status Stove feature film](videos/cookbench-focus-surfaces/renders/cookbench-focus-surfaces-vertical.mp4) も公開しています。
 
 ## Vibes ではなく Evidence
 

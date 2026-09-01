@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <style>
+      @font-face { font-family: "PingFang SC"; src: local("PingFang SC"); }
+      @font-face { font-family: "Hiragino Sans GB"; src: local("Hiragino Sans GB"); }
+      @font-face { font-family: "Microsoft YaHei"; src: local("Microsoft YaHei"); }
+      @font-face { font-family: "SFMono-Regular"; src: local("SFMono-Regular"); }
+      :root { --canvas:#f4f6f7; --ink:#151817; --orange:#ff6a2a; --orange-ink:#b34a1e; --line:rgba(21,24,23,.2); --quiet:rgba(21,24,23,.64); --soft:rgba(255,106,42,.08); }
+      * { box-sizing:border-box; }
+      html, body { width:1080px; height:1920px; margin:0; overflow:hidden; background:var(--canvas); }
+      body { color:var(--ink); font-family:system-ui,-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif; }
+      .mono { font-family:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace; }
+      .clip { position:absolute; inset:0; overflow:hidden; }
+      #focus-vertical { position:relative; width:1080px; height:1920px; overflow:hidden; background:var(--canvas); container-type:size; }
+      .safe-copy { position:absolute; left:84px; right:84px; }
+      .chrome { z-index:20; pointer-events:none; opacity:.72; }
+      .topline { position:absolute; top:64px; left:84px; right:84px; display:flex; justify-content:space-between; align-items:center; color:var(--quiet); font-size:15px; font-weight:700; }
+      .topline strong { color:var(--orange-ink); }
+      .top-rule { position:absolute; top:104px; left:84px; right:84px; height:1px; background:var(--line); }
+      .top-rule-fill { width:154px; height:4px; background:var(--orange); transform-origin:left center; }
+      .bottom-rule { position:absolute; left:84px; bottom:138px; width:912px; height:3px; background:rgba(21,24,23,.13); }
+      .bottom-fill { width:912px; height:3px; background:var(--orange); transform-origin:left center; }
+      .bottom-meta { position:absolute; left:84px; right:84px; bottom:88px; display:flex; justify-content:space-between; color:var(--quiet); font-size:13px; font-weight:700; }
+      .eyebrow { color:var(--orange-ink); font-size:18px; font-weight:700; letter-spacing:.08em; }
+      .headline { margin:46px 0 0; font-size:75px; font-weight:700; line-height:1.12; letter-spacing:0; }
+      .headline span { display:block; }
+      .headline .accent { color:var(--orange-ink); }
+      .body-copy { margin:30px 0 0; color:var(--quiet); font-size:27px; font-weight:500; line-height:1.55; }
+      .terminal-stack { margin-top:70px; border-top:1px solid var(--line); }
+      .terminal-row { display:grid; grid-template-columns:28px 1fr auto; gap:18px; align-items:center; min-height:96px; border-bottom:1px solid var(--line); font-size:23px; font-weight:700; }
+      .terminal-dot { width:11px; height:11px; border-radius:50%; background:var(--orange); }
+      .terminal-state { color:var(--quiet); font-size:17px; }
+      .minimal-card { top:316px; padding:54px 46px; border:1px solid var(--line); background:var(--soft); }
+      .minimal-card::before { position:absolute; left:0; top:0; bottom:0; width:6px; background:var(--orange); content:""; }
+      .minimal-title { margin:42px 0 0; font-size:76px; font-weight:700; line-height:1.12; }
+      .minimal-title span { display:block; }
+      .minimal-title .accent { color:var(--orange-ink); }
+      .minimal-rule { height:1px; margin-top:55px; background:var(--line); }
+      .minimal-note { margin-top:28px; color:var(--quiet); font-size:27px; line-height:1.5; font-weight:500; }
+      .focus-glyph { position:absolute; right:56px; top:52px; width:84px; height:84px; border:3px solid var(--orange); border-radius:50%; }
+      .focus-glyph::after { position:absolute; inset:20px; border:3px solid var(--orange); border-radius:50%; content:""; }
+      .show-title { top:144px; }
+      .show-title h2 { margin:16px 0 0; font-size:46px; line-height:1.16; font-weight:700; }
+      .show-title p { margin:14px 0 0; color:var(--quiet); font-size:22px; font-weight:500; }
+      .showcase-window { position:absolute; top:410px; left:64px; width:952px; height:1134px; overflow:hidden; border:1px solid var(--line); background:#fff; }
+      .showcase-image { display:block; width:952px; height:1269px; object-fit:cover; object-position:center top; transform-origin:50% 12%; }
+      .callout { position:absolute; z-index:2; min-height:46px; padding:0 15px; display:flex; align-items:center; border:1px solid rgba(255,106,42,.72); background:var(--canvas); color:var(--orange-ink); font-size:18px; font-weight:700; white-space:nowrap; }
+      .callout::before { width:8px; height:8px; margin-right:10px; border-radius:50%; background:var(--orange); content:""; }
+      .dock-callout { top:456px; left:104px; }
+      .hide-callout { top:1338px; right:104px; }
+      .state-caption { position:absolute; z-index:2; top:144px; left:84px; right:84px; display:flex; justify-content:space-between; align-items:flex-end; }
+      .state-caption h2 { width:760px; margin:16px 0 0; font-size:46px; line-height:1.16; font-weight:700; }
+      .state-caption .mono { color:var(--quiet); font-size:16px; font-weight:700; }
+      .state-window { position:absolute; top:450px; left:68px; width:944px; height:814px; overflow:hidden; border:1px solid var(--line); background:#fff; }
+      .state-image { display:block; width:944px; height:1245px; object-fit:cover; object-position:center 42%; transform-origin:50% 48%; }
+      .status-grid { position:absolute; top:1320px; left:84px; right:84px; display:grid; grid-template-columns:repeat(3,1fr); border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
+      .status-item { min-height:165px; padding:24px 13px 20px 0; }
+      .status-item + .status-item { padding-left:20px; border-left:1px solid var(--line); }
+      .ring { width:42px; height:42px; border:4px solid var(--orange); border-radius:50%; position:relative; }
+      .ring.cooking::after { position:absolute; inset:-4px; border:4px solid transparent; border-top-color:var(--orange); border-radius:50%; content:""; }
+      .status-label { margin-top:14px; font-size:21px; font-weight:700; line-height:1.2; }
+      .status-note { margin-top:8px; color:var(--quiet); font-size:15px; font-weight:600; }
+      .boundary-copy { top:150px; }
+      .boundary-copy h2 { width:825px; margin:20px 0 0; font-size:52px; font-weight:700; line-height:1.12; }
+      .boundary-copy h2 span { display:block; }
+      .boundary-copy h2 .accent { color:var(--orange-ink); }
+      .boundary-list { margin-top:30px; border-top:1px solid var(--line); }
+      .boundary-row { display:grid; grid-template-columns:200px 1fr; gap:18px; padding:17px 0; border-bottom:1px solid var(--line); }
+      .boundary-key { color:var(--orange-ink); font-size:16px; font-weight:700; }
+      .boundary-value { font-size:26px; font-weight:700; line-height:1.35; }
+      .boundary-image { position:absolute; left:68px; top:728px; width:944px; height:782px; overflow:hidden; border:1px solid var(--line); background:#fff url('assets/showcase/14-focus-surfaces-social.png') center 43% / cover no-repeat; }
+      .boundary-footnote { position:absolute; left:84px; top:1552px; width:760px; color:var(--quiet); font-size:21px; line-height:1.55; font-weight:500; }
+      .close-wrap { top:402px; }
+      .brand { display:flex; align-items:center; gap:24px; }
+      .brand img { width:90px; height:90px; }
+      .brand span { font-size:70px; font-weight:700; }
+      .close-rule { height:1px; margin-top:62px; background:var(--line); transform-origin:left center; }
+      .close-title { margin:62px 0 0; font-size:75px; font-weight:700; line-height:1.13; }
+      .close-title span { display:block; }
+      .close-title .accent { color:var(--orange-ink); }
+      .close-sub { margin-top:30px; color:var(--quiet); font-size:28px; font-weight:600; }
+      .close-url { margin-top:90px; font-size:23px; font-weight:700; }
+      .close-meta { margin-top:22px; color:var(--orange-ink); font-size:17px; font-weight:700; }
+    </style>
+  </head>
+  <body>
+    <main id="focus-vertical" data-composition-id="focus-vertical" data-no-timeline data-start="0" data-duration="23.5" data-width="1080" data-height="1920" data-fps="30">
+      <div id="focus-chrome-layer" class="clip chrome" data-start="0" data-duration="23.5" data-track-index="0">
+        <div id="focus-chrome" class="topline mono"><span><strong>COOKBENCH</strong> / FOCUS SURFACES</span><span>04 · 23.5 SEC</span></div><div class="top-rule"><div id="focus-rule-fill" class="top-rule-fill"></div></div>
+        <div class="bottom-rule"><div id="focus-progress" class="bottom-fill"></div></div><div class="bottom-meta mono"><span>OBSERVE · DO NOT CONTROL</span><span>SILENT FIRST</span></div>
+      </div>
+      <section id="focus-pain" class="clip" data-start="0" data-duration="3.3" data-track-index="1"><div class="safe-copy" style="top:228px"><div class="eyebrow mono">CONTEXT SWITCHING / 01</div><h1 id="focus-pain-title" class="headline"><span>又要切回终端？</span><span class="accent">状态散在每个窗口里。</span></h1><p class="body-copy">每次回来，先确认谁还在跑，谁正在等你。</p><div class="terminal-stack"><div class="terminal-row"><i class="terminal-dot"></i><span>Agent 会话</span><span class="terminal-state mono">CHECK</span></div><div class="terminal-row"><i class="terminal-dot"></i><span>另一个终端</span><span class="terminal-state mono">CHECK</span></div><div class="terminal-row"><i class="terminal-dot"></i><span>还有一个窗口</span><span class="terminal-state mono">CHECK</span></div></div></div></section>
+      <section id="focus-minimal" class="clip" data-start="3.3" data-duration="3.1" data-track-index="2"><div class="safe-copy minimal-card" style="top:316px"><div class="focus-glyph"></div><div class="eyebrow mono">MINIMAL MODE / 02</div><h2 id="focus-minimal-title" class="minimal-title"><span>少一点干扰，</span><span class="accent">多一点专注。</span></h2><div class="minimal-rule"></div><p class="minimal-note">只把需要回来的状态留在眼前。</p></div></section>
+      <section id="focus-dock" class="clip" data-start="6.4" data-duration="4.9" data-track-index="3"><div class="safe-copy show-title"><div class="eyebrow mono">FOCUS SURFACES / 03</div><h2>顶边停靠，<br />需要时出现。</h2><p>空闲时收起，不抢走工作空间。</p></div><div id="focus-showcase-window" class="showcase-window"><img id="focus-showcase-image" class="showcase-image" data-layout-allow-overflow src="assets/showcase/14-focus-surfaces-social.png" alt="Cookbench focus surfaces showcase" /></div><div class="callout dock-callout">顶边停靠</div><div class="callout hide-callout">自动隐藏</div></section>
+      <section id="focus-stoves" class="clip" data-start="11.3" data-duration="4.1" data-track-index="4"><div class="state-caption"><div><div class="eyebrow mono">STATUS STOVES / 04</div><h2>macOS 状态 Stoves<br />一眼分清。</h2></div><span class="mono">VISIBLE STATES</span></div><div id="focus-state-image" class="state-window state-image" role="img" aria-label="Cookbench status stoves" style="background:url('assets/showcase/14-focus-surfaces-social.png') center 43% / cover no-repeat"></div><div class="status-grid"><div class="status-item"><div class="ring cooking"></div><div class="status-label">烹饪中</div><div class="status-note">进行中的状态</div></div><div class="status-item"><div class="ring"></div><div class="status-label">等待处理</div><div class="status-note">需要回来的状态</div></div><div class="status-item"><div class="ring"></div><div class="status-label">已完成</div><div class="status-note">完成状态仍可见</div></div></div></section>
+      <section id="focus-boundary" class="clip" data-start="15.4" data-duration="4.3" data-track-index="5"><div class="safe-copy boundary-copy"><div class="eyebrow mono">PRODUCT BOUNDARY / 05</div><h2 id="focus-boundary-title"><span>原工具仍是</span><span class="accent">工作现场。</span></h2><div class="boundary-list"><div class="boundary-row"><div class="boundary-key mono">OBSERVE</div><div class="boundary-value">只观察必要状态</div></div><div class="boundary-row"><div class="boundary-key mono">DO NOT COPY</div><div class="boundary-value">不复制完整对话</div></div><div class="boundary-row"><div class="boundary-key mono">DO NOT CONTROL</div><div class="boundary-value">不接管 Agent</div></div></div></div><div class="boundary-image" role="img" aria-label="Cookbench privacy boundary proof"></div><p class="boundary-footnote">会话内容留在原来的 Agent 工具里。</p></section>
+      <section id="focus-close" class="clip" data-start="19.7" data-duration="3.8" data-track-index="6"><div class="safe-copy close-wrap"><div id="focus-close-brand" class="brand"><img src="assets/cookbench-mark.svg" alt="Cookbench" /><span>Cookbench</span></div><div id="focus-close-rule" class="close-rule"></div><h2 class="close-title"><span>看清状态，</span><span class="accent">继续专注。</span></h2><p class="close-sub">轻量，刻意为之。</p><div class="close-url mono">github.com/finitein/cookbench</div><div class="close-meta mono">OPEN SOURCE · LOCAL FIRST · DESKTOP</div></div></section>
+    </main>
+    <script>
+      const enter = (selector, delay, duration = 560, from = 'translate3d(0, 28px, 0) scale(.98)') => document.querySelectorAll(selector).forEach((element, index) => { const animation = element.animate([{ transform: from, opacity: 0 }, { transform: 'translate3d(0,0,0) scale(1)', opacity: 1 }], { duration, delay: delay + index * 110, easing: 'cubic-bezier(.2,0,0,1)', fill: 'both' }); animation.pause(); });
+      const animate = (selector, frames, timing) => document.querySelectorAll(selector).forEach((element) => { const animation = element.animate(frames, { fill: 'both', ...timing }); animation.pause(); });
+      enter('#focus-pain-title', 260, 680); enter('#focus-pain .body-copy', 780, 500); enter('#focus-pain .terminal-row', 1040, 420, 'translate3d(-34px,0,0)');
+      enter('#focus-minimal-title', 3480, 650); enter('#focus-minimal .eyebrow', 3370, 440); enter('#focus-minimal .minimal-note', 4190, 480); animate('.focus-glyph', [{ transform:'scale(.72)', opacity:0 }, { transform:'scale(1)', opacity:1 }], { duration:620, delay:3650, easing:'cubic-bezier(.2,0,0,1)' });
+      enter('#focus-dock .show-title', 6500, 560); enter('#focus-showcase-window', 6720, 720, 'translate3d(0,58px,0) scale(.94)'); enter('#focus-dock .callout', 8050, 470, 'translate3d(-26px,0,0)'); animate('#focus-showcase-image', [{ transform:'translate3d(0,0,0) scale(1)' }, { transform:'translate3d(0,-86px,0) scale(1.11)' }, { transform:'translate3d(0,-52px,0) scale(1.06)' }], { duration:3900, delay:7350, easing:'cubic-bezier(.45,0,.2,1)' });
+      enter('#focus-stoves .state-caption', 11410, 560); enter('.state-window', 11560, 680, 'translate3d(0,50px,0) scale(.95)'); enter('.status-item', 12580, 440, 'translate3d(0,24px,0)'); animate('#focus-state-image', [{ transform:'translate3d(0,0,0) scale(1)' }, { transform:'translate3d(0,-115px,0) scale(1.13)' }], { duration:2450, delay:12200, easing:'cubic-bezier(.45,0,.2,1)' }); animate('.ring.cooking', [{ transform:'rotate(0deg)' }, { transform:'rotate(360deg)' }], { duration:1800, delay:12850, easing:'linear' });
+      enter('#focus-boundary-title', 15510, 620); enter('#focus-boundary .eyebrow', 15440, 430); enter('#focus-boundary .boundary-row', 16320, 440, 'translate3d(-28px,0,0)'); enter('.boundary-footnote', 17720, 440); enter('.boundary-image', 16620, 620, 'translate3d(0,36px,0) scale(.94)');
+      enter('#focus-close-brand', 19810, 620, 'translate3d(0,30px,0) scale(.94)'); animate('#focus-close-rule', [{ transform:'scaleX(0)' }, { transform:'scaleX(1)' }], { duration:520, delay:20100, easing:'cubic-bezier(.2,0,0,1)' }); enter('#focus-close .close-title', 20200, 680); enter('#focus-close .close-sub', 20780, 480); enter('#focus-close .close-url', 21180, 480); enter('#focus-close .close-meta', 21420, 440);
+      animate('#focus-progress', [{ transform:'scaleX(0)' }, { transform:'scaleX(1)' }], { duration:23500, delay:0, easing:'linear' }); animate('#focus-rule-fill', [{ transform:'scaleX(0)' }, { transform:'scaleX(1)' }], { duration:520, delay:80, easing:'cubic-bezier(.2,0,0,1)' });
+    </script>
+  </body>
+</html>

@@ -18,6 +18,10 @@ export function clearCookedStove(stoveId: string): Promise<void> {
   return invoke<void>("clear_cooked_stove", { stoveId });
 }
 
+export function acknowledgeCookedStove(stoveId: string): Promise<void> {
+  return invoke<void>("acknowledge_cooked_stove", { stoveId });
+}
+
 export function setStovePinned(stoveId: string, pinned: boolean): Promise<void> {
   return invoke<void>("set_stove_pinned", { stoveId, pinned });
 }
@@ -38,10 +42,13 @@ export function restoreArchivedSession(stoveId: string): Promise<void> {
 export class StoveSync {
   private revision = 0;
   private stoves = new Map<string, StoveWire>();
+  private attentionOrder: string[] = [];
 
   replace(snapshot: StoveSnapshot): StoveSnapshot {
+    if (snapshot.revision < this.revision) return this.current();
     this.revision = snapshot.revision;
     this.stoves = new Map(snapshot.stoves.map((stove) => [stove.id, stove]));
+    this.attentionOrder = normalizeAttentionOrder(snapshot.attentionOrder, this.stoves);
     return this.current();
   }
 
@@ -51,12 +58,33 @@ export class StoveSync {
     this.revision = change.revision;
     if (change.stove) this.stoves.set(change.stove.id, change.stove);
     if (change.removedStoveId) this.stoves.delete(change.removedStoveId);
+    this.attentionOrder = normalizeAttentionOrder(change.attentionOrder, this.stoves);
     return "applied";
   }
 
   current(): StoveSnapshot {
-    return { revision: this.revision, stoves: [...this.stoves.values()] };
+    const attentionOrder = normalizeAttentionOrder(this.attentionOrder, this.stoves);
+    return {
+      revision: this.revision,
+      attentionOrder,
+      stoves: attentionOrder.map((id) => this.stoves.get(id)!).filter(Boolean),
+    };
   }
+}
+
+function normalizeAttentionOrder(order: string[] | undefined, stoves: Map<string, StoveWire>): string[] {
+  const normalized: string[] = [];
+  const seen = new Set<string>();
+  for (const id of order ?? []) {
+    if (stoves.has(id) && !seen.has(id)) {
+      seen.add(id);
+      normalized.push(id);
+    }
+  }
+  for (const id of stoves.keys()) {
+    if (!seen.has(id)) normalized.push(id);
+  }
+  return normalized;
 }
 
 export async function subscribeToStoves(
@@ -65,6 +93,8 @@ export async function subscribeToStoves(
 ): Promise<UnlistenFn> {
   const sync = new StoveSync();
   let ready = false;
+  let recovery: Promise<void> | null = null;
+  let highestObservedRevision = 0;
   const queued: StoveChange[] = [];
   const handle = (change: StoveChange) => {
     if (!ready) {
@@ -75,7 +105,24 @@ export async function subscribeToStoves(
     if (result === "applied") {
       onSnapshot(sync.current());
     } else if (result === "gap") {
-      void transport.snapshot().then((snapshot) => onSnapshot(sync.replace(snapshot)));
+      highestObservedRevision = Math.max(highestObservedRevision, change.revision);
+      recovery ??= recoverSnapshot();
+    }
+  };
+  const recoverSnapshot = async (): Promise<void> => {
+    let previousRevision = sync.current().revision;
+    try {
+      while (true) {
+        const snapshot = await transport.snapshot();
+        const current = sync.replace(snapshot);
+        onSnapshot(current);
+        if (current.revision >= highestObservedRevision || current.revision <= previousRevision) break;
+        previousRevision = current.revision;
+      }
+    } catch {
+      // Keep the known revision; a later gap can trigger a fresh recovery.
+    } finally {
+      recovery = null;
     }
   };
   const unlisten = await transport.listen(handle).catch((): UnlistenFn => () => {});

@@ -9,13 +9,13 @@ import { useGlobalBarWindow } from "./hooks/useGlobalBarWindow";
 import { useStoves } from "./hooks/useStoves";
 import { detachedStoveTransport } from "./services/detachedStoves";
 import { activateStove, type LocatorActivationResult } from "./services/locator";
-import { archiveStove, clearCookedStove, setStovePinned } from "./services/stoves";
+import { acknowledgeCookedStove, archiveStove, clearCookedStove, setStovePinned } from "./services/stoves";
 import { NotificationSettingsPanel } from "./settings/notifications/NotificationSettingsPanel";
 import { openNotificationSettings } from "./settings/notifications/service";
 import { useLocalAlert } from "./services/localAlerts";
 import type { StoveWire } from "./types/stove";
 import { I18nProvider, useI18n } from "./i18n/i18n";
-import { syncNativeLocale } from "./settings/display/service";
+import { patchDisplaySettings, syncNativeLocale } from "./settings/display/service";
 
 export default function App() {
   const displaySettings = useDisplaySettings();
@@ -35,11 +35,20 @@ function CookbenchApp({ displaySettings }: { displaySettings: ReturnType<typeof 
       // Browser fixtures do not expose the native Tauri command surface.
     });
   }, [displaySettings, locale]);
-  const activate = (stove: StoveWire) => {
+  const activate = async (stove: StoveWire) => {
     dismissLocalAlert(stove.id);
-    void activateStove(stove.id)
+    if (stove.state === "cooked") {
+      await acknowledgeCookedStove(stove.id).catch(() => undefined);
+    }
+    await activateStove(stove.id)
       .then(setActivation)
       .catch(() => setActivation({ target: "unavailable", status: "unavailable", resumeSessionId: null }));
+  };
+  const setGlobalBarMode = (globalBarMode: "full" | "minimal") => {
+    if (!displaySettings || displaySettings.globalBarMode === globalBarMode) return;
+    void patchDisplaySettings({ globalBarMode }).catch(() => {
+      // Native settings events remain the source of truth on a failed save.
+    });
   };
 
   if (detached.isSettings) {
@@ -62,6 +71,8 @@ function CookbenchApp({ displaySettings }: { displaySettings: ReturnType<typeof 
         onPinStove={(stove) => { void setStovePinned(stove.id, !stove.pinned); }}
         onArchiveStove={(stove) => { void archiveStove(stove.id); }}
         onOpenSettings={() => { void openNotificationSettings(); }}
+        mode={displaySettings?.globalBarMode ?? "full"}
+        onModeChange={setGlobalBarMode}
         hoverDetailsEnabled={displaySettings?.hoverDetailsEnabled ?? false}
         activeAlertStoveId={activeAlertStoveId}
       />

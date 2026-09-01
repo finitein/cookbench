@@ -21,6 +21,55 @@ clear, and outbound-notification observations in Vite `e2e` mode. A production
 build scan confirms that the driver name, storage keys, and implementation are
 absent from `dist`.
 
+## v0.4.0 Release Candidate Gate
+
+v0.4.0 is an **unsigned prerelease candidate**. The 2026-09-02 macOS development
+run completed `./scripts/verify.sh`: Rust formatting, workspace Clippy with
+warnings denied, all Rust unit/integration/doc tests, workspace build,
+TypeScript, 155 Vitest tests in 25 files, three GNOME protocol tests, 23
+Playwright product flows, production build isolation, and the source-only
+package inventory passed. The GitHub Actions run, public artifacts, checksums,
+manifest, and publication evidence are still pending; do not treat this
+source-tree checklist as proof that a public release exists. A signed stable
+release remains gated on stable Apple and Windows signing eligibility,
+notarization where applicable, and the corresponding release verification.
+
+The candidate synchronizes version `0.4.0` across the Cargo workspace, npm,
+Tauri, current preview installation documentation, and the rendered
+installation card. The first-party preview bootstrap remains explicitly
+opt-in, selects an artifact through `release-manifest.json`, and verifies its
+SHA-256 digest before installation. Homebrew, winget, and APT publication are
+still not live.
+
+Candidate product coverage adds three observation-only presentation features:
+
+- **Minimal Bar** keeps one real, highest-priority Stove visible, changes that
+  canonical attention target automatically, and preserves Full mode.
+- **Top docking** is limited to the Global Bar: it snaps within 12 px, undocks
+  after 24 px, and auto-hides after 600 ms while leaving a 3 px trigger.
+  Wayland behavior remains explicitly best effort.
+- **macOS status Stoves** expose a configurable zero-to-eight slots (default
+  three), keep stable priority slots, return to the exact Stove on left click,
+  and list all Stoves on right click.
+
+The focused version, documentation, showcase, feature, and visual checks also
+pass. A local universal macOS App and DMG were built at version `0.4.0`; package
+smoke confirmed universal app, bridge, and hook binaries. The installed app
+launched, and its Retina status item rendered three priority slots in a 78x24
+logical-point item with a localized three-Stove accessibility description:
+[`macos-status-stoves-v0.4.0.png`](evidence/macos-status-stoves-v0.4.0.png).
+
+Native residual checks remain pending: Windows/X11/Wayland live dock behavior;
+macOS VoiceOver navigation, light/dark, fullscreen, multi-monitor and
+constrained-menu-space behavior; every slot edge/gap and right-click action;
+and the signed-stable gate. Five production-emission persistence tests use
+Tauri's mock runtime on macOS/Linux only because upstream
+[`tauri-apps/tauri#13419`](https://github.com/tauri-apps/tauri/issues/13419)
+prevents those mock binaries from loading on Windows; platform-neutral Windows
+persistence coverage remains enabled. These gaps do not change Cookbench's boundary:
+native Harness Session files remain authoritative, Cookbench stores no full
+transcripts, and it does not prompt, approve, start, stop, or control Agents.
+
 ## v0.3.0 Release Candidate Gate
 
 The 2026-08-31 macOS development run completed `./scripts/verify.sh` for the

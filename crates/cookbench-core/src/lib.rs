@@ -5,6 +5,7 @@ pub mod domain;
 pub mod locator;
 pub mod notifications;
 pub mod persistence;
+pub mod presentation;
 pub mod remote;
 pub mod state_machine;
 

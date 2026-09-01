@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   attachGlobalBarDragHandle,
   clampGlobalBarSize,
+  createGlobalBarDockController,
+  type GlobalBarDockTransport,
   intrinsicGlobalBarMinimumHeight,
   prepareNativeGlobalBarDocument,
   recordGlobalBarPosition,
@@ -10,11 +12,7 @@ import {
 } from "./globalBarWindow";
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
-const { startDragging } = vi.hoisted(() => ({ startDragging: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
-vi.mock("@tauri-apps/api/window", () => ({
-  getCurrentWindow: () => ({ startDragging }),
-}));
 
 describe("global bar window sizing", () => {
   it("keeps the transparent native hit area usable without imposing a preset width", () => {
@@ -34,12 +32,14 @@ describe("global bar window sizing", () => {
     const blank = document.createElement("div");
     const button = document.createElement("button");
     surface.append(blank, button);
-    const detach = attachGlobalBarDragHandle(surface);
+    const startDrag = vi.fn();
+    const detach = attachGlobalBarDragHandle(surface, startDrag);
 
     blank.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
     button.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
 
-    expect(startDragging).toHaveBeenCalledTimes(1);
+    expect(startDrag).toHaveBeenCalledTimes(1);
+    expect(surface).not.toHaveAttribute("data-tauri-drag-region");
     detach();
   });
 
@@ -80,5 +80,195 @@ describe("global bar window sizing", () => {
     vi.spyOn(tooltip, "getBoundingClientRect").mockReturnValue({ bottom: 302 } as DOMRect);
 
     expect(intrinsicGlobalBarMinimumHeight(bar)).toBe(293);
+  });
+
+  it("keeps a long priority menu measurable even from a 92px native viewport", () => {
+    const bar = document.createElement("section");
+    const minimal = document.createElement("div");
+    const menu = document.createElement("div");
+    minimal.className = "global-bar__minimal";
+    menu.className = "stove-priority-menu";
+    bar.append(minimal, menu);
+    vi.spyOn(bar, "getBoundingClientRect").mockReturnValue({ top: 0, height: 92 } as DOMRect);
+    vi.spyOn(minimal, "getBoundingClientRect").mockReturnValue({ bottom: 92 } as DOMRect);
+    vi.spyOn(menu, "getBoundingClientRect").mockReturnValue({ bottom: 352, height: 260 } as DOMRect);
+    expect(menu.getBoundingClientRect().height).toBeGreaterThan(0);
+    expect(intrinsicGlobalBarMinimumHeight(bar)).toBe(363);
+  });
+});
+
+describe("global bar dock controller", () => {
+  const expanded = { phase: "dockedExpanded" as const, docked: true, collapsed: false, bestEffort: false };
+  function transport(): GlobalBarDockTransport {
+    return {
+      getState: vi.fn().mockResolvedValue(expanded), listen: vi.fn().mockResolvedValue(() => {}),
+      startDrag: vi.fn().mockResolvedValue({ token: 7, completed: false, releaseConfirmed: false }), finishDrag: vi.fn().mockResolvedValue(expanded),
+      setGuards: vi.fn().mockResolvedValue(expanded), collapse: vi.fn().mockResolvedValue({ ...expanded, phase: "dockedCollapsed", collapsed: true }),
+      reveal: vi.fn().mockResolvedValue(expanded), refreshGeometry: vi.fn().mockResolvedValue(expanded),
+      waitForPointerRelease: vi.fn().mockResolvedValue(false),
+    };
+  }
+
+  it("collapses only after 600ms with every guard clear", async () => {
+    vi.useFakeTimers(); const native = transport(); const controller = createGlobalBarDockController(native);
+    await controller.initialize();
+    await vi.advanceTimersByTimeAsync(599); expect(native.collapse).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1); expect(native.collapse).toHaveBeenCalledOnce();
+    controller.dispose(); vi.useRealTimers();
+  });
+
+  it("finishes a token exactly once when pointerup comes before native start resolves", async () => {
+    let resolve!: (result: { token: number; completed: boolean; releaseConfirmed: boolean }) => void;
+    const native = transport(); native.startDrag = vi.fn(() => new Promise<{ token: number; completed: boolean; releaseConfirmed: boolean }>((done) => { resolve = done; }));
+    const controller = createGlobalBarDockController(native);
+    controller.start(); controller.endDrag(); resolve({ token: 9, completed: false, releaseConfirmed: false }); await Promise.resolve(); await Promise.resolve();
+    expect(native.finishDrag).toHaveBeenCalledTimes(1); expect(native.finishDrag).toHaveBeenCalledWith(9);
+    controller.dispose();
+  });
+
+  it("does not finish a platform-completed drag or accept duplicate starts", async () => {
+    const native = transport();
+    native.startDrag = vi.fn().mockResolvedValue({ token: 4, completed: true, releaseConfirmed: true, state: expanded });
+    const controller = createGlobalBarDockController(native);
+    controller.start(); controller.start(); controller.endDrag();
+    await Promise.resolve(); await Promise.resolve();
+    expect(native.startDrag).toHaveBeenCalledTimes(1);
+    expect(native.finishDrag).not.toHaveBeenCalled();
+    controller.dispose();
+  });
+
+  it("does not refresh while a start or finish is pending", async () => {
+    let resolveStart!: (result: { token: number; completed: boolean; releaseConfirmed: boolean }) => void;
+    const native = transport();
+    native.startDrag = vi.fn(() => new Promise<{ token: number; completed: boolean; releaseConfirmed: boolean }>((done) => { resolveStart = done; }));
+    const controller = createGlobalBarDockController(native);
+    controller.start(); controller.refresh();
+    expect(native.refreshGeometry).not.toHaveBeenCalled();
+    resolveStart({ token: 3, completed: false, releaseConfirmed: false }); await Promise.resolve();
+    controller.endDrag(); controller.refresh();
+    expect(native.refreshGeometry).not.toHaveBeenCalled();
+    await Promise.resolve(); controller.dispose();
+  });
+
+  it("each guard cancels the 600ms collapse and restarts when cleared", async () => {
+    vi.useFakeTimers();
+    for (const guard of ["pointerInside", "focused", "menuOpen", "resizing"] as const) {
+      const native = transport(); const controller = createGlobalBarDockController(native);
+      await controller.initialize(); controller.setGuards({ [guard]: true });
+      await vi.advanceTimersByTimeAsync(600); expect(native.collapse).not.toHaveBeenCalled();
+      controller.setGuards({ [guard]: false }); await vi.advanceTimersByTimeAsync(599);
+      expect(native.collapse).not.toHaveBeenCalled(); await vi.advanceTimersByTimeAsync(1);
+      expect(native.collapse).toHaveBeenCalledOnce(); controller.dispose();
+    }
+    vi.useRealTimers();
+  });
+
+  it("never collapses best-effort state", async () => {
+    vi.useFakeTimers(); const native = transport(); native.getState = vi.fn().mockResolvedValue({ ...expanded, bestEffort: true });
+    const controller = createGlobalBarDockController(native); await controller.initialize();
+    await vi.advanceTimersByTimeAsync(700); expect(native.collapse).not.toHaveBeenCalled();
+    controller.dispose(); vi.useRealTimers();
+  });
+
+  it("keeps unconfirmed release conservative until pointer end", async () => {
+    const native = transport(); native.startDrag = vi.fn().mockResolvedValue({ token: 8, completed: true, releaseConfirmed: false, state: expanded });
+    const controller = createGlobalBarDockController(native); controller.start(); await Promise.resolve();
+    controller.refresh(); expect(native.refreshGeometry).not.toHaveBeenCalled();
+    controller.endDrag(); expect(native.refreshGeometry).toHaveBeenCalledOnce();
+    controller.refresh(); expect(native.refreshGeometry).toHaveBeenCalledTimes(2); controller.dispose();
+  });
+
+  it("refreshes geometry once when local pointerup follows an unconfirmed drag result", async () => {
+    const native = transport();
+    native.startDrag = vi.fn().mockResolvedValue({ token: 8, completed: true, releaseConfirmed: false, state: expanded });
+    const controller = createGlobalBarDockController(native);
+    controller.start();
+    await Promise.resolve();
+    controller.endDrag();
+    expect(native.refreshGeometry).toHaveBeenCalledOnce();
+    controller.dispose();
+  });
+
+  it("settles resize once from either native evidence or pointer fallback", async () => {
+    const native = transport(); let resolve!: (value: boolean) => void;
+    native.waitForPointerRelease = vi.fn(() => new Promise<boolean>((done) => { resolve = done; }));
+    const controller = createGlobalBarDockController(native); controller.startResize(); controller.settleResize(); resolve(true);
+    await Promise.resolve(); expect(native.refreshGeometry).toHaveBeenCalledOnce(); controller.dispose();
+  });
+
+  it("clears an unconfirmed resize release when the local pointer settles", async () => {
+    vi.useFakeTimers();
+    const native = transport();
+    native.waitForPointerRelease = vi.fn().mockResolvedValue(false);
+    const controller = createGlobalBarDockController(native);
+    await controller.initialize();
+    controller.startResize();
+    await Promise.resolve();
+    controller.refresh();
+    expect(native.refreshGeometry).not.toHaveBeenCalled();
+    controller.settleResize();
+    controller.refresh();
+    expect(native.refreshGeometry).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(600);
+    expect(native.collapse).toHaveBeenCalledOnce();
+    controller.dispose();
+    vi.useRealTimers();
+  });
+
+  it("refreshes once when resize pointerup runs drag end before resize settle", async () => {
+    const native = transport();
+    native.waitForPointerRelease = vi.fn().mockResolvedValue(false);
+    const controller = createGlobalBarDockController(native);
+    controller.startResize();
+    await Promise.resolve();
+    controller.endDrag();
+    controller.settleResize();
+    expect(native.refreshGeometry).toHaveBeenCalledOnce();
+    controller.dispose();
+  });
+
+  it("honors pointerup observed while a completed start is still pending", async () => {
+    let resolve!: (value: { token: number; completed: boolean; releaseConfirmed: boolean; state: typeof expanded }) => void;
+    const native = transport(); native.startDrag = vi.fn(() => new Promise<{ token: number; completed: boolean; releaseConfirmed: boolean; state: typeof expanded }>((done) => { resolve = done; }));
+    const controller = createGlobalBarDockController(native); controller.start(); controller.endDrag();
+    resolve({ token: 12, completed: true, releaseConfirmed: false, state: expanded }); await Promise.resolve(); await Promise.resolve();
+    controller.refresh(); expect(native.refreshGeometry).toHaveBeenCalled(); controller.dispose();
+  });
+
+  it("ignores late resize evidence and lets a new pointerdown replace an old resize", async () => {
+    const resolvers: Array<(value: boolean) => void> = [];
+    const native = transport(); native.waitForPointerRelease = vi.fn(() => new Promise<boolean>((done) => { resolvers.push(done); }));
+    const controller = createGlobalBarDockController(native); controller.startResize(); controller.settleResize();
+    resolvers[0](false); await Promise.resolve(); controller.refresh();
+    expect(native.refreshGeometry).toHaveBeenCalledTimes(2);
+    controller.startResize(); controller.startResize(); expect(native.waitForPointerRelease).toHaveBeenCalledTimes(3);
+    resolvers[2](true); await Promise.resolve(); expect(native.refreshGeometry).toHaveBeenCalledTimes(4); controller.dispose();
+  });
+
+  it("settles an unresolved resize before starting a new drag", async () => {
+    const native = transport();
+    native.waitForPointerRelease = vi.fn(() => new Promise<boolean>(() => undefined));
+    native.startDrag = vi.fn().mockResolvedValue({ token: 14, completed: true, releaseConfirmed: true, state: expanded });
+    const controller = createGlobalBarDockController(native);
+    controller.startResize();
+    expect(controller.interactionActive()).toBe(true);
+    controller.start();
+    expect(native.setGuards).toHaveBeenLastCalledWith(expect.objectContaining({ resizing: false }));
+    expect(native.refreshGeometry).toHaveBeenCalledOnce();
+    await Promise.resolve();
+    expect(controller.interactionActive()).toBe(false);
+    controller.dispose();
+  });
+
+  it("does not publish deferred initialization state after disposal and unlistens once", async () => {
+    let resolveState!: (value: typeof expanded) => void; let resolveListen!: (value: () => void) => void;
+    const native = transport(); native.getState = vi.fn(() => new Promise<typeof expanded>((done) => { resolveState = done; }));
+    native.listen = vi.fn(() => new Promise<() => void>((done) => { resolveListen = done; }));
+    const publish = vi.fn(); const unlisten = vi.fn(); const controller = createGlobalBarDockController(native, publish);
+    const initialized = controller.initialize(); resolveState(expanded);
+    for (let index = 0; index < 8 && !resolveListen; index += 1) await Promise.resolve();
+    const publishedBeforeDispose = publish.mock.calls.length;
+    controller.dispose(); resolveListen(unlisten);
+    await initialized; expect(publish).toHaveBeenCalledTimes(publishedBeforeDispose); expect(unlisten).toHaveBeenCalledOnce();
   });
 });

@@ -1,20 +1,20 @@
 {
-  "score": 94,
+  "score": 93,
   "threshold": 90,
   "passed": true,
   "verdict": "pass",
   "category_match": true,
   "differences": [
-    "Catalog and Hook Health pages are intentionally denser than the beginner overview pages",
-    "Accent color changes by topic while the typography, spacing, and component grammar remain shared"
+    "The focus-surfaces card uses a green topic accent instead of the orange/blue accents in earlier references",
+    "Its three feature columns plus attention-order footer are intentionally denser than the simplest showcase cards"
   ],
   "suggestions": [
-    "Keep the current 4:5 hierarchy and re-render paired PNGs after any copy or CSS change",
-    "Preserve complete rings for terminal states and partial arcs only for numeric Cooking progress"
+    "Keep the orange Cookbench mark dot as the stable brand accent within the green topic treatment",
+    "Preserve the larger body copy and safe-zone margins when adapting the 1080x1440 social master"
   ],
-  "reasoning": "All twelve compositions read as a cohesive Cookbench social series, preserve the approved lightweight product language, and show no clipping, overlap, scrollbar, or semantic ring-state errors at 1200x1500.",
+  "reasoning": "The new feature announcement has a clear hierarchy, stable Chinese typography, and no visible clipping or overlap. It matches the existing showcase spacing, card, border, and state-ring system while remaining legible inside social safe zones.",
   "next_actions": [
     "Run the deterministic renderer and dimension contract in release verification",
-    "Use the committed PNG files as the social distribution masters"
+    "Use the 1200x1500 master and 1080x1440 social render as the distribution sources"
   ]
 }

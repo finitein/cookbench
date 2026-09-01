@@ -6,7 +6,7 @@ use crate::domain::HarnessId;
 use crate::notifications::NotificationEventKind;
 
 use super::Versioned;
-use super::{DetachedStoveLayout, MonitorIdentity, RelativePosition, WindowSize};
+use super::{DetachedStoveLayout, GlobalBarTopDock, MonitorIdentity, RelativePosition, WindowSize};
 
 /// The interface language selected by the user. `System` keeps first launch
 /// lightweight while explicit choices remain stable across every window.
@@ -36,6 +36,30 @@ pub enum GlobalBarPlacement {
     BottomRight,
 }
 
+/// The global Bar presentation density. Minimal mode deliberately remains a
+/// display preference; it does not alter the observed Stove lifecycle.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum GlobalBarMode {
+    #[default]
+    Full,
+    Minimal,
+}
+
+pub const MAX_MAC_STATUS_STOVE_COUNT: u8 = 8;
+
+const fn default_mac_status_stove_count() -> u8 {
+    3
+}
+
+fn deserialize_mac_status_stove_count<'de, D>(deserializer: D) -> Result<u8, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let count = i64::deserialize(deserializer)?;
+    Ok(count.clamp(0, i64::from(MAX_MAC_STATUS_STOVE_COUNT)) as u8)
+}
+
 /// The last user-dragged global Bar position, relative to a monitor work area.
 /// It takes precedence over the placement anchor on restore and contains no
 /// session, project, or harness data.
@@ -55,6 +79,13 @@ pub struct BarLayout {
     pub hover_details_enabled: bool,
     #[serde(default)]
     pub global_bar_placement: GlobalBarPlacement,
+    #[serde(default)]
+    pub global_bar_mode: GlobalBarMode,
+    #[serde(
+        default = "default_mac_status_stove_count",
+        deserialize_with = "deserialize_mac_status_stove_count"
+    )]
+    pub mac_status_stove_count: u8,
     /// The last deliberate native window size. It is unset until the user
     /// resizes the Bar, keeping legacy installs on their platform default.
     #[serde(
@@ -65,6 +96,10 @@ pub struct BarLayout {
     pub global_bar_size: Option<WindowSize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub global_bar_position: Option<GlobalBarPosition>,
+    /// A Global Bar deliberately docked to the top of a monitor. The last
+    /// freeform position remains available above so undocking is reversible.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub global_bar_top_dock: Option<GlobalBarTopDock>,
     #[serde(default)]
     pub detached_stoves: Vec<String>,
     #[serde(default)]
@@ -148,8 +183,11 @@ impl Default for BarLayout {
             global_bar_visible: true,
             hover_details_enabled: false,
             global_bar_placement: GlobalBarPlacement::default(),
+            global_bar_mode: GlobalBarMode::default(),
+            mac_status_stove_count: default_mac_status_stove_count(),
             global_bar_size: None,
             global_bar_position: None,
+            global_bar_top_dock: None,
             detached_stoves: Vec::new(),
             detached_layouts: Vec::new(),
         }

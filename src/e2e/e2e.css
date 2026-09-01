@@ -1,0 +1,36 @@
+.cookbench-e2e-presentation {
+  min-height: 100vh;
+  align-items: start;
+}
+
+.cookbench-e2e-presentation--dockedCollapsed .global-bar,
+.cookbench-e2e-presentation--dockedCollapsed .cookbench-e2e-undock {
+  visibility: hidden;
+}
+
+.cookbench-e2e-dock-trigger {
+  position: fixed;
+  z-index: 100;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 3px;
+}
+
+.cookbench-e2e-undock {
+  position: fixed;
+  z-index: 101;
+  right: 8px;
+  bottom: 8px;
+}
+
+.cookbench-e2e-mac-status-fixture {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cookbench-e2e-presentation,
+  .cookbench-e2e-presentation * {
+    transition: none !important;
+  }
+}

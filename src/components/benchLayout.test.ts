@@ -47,7 +47,19 @@ describe("arrangeBenches", () => {
     ]);
   });
 
-  it("sorts each bench by attention, active work, then terminal states without reshuffling peers", () => {
+  it("keeps canonical order within grouped mixed-harness benches", () => {
+    const codexFirst = makeStove(0, { id: "codex-first" });
+    const claude = makeStove(1, { id: "claude" });
+    const codexSecond = makeStove(3, { id: "codex-second" });
+    const pi = makeStove(2, { id: "pi" });
+    const codexThird = makeStove(6, { id: "codex-third" });
+    const layout = arrangeBenches([codexSecond, claude, codexFirst, pi, codexThird], 2);
+    expect(layout.grouped).toBe(true);
+    expect(layout.benches.find((bench) => bench.id === "codex")?.stoves.map((stove) => stove.id))
+      .toEqual(["codex-second", "codex-first", "codex-third"]);
+  });
+
+  it("preserves canonical input order rather than inventing a local state ranking", () => {
     const layout = arrangeBenches([
       makeStove(0, { state: "cooked" }),
       makeStove(3, { state: "needsHuman" }),
@@ -58,10 +70,10 @@ describe("arrangeBenches", () => {
     ], 2);
 
     expect(layout.benches[0].stoves.map((stove) => stove.id)).toEqual([
+      "fixture:codex:0",
       "fixture:codex:3",
       "fixture:codex:6",
       "fixture:codex:9",
-      "fixture:codex:0",
       "fixture:codex:12",
       "fixture:codex:15",
     ]);

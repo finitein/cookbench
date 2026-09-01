@@ -125,3 +125,68 @@ test("reduced motion keeps local alert emphasis static", async ({ page }) => {
   await expect(burner).toHaveCSS("animation-name", "none");
   await expect(burner).not.toHaveCSS("box-shadow", "none");
 });
+
+test("minimal mode uses the canonical attention order rather than source order", async ({ page }) => {
+  await page.goto(process.env.COOKBENCH_E2E_URL ?? "http://127.0.0.1:1420");
+  const driver = await e2eDriver(page);
+  const first = stoveFixture(0, "cooking");
+  const attention = stoveFixture(1, "needsHuman");
+  const third = stoveFixture(2, "failed");
+  await driver.replaceSnapshot({
+    stoves: [first, attention, third],
+    attentionOrder: [attention.id, "unknown", attention.id, third.id],
+    globalBarMode: "minimal",
+  });
+
+  const bar = page.getByTestId("minimal-global-bar");
+  await expect(bar).toBeVisible();
+  await expect(bar.getByTestId("stove")).toHaveCount(1);
+  await expect(bar.locator(`[data-stove-id="${attention.id}"]`)).toBeVisible();
+
+  await driver.replaceSnapshot({
+    stoves: [first, attention, third],
+    attentionOrder: [third.id, attention.id, first.id],
+  });
+  await expect(bar.locator(`[data-stove-id="${third.id}"]`)).toBeVisible();
+  await expect(bar.locator(`[data-stove-id="${attention.id}"]`)).toHaveCount(0);
+});
+
+test("cooked acknowledgement preserves state, supplied order, and minimal preference after restart", async ({ page }) => {
+  await page.goto(process.env.COOKBENCH_E2E_URL ?? "http://127.0.0.1:1420");
+  const driver = await e2eDriver(page);
+  const cooked = stoveFixture(0, "cooked");
+  const active = stoveFixture(1, "cooking");
+  await driver.replaceSnapshot({ stoves: [cooked, active], attentionOrder: [cooked.id, active.id], globalBarMode: "minimal" });
+  await driver.acknowledgeCooked(cooked.id, [active.id, cooked.id]);
+  await driver.restart();
+
+  const bar = page.getByTestId("minimal-global-bar");
+  await expect(bar.locator(`[data-stove-id="${active.id}"]`)).toBeVisible();
+  await driver.setGlobalBarMode("full");
+  await expect(page.locator(`[data-stove-id="${cooked.id}"]`).getByTestId("stove")).toHaveAttribute("data-state", "cooked");
+  const orderedIds = await page.locator(".global-bar__item [data-stove-id]").evaluateAll((items) => items.map((item) => item.getAttribute("data-stove-id")));
+  expect(orderedIds).toEqual([active.id, cooked.id]);
+});
+
+test("expanding minimal mode restores every stove in canonical order", async ({ page }) => {
+  await page.goto(process.env.COOKBENCH_E2E_URL ?? "http://127.0.0.1:1420");
+  const driver = await e2eDriver(page);
+  const source = [stoveFixture(0), stoveFixture(1), stoveFixture(2)];
+  await driver.replaceSnapshot({ stoves: source, attentionOrder: [source[2].id, source[0].id, source[1].id], globalBarMode: "minimal" });
+  await page.getByTestId("minimal-global-bar").getByRole("button", { name: "Use full Bar" }).click();
+  await expect(page.getByTestId("stove")).toHaveCount(3);
+  const orderedIds = await page.locator(".global-bar__item [data-stove-id]").evaluateAll((items) => items.map((item) => item.getAttribute("data-stove-id")));
+  expect(orderedIds).toEqual([source[2].id, source[0].id, source[1].id]);
+});
+
+test("mac-status fixture marker exposes only canonical selected IDs", async ({ page }) => {
+  await page.goto(process.env.COOKBENCH_E2E_URL ?? "http://127.0.0.1:1420");
+  const driver = await e2eDriver(page);
+  const stoves = [stoveFixture(0), stoveFixture(1), stoveFixture(2), stoveFixture(3)];
+  await driver.replaceSnapshot({ stoves, attentionOrder: [stoves[2].id, stoves[0].id, stoves[3].id, stoves[1].id] });
+  await driver.setMacStatusFixture(true, 3);
+  const marker = page.getByTestId("e2e-mac-status-fixture");
+  await expect(marker).toHaveAttribute("data-available", "true");
+  await expect(marker).toHaveAttribute("data-count", "3");
+  await expect(marker).toHaveAttribute("data-stove-ids", [stoves[2].id, stoves[0].id, stoves[3].id].join(","));
+});

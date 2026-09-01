@@ -7,6 +7,7 @@ vi.mock("@tauri-apps/api/event", () => ({ listen }));
 import {
   closeDetachedBar,
   configureDisplaySettings,
+  patchDisplaySettings,
   getDisplaySettings,
   syncNativeLocale,
   subscribeToDisplaySettings,
@@ -19,6 +20,8 @@ describe("display settings service", () => {
     await configureDisplaySettings({
       globalBarVisible: false,
       globalBarPlacement: "bottomCenter",
+      globalBarMode: "minimal",
+      macStatusStoveCount: 0,
       hoverDetailsEnabled: false,
       locale: "system",
     });
@@ -29,12 +32,20 @@ describe("display settings service", () => {
       input: {
         globalBarVisible: false,
         globalBarPlacement: "bottomCenter",
+        globalBarMode: "minimal",
+        macStatusStoveCount: 0,
         hoverDetailsEnabled: false,
         locale: "system",
       },
     });
     expect(invoke).toHaveBeenNthCalledWith(3, "close_detached_bar", { stoveId: "remote-a:session-1" });
     expect(JSON.stringify(invoke.mock.calls)).not.toMatch(/prompt|command|terminal|password|token/i);
+  });
+
+  it("sends only the changed field for an atomic display patch", async () => {
+    invoke.mockResolvedValue({});
+    await patchDisplaySettings({ globalBarMode: "minimal" });
+    expect(invoke).toHaveBeenCalledWith("patch_display_settings", { patch: { globalBarMode: "minimal" } });
   });
 
   it("synchronizes the resolved webview locale to native surfaces", async () => {
@@ -49,6 +60,9 @@ describe("display settings service", () => {
     const initial = {
       globalBarVisible: true,
       globalBarPlacement: "topCenter" as const,
+      globalBarMode: "full" as const,
+      macStatusStoveCount: 3,
+      macStatusAvailable: false,
       hoverDetailsEnabled: false,
       locale: "system" as const,
       detachedBars: [],

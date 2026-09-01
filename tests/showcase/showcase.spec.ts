@@ -16,6 +16,7 @@ const cases = [
   ["11-multibench.html", "multibench"],
   ["12-install.html", "install"],
   ["13-footprint.html", "footprint"],
+  ["14-focus-surfaces.html", "focus-surfaces"],
 ] as const;
 
 for (const [filename, topic] of cases) {
@@ -43,3 +44,18 @@ for (const [filename, topic] of cases) {
     });
   });
 }
+
+test("14-focus-surfaces social layout reserves a channel-safe 1080x1440 composition", async ({ page }) => {
+  const url = pathToFileURL(resolve("docs/showcase", "14-focus-surfaces.html")).href;
+  await page.setViewportSize({ width: 1080, height: 1440 });
+  await page.goto(url);
+  await page.locator("html").evaluate((node) => node.classList.add("social"));
+  await expect(page.locator("main.poster")).toHaveAttribute("data-social-safe-zone", "72,120,1008,1320");
+  const metrics = await page.evaluate(() => ({
+    width: document.documentElement.scrollWidth,
+    height: document.documentElement.scrollHeight,
+    bodyWidth: document.body.scrollWidth,
+    bodyHeight: document.body.scrollHeight,
+  }));
+  expect(metrics).toEqual({ width: 1080, height: 1440, bodyWidth: 1080, bodyHeight: 1440 });
+});

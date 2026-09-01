@@ -79,7 +79,14 @@ The default surface is a floating global bar. It is a dashboard rather than a pr
 - The bar displays every active or retained stove simultaneously.
 - The number of circular burners grows and shrinks with the number of stoves.
 - There are no empty capacity slots.
-- The bar never collapses to a single "most important" stove.
+- **Full** is the default mode and keeps every visible Stove present. It is the
+  dashboard view, not a priority-only notification strip.
+- **Minimal** mode is an explicit presentation preference. It collapses the
+  global Bar to one circular Stove selected by the shared attention order:
+  Needs Human, Failed, Disconnected, unacknowledged Cooked, active work, then
+  acknowledged Cooked; newer state evidence resolves ties. It does not rotate
+  on a timer. A priority menu keeps the rest discoverable without changing
+  lifecycle state, pins, or detached Stoves.
 - At higher counts, the layout may reduce burner size or use multiple rows, but it must not hide running stoves.
 - Each burner always displays the source harness visibly; compact bars may place
   the label below the burner while detached bars may use a short source token.
@@ -101,6 +108,20 @@ Hovering a burner shows:
 - Whether human intervention is required
 
 Clicking a burner returns the user to the original work surface using the most precise available locator.
+
+### 5.1.1 Focus Surfaces
+
+The Global Bar can be docked at the top of its current monitor. A drop within
+12 px of the top edge docks it while preserving horizontal placement. A docked
+Bar auto-hides after 600 ms and is revealed by the top 3 px of the monitor;
+pulling it 24 px away undocks it. Detached Stoves retain their normal movable
+behavior. Compositor limitations mean Wayland docking is explicitly best effort.
+
+On macOS, one combined status-bar item may mirror a configurable number of
+priority Stoves. The count is 0 through 8 and defaults to 3. It follows the
+same shared attention order: click a visible Stove to return to it, or
+right-click for the complete Stove list. This is presentation-only and does not
+add an Agent command surface.
 
 ### 5.2 Detachable Stove Bars
 
@@ -246,6 +267,7 @@ Cookbench does not use SQLite in the first version and does not copy native conv
 `config.json` contains:
 
 - Bar mode and placement
+- Global Bar display mode, top-dock preference, and macOS status-bar Stove count
 - Independent stove positions
 - Enabled harnesses
 - References to SSH host configuration

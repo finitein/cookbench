@@ -94,6 +94,55 @@ fn snapshot_wire_is_sanitized_and_includes_required_presentation_metadata() {
 }
 
 #[test]
+fn snapshot_and_change_carry_the_same_canonical_attention_order() {
+    let store = StoveStore::default();
+    let cooking = identity();
+    let needs_human = StoveIdentity::new(
+        HostIdentity::local("test-host"),
+        HarnessId::Codex,
+        "session-2",
+    );
+
+    store
+        .apply(
+            cooking,
+            project(),
+            LocatorCapability::Available,
+            event(EventKind::ToolStarted, 1),
+        )
+        .unwrap();
+    let change = store
+        .apply(
+            needs_human,
+            project(),
+            LocatorCapability::Available,
+            event(EventKind::QuestionAsked, 2),
+        )
+        .unwrap();
+
+    let snapshot = store.snapshot();
+    assert_eq!(
+        snapshot.attention_order,
+        vec![
+            "local:test-host:codex:session-2".to_owned(),
+            "local:test-host:codex:session-1".to_owned(),
+        ]
+    );
+    assert_eq!(
+        snapshot
+            .stoves
+            .iter()
+            .map(|stove| stove.id.clone())
+            .collect::<Vec<_>>(),
+        snapshot.attention_order
+    );
+    assert_eq!(
+        store.with_attention_order(change, &[]).attention_order,
+        snapshot.attention_order
+    );
+}
+
+#[test]
 fn pin_state_is_presentation_metadata_and_survives_lifecycle_updates() {
     let store = StoveStore::default();
     store
@@ -292,7 +341,7 @@ fn change_serializes_with_camel_case_fields() {
     let json = serde_json::to_string(&payload).unwrap();
     assert_eq!(
         json,
-        r#"{"revision":9,"stove":null,"removedStoveId":"local:test:pi:s1"}"#
+        r#"{"revision":9,"stove":null,"removedStoveId":"local:test:pi:s1","attentionOrder":[]}"#
     );
 }
 

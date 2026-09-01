@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import type { CookbenchE2EDriver } from "../../src/e2e/CookbenchE2EApp";
+import type { CookbenchE2EDriver, CookbenchE2EPresentationSnapshot } from "../../src/e2e/CookbenchE2EApp";
 import type { StoveState, StoveWire } from "../../src/types/stove";
 
 export const E2E_HARNESSES = [
@@ -49,6 +49,24 @@ export async function e2eDriver(page: Page) {
   return {
     replaceStoves: (stoves: StoveWire[]) =>
       page.evaluate((fixtures) => window.__COOKBENCH_E2E__!.replaceStoves(fixtures), stoves),
+    replaceSnapshot: (snapshot: Partial<CookbenchE2EPresentationSnapshot> & Pick<CookbenchE2EPresentationSnapshot, "stoves">) =>
+      page.evaluate((value) => window.__COOKBENCH_E2E__!.replaceSnapshot(value), snapshot),
+    setGlobalBarMode: (mode: "full" | "minimal") =>
+      page.evaluate((value) => window.__COOKBENCH_E2E__!.setGlobalBarMode(value), mode),
+    setDockState: async (phase: "undocked" | "dockedExpanded" | "dockedCollapsed", bestEffort?: boolean) => {
+      if (phase === "dockedCollapsed") {
+        const viewport = page.viewportSize();
+        await page.mouse.move(1, Math.max(4, (viewport?.height ?? 720) - 1));
+      }
+      await page.evaluate(
+        ([value, fallback]) => window.__COOKBENCH_E2E__!.setDockState(value, fallback),
+        [phase, bestEffort] as const,
+      );
+    },
+    setMacStatusFixture: (available: boolean, stoveCount: number) =>
+      page.evaluate(([value, count]) => window.__COOKBENCH_E2E__!.setMacStatusFixture(value, count), [available, stoveCount] as const),
+    acknowledgeCooked: (stoveId: string, postAcknowledgementOrder: string[]) =>
+      page.evaluate(([id, order]) => window.__COOKBENCH_E2E__!.acknowledgeCooked(id, order), [stoveId, postAcknowledgementOrder] as const),
     restart: () => page.evaluate(() => window.__COOKBENCH_E2E__!.restart()),
     detach: (stoveId: string) =>
       page.evaluate((id) => window.__COOKBENCH_E2E__!.detach(id), stoveId),

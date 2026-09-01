@@ -16,6 +16,7 @@ use cookbench_core::{
         ArchiveReason, ArchivedSession, PersistedConfig, PersistedState, RetainedStovePresentation,
         SessionRecord,
     },
+    presentation::ordered_stove_ids,
     state_machine,
 };
 use serde::{Deserialize, Serialize};
@@ -81,6 +82,7 @@ pub enum LocatorCapability {
 pub struct StoveSnapshot {
     pub revision: u64,
     pub stoves: Vec<StoveWire>,
+    pub attention_order: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -254,9 +256,106 @@ impl std::fmt::Display for StoreError {
 impl std::error::Error for StoreError {}
 
 impl AppState {
+    pub fn snapshot(&self) -> StoveSnapshot {
+        let _serial = self.apply_lock.lock().expect("stove apply lock poisoned");
+        self.snapshot_locked()
+    }
+
+    fn snapshot_locked(&self) -> StoveSnapshot {
+        let cursors = self
+            .persistence
+            .lock()
+            .expect("desktop persistence lock poisoned")
+            .as_ref()
+            .map(|runtime| runtime.state.cooked_attention_cursors.clone())
+            .unwrap_or_default();
+        self.stoves.snapshot_with_attention(&cursors)
+    }
+
+    fn with_attention_order(&self, mut change: StoveChange) -> StoveChange {
+        change.attention_order = self.snapshot_locked().attention_order;
+        change
+    }
+
+    pub fn acknowledge_cooked_and_emit<R: tauri::Runtime>(
+        &self,
+        app: &tauri::AppHandle<R>,
+        stove_id: &str,
+    ) -> Result<bool, AppStateError> {
+        let _serial = self.apply_lock.lock().expect("stove apply lock poisoned");
+        let Some(change) = self.acknowledge_cooked_locked(stove_id)? else {
+            return Ok(false);
+        };
+        crate::events::emit_stove_change(app, change).map_err(AppStateError::Emit)?;
+        crate::platform::publish_presentation_snapshot(app, &self.snapshot_locked());
+        Ok(true)
+    }
+
+    fn acknowledge_cooked_locked(
+        &self,
+        stove_id: &str,
+    ) -> Result<Option<StoveChange>, AppStateError> {
+        let Some(stove) = self.stoves.core_stove(stove_id) else {
+            return Ok(None);
+        };
+        if stove.state != StoveState::Cooked {
+            return Ok(None);
+        }
+        {
+            let mut persistence = self
+                .persistence
+                .lock()
+                .expect("desktop persistence lock poisoned");
+            let runtime = persistence
+                .as_mut()
+                .ok_or_else(|| AppStateError::Persistence("persistence is unavailable".into()))?;
+            if runtime
+                .state
+                .cooked_attention_cursors
+                .iter()
+                .any(|cursor| cursor.acknowledges(&stove))
+            {
+                return Ok(None);
+            }
+            let mut candidate = runtime.state.clone();
+            if !candidate.acknowledge_cooked(&stove, current_time_ms()) {
+                return Ok(None);
+            }
+            runtime
+                .service
+                .save_state(&candidate)
+                .map_err(|error| AppStateError::Persistence(error.to_string()))?;
+            runtime.state = candidate;
+        }
+        let change = self
+            .stoves
+            .touch(stove_id)
+            .expect("Cooked Stove must remain visible while acknowledging attention");
+        Ok(Some(self.with_attention_order(change)))
+    }
+
     pub fn initialize_persistence(&self, app_data_directory: &Path) {
         let service = DesktopPersistence::in_app_data(app_data_directory);
         let mut loaded = service.load();
+        let legacy_completion_identities = loaded
+            .state
+            .retained
+            .iter()
+            .filter(|retained| retained.completion_event.is_none())
+            .map(|retained| retained.locator.clone())
+            .collect::<HashSet<_>>();
+        if !legacy_completion_identities.is_empty() {
+            let cursor_count = loaded.state.cooked_attention_cursors.len();
+            loaded
+                .state
+                .cooked_attention_cursors
+                .retain(|cursor| !legacy_completion_identities.contains(&cursor.locator));
+            if loaded.state.cooked_attention_cursors.len() != cursor_count {
+                // v0.3 could not persist completion identity. Never let an
+                // unverifiable retained completion inherit an acknowledgement.
+                let _ = service.save_state(&loaded.state);
+            }
+        }
         let cutoff = current_time_ms().saturating_sub(SESSION_VISIBILITY_MS);
         let pinned_identities = loaded
             .state
@@ -288,6 +387,14 @@ impl AppState {
             state: loaded.state,
         });
         for completion in retained {
+            let completion_event = completion.completion_event.clone().unwrap_or_else(|| {
+                EventMetadata::new(
+                    EventSource::StructuredSession,
+                    100,
+                    0,
+                    completion.completed_at_ms,
+                )
+            });
             let project_root = if completion.presentation.project_root_display.is_empty() {
                 "(retained Cookbench completion)".to_owned()
             } else {
@@ -300,6 +407,7 @@ impl AppState {
             };
             let project =
                 ProjectIdentity::new(completion.locator.host.clone(), project_root.clone());
+            let completion_id = stove_id(&completion.locator);
             let _ = self.stoves.apply_observation(
                 completion.locator,
                 project,
@@ -313,15 +421,12 @@ impl AppState {
                     None,
                     None,
                 )),
-                StoveEvent::new(
-                    EventKind::TurnCompleted,
-                    EventMetadata::new(
-                        EventSource::StructuredSession,
-                        100,
-                        0,
-                        completion.completed_at_ms,
-                    ),
-                ),
+                StoveEvent::new(EventKind::TurnCompleted, completion_event.clone()),
+            );
+            self.stoves.restore_completion_event(
+                &completion_id,
+                completion_event,
+                completion.completion_source_event,
             );
         }
         for pinned_session in pinned {
@@ -362,6 +467,18 @@ impl AppState {
         &self,
         update: impl FnOnce(&mut PersistedConfig),
     ) -> Result<(), String> {
+        self.update_persisted_config_with(|config| {
+            update(config);
+            Ok(())
+        })
+        .map(|_| ())
+    }
+
+    /// Saves a candidate under the persistence lock and returns its exact committed snapshot.
+    pub fn update_persisted_config_with<T>(
+        &self,
+        update: impl FnOnce(&mut PersistedConfig) -> Result<T, String>,
+    ) -> Result<(T, PersistedConfig), String> {
         let mut guard = self
             .persistence
             .lock()
@@ -369,11 +486,14 @@ impl AppState {
         let Some(runtime) = guard.as_mut() else {
             return Err("desktop persistence is not initialized".to_owned());
         };
-        update(&mut runtime.config);
+        let mut candidate = runtime.config.clone();
+        let output = update(&mut candidate)?;
         runtime
             .service
-            .save_config(&runtime.config)
-            .map_err(|error| error.to_string())
+            .save_config(&candidate)
+            .map_err(|error| error.to_string())?;
+        runtime.config = candidate;
+        Ok((output, runtime.config.clone()))
     }
 
     pub fn set_pinned_and_emit<R: tauri::Runtime>(
@@ -419,8 +539,9 @@ impl AppState {
             .stoves
             .set_pinned(requested_stove_id, pinned)
             .ok_or(AppStateError::UnknownStove)?;
-        crate::events::emit_stove_change(app, change).map_err(AppStateError::Emit)?;
-        crate::platform::publish_optional_gnome_snapshot(&self.stoves.snapshot());
+        crate::events::emit_stove_change(app, self.with_attention_order(change))
+            .map_err(AppStateError::Emit)?;
+        crate::platform::publish_presentation_snapshot(app, &self.snapshot_locked());
         drop(_serial);
         if !pinned {
             self.reconcile_expired_and_emit(app)?;
@@ -520,9 +641,10 @@ impl AppState {
         }
         let change = self.restore_session_record(&archived.session, should_pin);
         if let Some(change) = change {
-            crate::events::emit_stove_change(app, change).map_err(AppStateError::Emit)?;
+            crate::events::emit_stove_change(app, self.with_attention_order(change))
+                .map_err(AppStateError::Emit)?;
         }
-        crate::platform::publish_optional_gnome_snapshot(&self.stoves.snapshot());
+        crate::platform::publish_presentation_snapshot(app, &self.snapshot_locked());
         Ok(())
     }
 
@@ -574,7 +696,8 @@ impl AppState {
             }
         }
         if let Some(change) = self.stoves.remove_presentation(stove_id) {
-            crate::events::emit_stove_change(app, change).map_err(AppStateError::Emit)?;
+            crate::events::emit_stove_change(app, self.with_attention_order(change))
+                .map_err(AppStateError::Emit)?;
         }
         if let Some(remote) = app.try_state::<crate::remote::runtime::RemoteRuntimeState>() {
             remote.forget(stove.identity);
@@ -585,7 +708,7 @@ impl AppState {
             let _ = windows.clear_stove(stove_id);
             let _ = crate::commands::windows::persist_layouts(self, &windows);
         }
-        crate::platform::publish_optional_gnome_snapshot(&self.stoves.snapshot());
+        crate::platform::publish_presentation_snapshot(app, &self.snapshot_locked());
         Ok(())
     }
 
@@ -745,11 +868,11 @@ impl AppState {
         locator_capability: LocatorCapability,
         locator: Option<SessionLocator>,
         mut summary: Option<StoveSummary>,
-        mut event: StoveEvent,
+        event: StoveEvent,
         side_effects: bool,
     ) -> Result<(), AppStateError> {
         let _serial = self.apply_lock.lock().expect("stove apply lock poisoned");
-        {
+        let retained_discovery = {
             let persistence = self
                 .persistence
                 .lock()
@@ -763,25 +886,31 @@ impl AppState {
                 {
                     return Ok(());
                 }
-                if matches!(event.kind, EventKind::SessionDiscovered) {
-                    if let Some(retained) = runtime
+                matches!(event.kind, EventKind::SessionDiscovered)
+                    && runtime
                         .state
                         .retained
                         .iter()
-                        .find(|retained| retained.locator == identity)
-                    {
-                        event = StoveEvent::new(
-                            EventKind::TurnCompleted,
-                            EventMetadata::new(
-                                EventSource::StructuredSession,
-                                100,
-                                event.metadata.sequence,
-                                retained.completed_at_ms,
-                            ),
-                        );
-                    }
-                }
+                        .any(|retained| retained.locator == identity)
+            } else {
+                false
             }
+        };
+
+        // A rediscovered retained session only refreshes display metadata. Its
+        // lifecycle and raw replay cursors still belong to the completion that
+        // Cookbench restored from disk.
+        if retained_discovery {
+            let change = self.stoves.refresh_retained_discovery(
+                &identity,
+                locator_capability,
+                locator,
+                summary,
+            );
+            crate::events::emit_stove_change(app, self.with_attention_order(change))
+                .map_err(AppStateError::Emit)?;
+            crate::platform::publish_presentation_snapshot(app, &self.snapshot_locked());
+            return Ok(());
         }
 
         // A superseded observation is strictly inert. In particular, it must
@@ -797,7 +926,7 @@ impl AppState {
             .core_stove_for_identity(&identity_for_notification)
             .and_then(|stove| progress_percent(stove.progress.as_ref()));
         let observed_kind = event.kind.clone();
-        let metadata = event.metadata.clone();
+        let source_metadata = event.metadata.clone();
         if summary.is_none() {
             summary = self.stoves.summary_for_identity(&identity_for_persistence);
         }
@@ -837,7 +966,8 @@ impl AppState {
                         &mut runtime.state,
                         identity_for_persistence.clone(),
                         stove.state,
-                        &metadata,
+                        &source_metadata,
+                        stove.last_event.as_ref().unwrap_or(&source_metadata),
                         presentation.clone(),
                     );
                     if stove.state == StoveState::Cooked {
@@ -883,8 +1013,9 @@ impl AppState {
                 }
             }
         }
-        crate::events::emit_stove_change(app, change).map_err(AppStateError::Emit)?;
-        crate::platform::publish_optional_gnome_snapshot(&self.stoves.snapshot());
+        crate::events::emit_stove_change(app, self.with_attention_order(change))
+            .map_err(AppStateError::Emit)?;
+        crate::platform::publish_presentation_snapshot(app, &self.snapshot_locked());
         if side_effects {
             if let Some(stove) = self
                 .stoves
@@ -930,20 +1061,20 @@ impl AppState {
                     .into(),
             );
         }
-        let previous = self
-            .stoves
-            .source_cursor(&stove.identity, EventSource::StructuredSession)
-            .or_else(|| {
-                self.stoves
-                    .source_cursor(&stove.identity, EventSource::Hook)
-            })
-            .or_else(|| stove.last_event.clone())
+        let raw_previous = stove
+            .last_event
+            .as_ref()
+            .and_then(|event| self.stoves.source_cursor(&stove.identity, event.source));
+        let clear_reference = raw_previous
+            .as_ref()
+            .or(stove.last_event.as_ref())
+            .cloned()
             .unwrap_or_else(|| EventMetadata::new(EventSource::Inference, 0, 0, current_time_ms()));
         let clear = EventMetadata::new(
             EventSource::Inference,
             100,
-            previous.sequence.saturating_add(1),
-            current_time_ms().max(previous.timestamp_ms.saturating_add(1)),
+            clear_reference.sequence.saturating_add(1),
+            current_time_ms().max(clear_reference.timestamp_ms.saturating_add(1)),
         );
         {
             let mut persistence = self
@@ -953,7 +1084,11 @@ impl AppState {
             if let Some(runtime) = persistence.as_mut() {
                 runtime
                     .service
-                    .clear_cooked(&mut runtime.state, stove.identity.clone(), &previous)
+                    .clear_cooked(
+                        &mut runtime.state,
+                        stove.identity.clone(),
+                        raw_previous.as_ref(),
+                    )
                     .map_err(|error| AppStateError::Persistence(error.to_string()))?;
             }
         }
@@ -1070,6 +1205,86 @@ impl From<StoreError> for AppStateError {
 }
 
 impl StoveStore {
+    fn restore_completion_event(
+        &self,
+        stove_id: &str,
+        presentation_event: EventMetadata,
+        source_event: Option<EventMetadata>,
+    ) {
+        let mut inner = self.inner.write().expect("stove store lock poisoned");
+        if let Some(entry) = inner.entries.get_mut(stove_id) {
+            if entry.stove.state == StoveState::Cooked {
+                entry.stove.last_event = Some(presentation_event);
+                inner.source_cursors.remove(stove_id);
+                if let Some(source_event) = source_event {
+                    inner
+                        .source_cursors
+                        .entry(stove_id.to_owned())
+                        .or_default()
+                        .insert(source_event.source, source_event);
+                }
+            }
+        }
+    }
+
+    fn refresh_retained_discovery(
+        &self,
+        identity: &StoveIdentity,
+        locator_capability: LocatorCapability,
+        locator: Option<SessionLocator>,
+        summary: Option<StoveSummary>,
+    ) -> StoveChange {
+        let id = stove_id(identity);
+        let mut inner = self.inner.write().expect("stove store lock poisoned");
+        let valid_locator = locator
+            .filter(|locator| locator.validate().is_ok())
+            .map(|locator| merge_locator(inner.locators.get(&id), locator));
+        if let Some(locator) = valid_locator {
+            inner.locators.insert(id.clone(), locator);
+        }
+        let locator_available = inner.locators.contains_key(&id)
+            || matches!(locator_capability, LocatorCapability::Available);
+        let (stove, capability, summary) = {
+            let existing = inner
+                .entries
+                .get_mut(&id)
+                .expect("retained Stove must be restored before discovery refresh");
+            if locator_available {
+                existing.locator_capability = LocatorCapability::Available;
+            }
+            if let Some(summary) = summary {
+                existing.summary = summary;
+            }
+            (
+                existing.stove.clone(),
+                existing.locator_capability,
+                existing.summary.clone(),
+            )
+        };
+        inner.revision += 1;
+        StoveChange::upsert(
+            inner.revision,
+            StoveWire::from_stored(
+                &id,
+                &stove,
+                capability,
+                &summary,
+                inner.pinned.contains(&id),
+            ),
+        )
+    }
+
+    pub fn with_attention_order(
+        &self,
+        mut change: StoveChange,
+        cooked_attention_cursors: &[cookbench_core::persistence::CookedAttentionCursor],
+    ) -> StoveChange {
+        change.attention_order = self
+            .snapshot_with_attention(cooked_attention_cursors)
+            .attention_order;
+        change
+    }
+
     pub fn apply(
         &self,
         identity: StoveIdentity,
@@ -1255,6 +1470,20 @@ impl StoveStore {
         Some(StoveChange::remove(inner.revision, stove_id.to_owned()))
     }
 
+    fn touch(&self, stove_id: &str) -> Option<StoveChange> {
+        let mut inner = self.inner.write().expect("stove store lock poisoned");
+        let entry = inner.entries.get(stove_id)?;
+        let wire = StoveWire::from_stored(
+            stove_id,
+            &entry.stove,
+            entry.locator_capability,
+            &entry.summary,
+            inner.pinned.contains(stove_id),
+        );
+        inner.revision = inner.revision.saturating_add(1);
+        Some(StoveChange::upsert(inner.revision, wire))
+    }
+
     fn expiration_candidates(&self, cutoff_ms: u64) -> Vec<String> {
         let inner = self.inner.read().expect("stove store lock poisoned");
         inner
@@ -1329,23 +1558,46 @@ impl StoveStore {
     }
 
     pub fn snapshot(&self) -> StoveSnapshot {
+        self.snapshot_with_attention(&[])
+    }
+
+    pub fn snapshot_with_attention(
+        &self,
+        cooked_attention_cursors: &[cookbench_core::persistence::CookedAttentionCursor],
+    ) -> StoveSnapshot {
         let inner = self.inner.read().expect("stove store lock poisoned");
         let mut entries = inner.entries.iter().collect::<Vec<_>>();
         entries.sort_by_key(|(_, entry)| entry.order);
-        StoveSnapshot {
-            revision: inner.revision,
-            stoves: entries
-                .into_iter()
-                .map(|(id, entry)| {
+        let core_stoves = entries
+            .iter()
+            .map(|(_, entry)| entry.stove.clone())
+            .collect::<Vec<_>>();
+        let attention_order = ordered_stove_ids(&core_stoves, cooked_attention_cursors)
+            .iter()
+            .map(stove_id)
+            .collect::<Vec<_>>();
+        let mut wires = entries
+            .into_iter()
+            .map(|(id, entry)| {
+                (
+                    id.clone(),
                     StoveWire::from_stored(
                         id,
                         &entry.stove,
                         entry.locator_capability,
                         &entry.summary,
                         inner.pinned.contains(id),
-                    )
-                })
+                    ),
+                )
+            })
+            .collect::<HashMap<_, _>>();
+        StoveSnapshot {
+            revision: inner.revision,
+            stoves: attention_order
+                .iter()
+                .filter_map(|id| wires.remove(id))
                 .collect(),
+            attention_order,
         }
     }
 }
@@ -1675,6 +1927,173 @@ fn crossed_milestone(previous: Option<u8>, current: Option<u8>) -> Option<u8> {
     [25, 50, 75, 100]
         .into_iter()
         .rfind(|milestone| previous < *milestone && current >= *milestone)
+}
+
+#[cfg(test)]
+mod acknowledgement_tests {
+    use std::{
+        fs,
+        path::PathBuf,
+        sync::{
+            atomic::{AtomicU64, Ordering},
+            mpsc, Arc,
+        },
+        time::Duration,
+    };
+
+    use cookbench_core::domain::{
+        EventKind, EventMetadata, EventSource, HarnessId, HostIdentity, ProjectIdentity,
+        StoveEvent, StoveIdentity,
+    };
+
+    use super::{AppState, LocatorCapability, StoveStateWire};
+
+    static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
+
+    struct TestDirectory(PathBuf);
+
+    impl TestDirectory {
+        fn new() -> Self {
+            let suffix = NEXT_DIRECTORY.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!("cookbench-ack-{suffix}"));
+            fs::create_dir_all(&path).unwrap();
+            Self(path)
+        }
+    }
+
+    impl Drop for TestDirectory {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn add_stove(state: &AppState, session: &str, kind: EventKind, timestamp_ms: u64) -> String {
+        let identity =
+            StoveIdentity::new(HostIdentity::local("test-host"), HarnessId::Codex, session);
+        state
+            .stoves
+            .apply(
+                identity,
+                ProjectIdentity::new(HostIdentity::local("test-host"), "/synthetic/project"),
+                LocatorCapability::Unavailable,
+                StoveEvent::new(
+                    kind,
+                    EventMetadata::new(EventSource::StructuredSession, 100, 1, timestamp_ms),
+                ),
+            )
+            .unwrap();
+        format!("local:test-host:codex:{session}")
+    }
+
+    fn acknowledge(state: &AppState, stove_id: &str) -> Option<super::StoveChange> {
+        let _serial = state.apply_lock.lock().unwrap();
+        state.acknowledge_cooked_locked(stove_id).unwrap()
+    }
+
+    #[test]
+    fn acknowledgement_is_idempotent_and_keeps_cooked_stoves_visible() {
+        let directory = TestDirectory::new();
+        let state = AppState::default();
+        state.initialize_persistence(&directory.0);
+        let cooked = add_stove(&state, "cooked", EventKind::TurnCompleted, 100);
+        let cooking = add_stove(&state, "cooking", EventKind::ToolStarted, 200);
+        let before = state.snapshot().revision;
+
+        let change = acknowledge(&state, &cooked).expect("first acknowledgement");
+        assert_eq!(change.revision, before + 1);
+        assert_eq!(
+            change.attention_order,
+            vec![cooking.clone(), cooked.clone()]
+        );
+        assert_eq!(state.snapshot().stoves[1].state, StoveStateWire::Cooked);
+        assert!(acknowledge(&state, &cooked).is_none());
+        assert!(acknowledge(&state, "unknown").is_none());
+        assert!(acknowledge(&state, &cooking).is_none());
+        assert_eq!(state.snapshot().revision, before + 1);
+    }
+
+    #[test]
+    fn failed_acknowledgement_save_does_not_change_state_or_revision() {
+        let directory = TestDirectory::new();
+        let state = AppState::default();
+        state.initialize_persistence(&directory.0);
+        let cooked = add_stove(&state, "cooked", EventKind::TurnCompleted, 100);
+        let before = state.snapshot();
+        let state_path = directory.0.join("state.json");
+        fs::create_dir(&state_path).unwrap();
+
+        let _serial = state.apply_lock.lock().unwrap();
+        assert!(state.acknowledge_cooked_locked(&cooked).is_err());
+        drop(_serial);
+        assert_eq!(state.snapshot(), before);
+
+        fs::remove_dir(&state_path).unwrap();
+        assert!(acknowledge(&state, &cooked).is_some());
+    }
+
+    #[test]
+    fn a_new_completion_re_elevates_an_acknowledged_stove() {
+        let directory = TestDirectory::new();
+        let state = AppState::default();
+        state.initialize_persistence(&directory.0);
+        let cooked = add_stove(&state, "cooked", EventKind::TurnCompleted, 100);
+        let cooking = add_stove(&state, "cooking", EventKind::ToolStarted, 200);
+        acknowledge(&state, &cooked);
+        assert_eq!(
+            state.snapshot().attention_order,
+            vec![cooking, cooked.clone()]
+        );
+
+        let identity =
+            StoveIdentity::new(HostIdentity::local("test-host"), HarnessId::Codex, "cooked");
+        state
+            .stoves
+            .apply(
+                identity.clone(),
+                ProjectIdentity::new(HostIdentity::local("test-host"), "/synthetic/project"),
+                LocatorCapability::Unavailable,
+                StoveEvent::new(
+                    EventKind::UserPromptSubmitted,
+                    EventMetadata::new(EventSource::StructuredSession, 100, 2, 300),
+                ),
+            )
+            .unwrap();
+        state
+            .stoves
+            .apply(
+                identity,
+                ProjectIdentity::new(HostIdentity::local("test-host"), "/synthetic/project"),
+                LocatorCapability::Unavailable,
+                StoveEvent::new(
+                    EventKind::TurnCompleted,
+                    EventMetadata::new(EventSource::StructuredSession, 100, 3, 400),
+                ),
+            )
+            .unwrap();
+        assert_eq!(state.snapshot().attention_order[0], cooked);
+    }
+
+    #[test]
+    fn snapshots_wait_for_the_same_critical_section_as_acknowledgements() {
+        let directory = TestDirectory::new();
+        let state = Arc::new(AppState::default());
+        state.initialize_persistence(&directory.0);
+        add_stove(&state, "cooked", EventKind::TurnCompleted, 100);
+        let guard = state.apply_lock.lock().unwrap();
+        let (sent, received) = mpsc::channel();
+        let reader = Arc::clone(&state);
+        let worker = std::thread::spawn(move || sent.send(reader.snapshot()).unwrap());
+
+        assert!(received.recv_timeout(Duration::from_millis(25)).is_err());
+        drop(guard);
+        let snapshot = received.recv_timeout(Duration::from_secs(1)).unwrap();
+        worker.join().unwrap();
+        assert_eq!(snapshot.stoves[0].id, "local:test-host:codex:cooked");
+        assert_eq!(
+            snapshot.attention_order,
+            vec![snapshot.stoves[0].id.clone()]
+        );
+    }
 }
 
 #[cfg(test)]

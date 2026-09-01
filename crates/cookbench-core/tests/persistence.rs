@@ -7,12 +7,16 @@ use std::{
 };
 
 use cookbench_core::{
-    domain::{EventMetadata, EventSource, HarnessId, HostIdentity, StoveIdentity, StoveState},
+    domain::{
+        EventMetadata, EventSource, HarnessId, HostIdentity, ProjectIdentity, Stove, StoveIdentity,
+        StoveState,
+    },
     notifications::NotificationEventKind,
     persistence::{
-        AppLocale, ArchiveReason, ArchivedSession, AtomicJsonFile, ClearCursor, GlobalBarPlacement,
-        PersistedConfig, PersistedState, PinnedSession, RetainedStove, RetainedStovePresentation,
-        SessionRecord,
+        AppLocale, ArchiveReason, ArchivedSession, AtomicJsonFile, ClearCursor,
+        CookedAttentionCursor, GlobalBarMode, GlobalBarPlacement, GlobalBarPosition,
+        GlobalBarTopDock, MonitorIdentity, PersistedConfig, PersistedState, PinnedSession,
+        RelativePosition, RetainedStove, RetainedStovePresentation, SessionRecord,
     },
 };
 
@@ -49,6 +53,30 @@ fn locator() -> StoveIdentity {
         HarnessId::Codex,
         "native-session-1",
     )
+}
+
+fn locator_with(native_session_id: impl Into<String>) -> StoveIdentity {
+    StoveIdentity::new(
+        HostIdentity::local("test-machine"),
+        HarnessId::Codex,
+        native_session_id,
+    )
+}
+
+fn cooked_stove(native_session_id: impl Into<String>, sequence: u64) -> Stove {
+    Stove {
+        identity: locator_with(native_session_id),
+        project: ProjectIdentity::new(HostIdentity::local("test-machine"), "/synthetic/project"),
+        state: StoveState::Cooked,
+        progress: None,
+        state_before_disconnect: None,
+        last_event: Some(EventMetadata::new(
+            EventSource::Hook,
+            100,
+            sequence,
+            sequence,
+        )),
+    }
 }
 
 fn retained(completed_at_ms: u64) -> RetainedStove {
@@ -138,10 +166,42 @@ fn persisted_schema_contains_only_safe_retained_fields() {
     }
 
     let retained = value["retained"][0].as_object().unwrap();
-    assert_eq!(retained.len(), 3);
+    assert_eq!(retained.len(), 5);
     assert!(retained.contains_key("locator"));
     assert!(retained.contains_key("completed_at_ms"));
     assert!(retained.contains_key("presentation"));
+    assert!(retained.contains_key("completion_event"));
+    assert!(retained.contains_key("completion_source_event"));
+}
+
+#[test]
+fn retained_completion_source_event_is_metadata_only_and_backwards_compatible() {
+    let source_event = EventMetadata::new(EventSource::Hook, 100, 900, 42);
+    let presentation_event = EventMetadata::new(EventSource::Hook, 100, 2, 42);
+    let state = PersistedState::with_retained(vec![RetainedStove::new(locator(), 42)
+        .with_completion_events(source_event.clone(), presentation_event)]);
+    let value = serde_json::to_value(&state).unwrap();
+    assert_eq!(
+        value["retained"][0]["completion_source_event"]["sequence"],
+        900
+    );
+    assert!(!value.to_string().contains("prompt"));
+
+    let mut legacy = value;
+    legacy["retained"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("completion_source_event");
+    let decoded: PersistedState = serde_json::from_value(legacy).unwrap();
+    assert_eq!(decoded.retained[0].completion_source_event, None);
+    assert_eq!(
+        decoded.retained[0]
+            .completion_event
+            .as_ref()
+            .unwrap()
+            .sequence,
+        2
+    );
 }
 
 #[test]
@@ -171,6 +231,7 @@ fn newer_prompt_relights_the_same_cleared_native_session() {
         version: PersistedState::CURRENT_VERSION,
         retained: Vec::new(),
         clear_cursors: vec![ClearCursor::new(locator(), 10, 10_000)],
+        cooked_attention_cursors: Vec::new(),
         pinned: Vec::new(),
         archived: Vec::new(),
         tracked: Vec::new(),
@@ -250,8 +311,63 @@ fn config_never_serializes_credential_values() {
         config.layout.global_bar_placement,
         GlobalBarPlacement::TopCenter
     );
+    assert_eq!(config.layout.global_bar_mode, GlobalBarMode::Full);
+    assert_eq!(config.layout.mac_status_stove_count, 3);
     assert!(config.preferences.always_on_top);
     assert_eq!(config.preferences.locale, AppLocale::System);
+}
+
+#[test]
+fn legacy_config_defaults_display_mode_and_mac_status_count() {
+    let config: PersistedConfig = serde_json::from_str(r#"{"version":1,"layout":{}}"#).unwrap();
+
+    assert_eq!(config.layout.global_bar_mode, GlobalBarMode::Full);
+    assert_eq!(config.layout.mac_status_stove_count, 3);
+    assert_eq!(config.layout.global_bar_top_dock, None);
+}
+
+#[test]
+fn persisted_top_dock_round_trips_without_moving_the_freeform_position() {
+    let mut config = PersistedConfig::default();
+    config.layout.global_bar_position = Some(GlobalBarPosition {
+        monitor: MonitorIdentity {
+            id: "main".into(),
+            name: None,
+        },
+        relative_position: RelativePosition { x: 4000, y: 7000 },
+    });
+    config.layout.global_bar_top_dock = Some(GlobalBarTopDock {
+        monitor: MonitorIdentity {
+            id: "main".into(),
+            name: None,
+        },
+        relative_x: 4000,
+    });
+
+    let decoded: PersistedConfig =
+        serde_json::from_str(&serde_json::to_string(&config).unwrap()).unwrap();
+    assert_eq!(decoded.layout, config.layout);
+}
+
+#[test]
+fn persisted_mac_status_count_is_bounded_but_preserves_valid_edges() {
+    for (persisted, expected) in [(-1, 0), (9, 8), (256, 8)] {
+        let config: PersistedConfig = serde_json::from_str(&format!(
+            r#"{{"version":1,"layout":{{"mac_status_stove_count":{persisted}}}}}"#,
+        ))
+        .unwrap();
+        assert_eq!(config.layout.mac_status_stove_count, expected);
+    }
+
+    for count in [0, 8] {
+        let mut config = PersistedConfig::default();
+        config.layout.global_bar_mode = GlobalBarMode::Minimal;
+        config.layout.mac_status_stove_count = count;
+        let restored: PersistedConfig =
+            serde_json::from_value(serde_json::to_value(config).unwrap()).unwrap();
+        assert_eq!(restored.layout.global_bar_mode, GlobalBarMode::Minimal);
+        assert_eq!(restored.layout.mac_status_stove_count, count);
+    }
 }
 
 #[test]
@@ -328,6 +444,173 @@ fn v2_state_defaults_new_session_collections() {
     assert!(state.pinned.is_empty());
     assert!(state.archived.is_empty());
     assert!(state.tracked.is_empty());
+    assert!(state.cooked_attention_cursors.is_empty());
+}
+
+#[test]
+fn cooked_attention_cursors_are_bounded_and_keep_the_newest_acknowledgements() {
+    let mut state = PersistedState::default();
+    for sequence in 0..=PersistedState::MAX_COOKED_ATTENTION_CURSORS as u64 {
+        assert!(state.acknowledge_cooked(
+            &cooked_stove(format!("native-session-{sequence}"), sequence),
+            sequence,
+        ));
+    }
+
+    assert_eq!(
+        state.cooked_attention_cursors.len(),
+        PersistedState::MAX_COOKED_ATTENTION_CURSORS
+    );
+    assert!(!state
+        .cooked_attention_cursors
+        .iter()
+        .any(|cursor| cursor.sequence == 0));
+    assert!(state
+        .cooked_attention_cursors
+        .iter()
+        .any(|cursor| cursor.sequence == PersistedState::MAX_COOKED_ATTENTION_CURSORS as u64));
+}
+
+#[test]
+fn deserialized_cooked_attention_cursors_are_bounded_deterministically() {
+    let cursors: Vec<_> = (0..=PersistedState::MAX_COOKED_ATTENTION_CURSORS as u64)
+        .map(|index| CookedAttentionCursor {
+            locator: locator_with(format!("cursor-{index:03}")),
+            source: EventSource::Hook,
+            confidence: 100,
+            sequence: 1,
+            timestamp_ms: 1,
+            acknowledged_at_ms: 1,
+        })
+        .collect();
+    let first = PersistedState {
+        cooked_attention_cursors: cursors.clone(),
+        ..PersistedState::default()
+    };
+    let second = PersistedState {
+        cooked_attention_cursors: cursors.into_iter().rev().collect(),
+        ..PersistedState::default()
+    };
+
+    let first: PersistedState =
+        serde_json::from_value(serde_json::to_value(first).unwrap()).unwrap();
+    let second: PersistedState =
+        serde_json::from_value(serde_json::to_value(second).unwrap()).unwrap();
+
+    assert_eq!(
+        first.cooked_attention_cursors.len(),
+        PersistedState::MAX_COOKED_ATTENTION_CURSORS
+    );
+    assert_eq!(
+        first.cooked_attention_cursors,
+        second.cooked_attention_cursors
+    );
+    assert!(!first
+        .cooked_attention_cursors
+        .iter()
+        .any(|cursor| cursor.locator.native_session_id == "cursor-000"));
+}
+
+#[test]
+fn deserialized_cursors_deduplicate_nonadjacent_locator_entries() {
+    let cursor = |native_session_id: &str, acknowledged_at_ms| CookedAttentionCursor {
+        locator: locator_with(native_session_id),
+        source: EventSource::Hook,
+        confidence: 100,
+        sequence: acknowledged_at_ms,
+        timestamp_ms: acknowledged_at_ms,
+        acknowledged_at_ms,
+    };
+    let state = PersistedState {
+        cooked_attention_cursors: vec![
+            cursor("same-session", 3),
+            cursor("another-session", 2),
+            cursor("same-session", 1),
+        ],
+        ..PersistedState::default()
+    };
+
+    let state: PersistedState =
+        serde_json::from_value(serde_json::to_value(state).unwrap()).unwrap();
+    assert_eq!(state.cooked_attention_cursors.len(), 2);
+    assert_eq!(state.cooked_attention_cursors[0].acknowledged_at_ms, 3);
+}
+
+#[test]
+fn cooked_attention_cursor_upsert_replaces_the_same_locator() {
+    let mut state = PersistedState::default();
+    let first = cooked_stove("native-session-1", 1);
+    let replacement = cooked_stove("native-session-1", 2);
+    assert!(state.acknowledge_cooked(&first, 1));
+    assert!(state.acknowledge_cooked(&replacement, 2));
+
+    assert_eq!(state.cooked_attention_cursors.len(), 1);
+    assert!(state.cooked_attention_cursors[0].acknowledges(&replacement));
+}
+
+#[test]
+fn nonempty_cooked_attention_cursor_schema_is_metadata_only() {
+    let mut state = PersistedState::default();
+    let cooked = cooked_stove("native-session-1", 7);
+    assert!(state.acknowledge_cooked(&cooked, 9));
+
+    let value = serde_json::to_value(state).unwrap();
+    let cursor = value["cooked_attention_cursors"][0].as_object().unwrap();
+    assert_eq!(cursor.len(), 6);
+    for expected in [
+        "locator",
+        "source",
+        "confidence",
+        "sequence",
+        "timestamp_ms",
+        "acknowledged_at_ms",
+    ] {
+        assert!(cursor.contains_key(expected));
+    }
+    let encoded = value.to_string();
+    for forbidden in [
+        "prompt",
+        "transcript",
+        "command",
+        "output",
+        "task",
+        "activity",
+    ] {
+        assert!(!encoded.contains(forbidden), "cursor exposed {forbidden}");
+    }
+}
+
+#[test]
+fn acknowledging_an_old_completion_uses_the_confirmation_time_for_eviction() {
+    let cursors: Vec<_> = (1..=PersistedState::MAX_COOKED_ATTENTION_CURSORS as u64)
+        .map(|index| CookedAttentionCursor {
+            locator: locator_with(format!("newer-completion-{index}")),
+            source: EventSource::Hook,
+            confidence: 100,
+            sequence: index,
+            timestamp_ms: index,
+            acknowledged_at_ms: index,
+        })
+        .collect();
+    let mut state = PersistedState {
+        cooked_attention_cursors: cursors,
+        ..PersistedState::default()
+    };
+    let old_completion = cooked_stove("old-completion", 0);
+
+    assert!(state.acknowledge_cooked(&old_completion, 1_000));
+    assert_eq!(
+        state.cooked_attention_cursors.len(),
+        PersistedState::MAX_COOKED_ATTENTION_CURSORS
+    );
+    assert!(state
+        .cooked_attention_cursors
+        .iter()
+        .any(|cursor| cursor.acknowledges(&old_completion)));
+    assert!(!state
+        .cooked_attention_cursors
+        .iter()
+        .any(|cursor| cursor.locator.native_session_id == "newer-completion-1"));
 }
 
 #[test]
@@ -337,6 +620,7 @@ fn session_records_keep_only_safe_metadata() {
         version: PersistedState::CURRENT_VERSION,
         retained: Vec::new(),
         clear_cursors: Vec::new(),
+        cooked_attention_cursors: Vec::new(),
         pinned: vec![PinnedSession {
             session: record.clone(),
             pinned_at_ms: 50,

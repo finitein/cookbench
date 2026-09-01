@@ -64,12 +64,15 @@ export interface ArchivedSessionWire {
 export interface StoveSnapshot {
   revision: number;
   stoves: StoveWire[];
+  /** Canonical attention order; optional only for pre-attention browser fixtures. */
+  attentionOrder?: string[];
 }
 
 export interface StoveChange {
   revision: number;
   stove: StoveWire | null;
   removedStoveId: string | null;
+  attentionOrder?: string[];
 }
 
 /**

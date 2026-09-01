@@ -9,9 +9,51 @@ pub mod gnome_bridge;
 mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(target_os = "macos")]
+pub(crate) use macos::status_item_image_x;
 mod overlay;
 #[cfg(target_os = "windows")]
 mod windows;
+
+/// Evidence from a single native drag gesture. This deliberately never uses a
+/// process-wide hook: callers may only wait while they own an active token.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DragReleaseEvidence {
+    Released,
+    Unavailable,
+}
+
+/// Converts a bounded platform probe into completion evidence. A successful
+/// first probe that already sees Button1 up represents a quick release.
+#[cfg(any(target_os = "windows", target_os = "linux", test))]
+pub(crate) fn classify_drag_release(
+    initially_down: bool,
+    released: bool,
+    timed_out: bool,
+) -> DragReleaseEvidence {
+    if released || !initially_down {
+        DragReleaseEvidence::Released
+    } else {
+        debug_assert!(timed_out);
+        DragReleaseEvidence::Unavailable
+    }
+}
+
+pub fn wait_for_local_drag_release() -> DragReleaseEvidence {
+    #[cfg(target_os = "windows")]
+    return windows::wait_for_left_release();
+    #[cfg(target_os = "linux")]
+    return linux::wait_for_left_release();
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+    DragReleaseEvidence::Unavailable
+}
+
+/// Performs any platform input initialization before a UI toolkit can touch
+/// its native event library.
+pub fn prepare_drag_release_support() {
+    #[cfg(target_os = "linux")]
+    linux::prepare_drag_release_support();
+}
 
 pub use capabilities::{
     capabilities_for, current_desktop_environment, DesktopEnvironment, OverlayCapabilities,
@@ -20,6 +62,17 @@ pub use capabilities::{
 pub use overlay::{OverlayController, OverlayError, TauriOverlayController};
 
 use crate::app_state::StoveSnapshot;
+
+/// Delivers one immutable Stove snapshot to platform-owned presentation
+/// surfaces. The snapshot has already been normalized and attention-ranked by
+/// `AppState`; platform renderers must not derive their own order.
+pub fn publish_presentation_snapshot<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    snapshot: &StoveSnapshot,
+) {
+    publish_optional_gnome_snapshot(snapshot);
+    crate::desktop_shell::runtime::queue_status_stoves_refresh(app, snapshot.clone());
+}
 
 pub fn publish_optional_gnome_snapshot(snapshot: &StoveSnapshot) {
     #[cfg(target_os = "linux")]
@@ -57,5 +110,26 @@ pub(crate) fn apply_platform_overlay<R: Runtime>(
     {
         let _ = window;
         Err(OverlayError::UnsupportedPlatform)
+    }
+}
+
+#[cfg(test)]
+mod drag_release_tests {
+    use super::*;
+
+    #[test]
+    fn quick_release_is_completion_evidence() {
+        assert_eq!(
+            classify_drag_release(false, false, false),
+            DragReleaseEvidence::Released
+        );
+    }
+
+    #[test]
+    fn held_button_timeout_is_unavailable() {
+        assert_eq!(
+            classify_drag_release(true, false, true),
+            DragReleaseEvidence::Unavailable
+        );
     }
 }

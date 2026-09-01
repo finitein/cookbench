@@ -4,6 +4,7 @@ import mark from "../assets/cookbench-mark.svg";
 import { arrangeBenches, stoveCapacityForWidth } from "./benchLayout";
 import { StoveBurner } from "./StoveBurner";
 import { StoveTooltip } from "./StoveTooltip";
+import { StovePriorityMenu } from "./StovePriorityMenu";
 import { LOCAL_ALERT_TEST_STOVE_ID } from "../services/localAlerts";
 import { useI18n } from "../i18n/i18n";
 import "./global-bar.css";
@@ -18,6 +19,8 @@ export type GlobalBarProps = {
   onOpenSettings?: () => void;
   hoverDetailsEnabled?: boolean;
   activeAlertStoveId?: string | null;
+  mode?: "full" | "minimal";
+  onModeChange?: (mode: "full" | "minimal") => void;
 };
 
 function usableBarWidth(): number {
@@ -61,16 +64,23 @@ export function GlobalBar({
   onOpenSettings,
   hoverDetailsEnabled = false,
   activeAlertStoveId = null,
+  mode = "full",
+  onModeChange,
 }: GlobalBarProps) {
   const { t } = useI18n();
   const previousStates = useRef(new Map<string, StoveState>());
   const priorStates = previousStates.current;
   const [tooltipStoveId, setTooltipStoveId] = useState<string | null>(null);
+  const [priorityMenuOpen, setPriorityMenuOpen] = useState(false);
+  const priorityTriggerRef = useRef<HTMLButtonElement>(null);
+  const primaryBurnerRef = useRef<HTMLDivElement>(null);
+  const priorityOpenerRef = useRef<HTMLElement | null>(null);
   const tooltipStove = hoverDetailsEnabled
     ? stoves.find((stove) => stove.id === tooltipStoveId) ?? null
     : null;
   const benchCapacity = useBenchCapacity();
   const layout = useMemo(() => arrangeBenches(stoves, benchCapacity), [benchCapacity, stoves]);
+  const primaryStove = stoves[0];
 
   useEffect(() => {
     previousStates.current = new Map(stoves.map((stove) => [stove.id, stove.state]));
@@ -80,11 +90,25 @@ export function GlobalBar({
     if (!hoverDetailsEnabled) setTooltipStoveId(null);
   }, [hoverDetailsEnabled]);
 
+  useEffect(() => {
+    if (mode === "full" || !primaryStove) setPriorityMenuOpen(false);
+  }, [mode, primaryStove]);
+
+  const openPriorityMenu = (opener: HTMLElement) => {
+    priorityOpenerRef.current = opener;
+    setPriorityMenuOpen(true);
+  };
+  const closePriorityMenu = (restoreFocus: boolean) => {
+    setPriorityMenuOpen(false);
+    if (restoreFocus) priorityOpenerRef.current?.focus();
+  };
+
   return (
     <section
-      className={`global-bar${stoves.length === 0 ? " global-bar--empty" : ""}${tooltipStove ? " global-bar--tooltip-open" : ""}${activeAlertStoveId === LOCAL_ALERT_TEST_STOVE_ID ? " global-bar--alert" : ""}`}
+      className={`global-bar global-bar--${mode}${stoves.length === 0 ? " global-bar--empty" : ""}${tooltipStove ? " global-bar--tooltip-open" : ""}${activeAlertStoveId === LOCAL_ALERT_TEST_STOVE_ID ? " global-bar--alert" : ""}`}
       aria-label={t("bar.global", { count: stoves.length })}
       data-layout={layout.grouped ? "grouped" : "mixed"}
+      data-menu-open={priorityMenuOpen ? "true" : "false"}
     >
       <div className="global-bar__brand" aria-label="Cookbench">
         <img src={mark} alt="Cookbench" />
@@ -100,7 +124,34 @@ export function GlobalBar({
           </button>
         ) : null}
       </div>
-      <div className="global-bar__benches" data-layout={layout.grouped ? "grouped" : "mixed"}>
+      {mode === "minimal" ? (
+        <div className="global-bar__minimal" data-testid="minimal-global-bar">
+          {primaryStove ? <div ref={primaryBurnerRef} className="global-bar__minimal-burner" onContextMenu={(event) => { event.preventDefault(); openPriorityMenu(event.currentTarget.querySelector<HTMLElement>(".stove-burner") ?? event.currentTarget); }}>
+            <StoveBurner
+              stove={primaryStove}
+              onActivate={onActivateStove}
+              onDetach={onDetachStove}
+              onClear={onClearStove}
+              onPin={onPinStove}
+              onArchive={onArchiveStove}
+              previousState={priorStates.get(primaryStove.id)}
+              isInitialSnapshot={!priorStates.has(primaryStove.id)}
+              tooltipId={hoverDetailsEnabled ? "global-bar-tooltip" : undefined}
+              renderTooltip={false}
+              compact
+              showSession={false}
+              showControls={false}
+              flashing={activeAlertStoveId === primaryStove.id}
+              onTooltipVisibilityChange={hoverDetailsEnabled
+                ? (visible, value) => setTooltipStoveId((current) => visible ? value.id : current === value.id ? null : current)
+                : undefined}
+            />
+          </div> : <button className="global-bar__minimal-empty" type="button" onClick={() => onModeChange?.("full")} aria-label={t("bar.expand")} title={t("bar.expand")}><img className="global-bar__minimal-mark" src={mark} alt="" /></button>}
+          {primaryStove ? <button className="global-bar__mode-toggle" type="button" onClick={() => onModeChange?.("full")} aria-label={t("bar.expand")} title={t("bar.expand")}><span aria-hidden="true">+</span></button> : null}
+          {primaryStove ? <button ref={priorityTriggerRef} className="global-bar__priority-trigger" type="button" onClick={(event) => openPriorityMenu(event.currentTarget)} aria-label={t("bar.priorityList")} title={t("bar.priorityList")} aria-haspopup="menu" aria-expanded={priorityMenuOpen}><span aria-hidden="true">...</span></button> : null}
+          {priorityMenuOpen ? <StovePriorityMenu stoves={stoves} onActivate={onActivateStove} onClose={closePriorityMenu} /> : null}
+        </div>
+      ) : <div className="global-bar__benches" data-layout={layout.grouped ? "grouped" : "mixed"}>
         {layout.benches.map((bench) => (
           <section className="global-bar__bench" data-harness={bench.id} key={bench.id} aria-label={bench.id === "all" ? t("bar.stoves") : bench.label}>
             {layout.grouped ? <h2 className="global-bar__bench-heading">{bench.label}</h2> : null}
@@ -133,6 +184,8 @@ export function GlobalBar({
           </section>
         ))}
       </div>
+      }
+      {mode === "full" ? <button className="global-bar__mode-toggle global-bar__mode-toggle--full" type="button" onClick={() => onModeChange?.("minimal")} aria-label={t("bar.collapse")} title={t("bar.collapse")}><span aria-hidden="true">-</span></button> : null}
       {tooltipStove ? <StoveTooltip stove={tooltipStove} id="global-bar-tooltip" className="global-bar__tooltip" /> : null}
     </section>
   );
