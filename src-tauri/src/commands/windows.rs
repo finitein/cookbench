@@ -7,9 +7,9 @@
 use std::{fmt, sync::Mutex};
 
 use cookbench_core::persistence::{
-    resolve_top_dock, top_dock_decision, DetachedStoveLayout, DockMonitorWorkArea,
-    GlobalBarPosition, GlobalBarTopDock, MonitorIdentity, MonitorWorkArea, RelativePosition,
-    TopDockDecision, TopDockInput, WindowPosition, WindowSize,
+    resolve_top_dock, select_dock_monitor, top_dock_decision, DetachedStoveLayout,
+    DockMonitorWorkArea, GlobalBarPosition, GlobalBarTopDock, MonitorIdentity, MonitorWorkArea,
+    RelativePosition, TopDockDecision, TopDockInput, WindowPosition, WindowSize,
 };
 
 use serde::{Deserialize, Serialize};
@@ -38,6 +38,21 @@ pub(crate) fn native_monitor_identity(
             .unwrap_or_else(|| name.clone().unwrap_or_else(|| format!("monitor-{index}"))),
         name,
     }
+}
+
+pub(crate) fn duplicate_name_occurrence(names: &[Option<String>], index: usize) -> Option<usize> {
+    let name = names.get(index)?.as_ref()?;
+    (names
+        .iter()
+        .filter(|candidate| candidate.as_ref() == Some(name))
+        .count()
+        > 1)
+    .then(|| {
+        names[..index]
+            .iter()
+            .filter(|candidate| candidate.as_ref() == Some(name))
+            .count()
+    })
 }
 
 pub(crate) fn same_native_monitor(left: &tauri::Monitor, right: &tauri::Monitor) -> bool {
@@ -463,9 +478,13 @@ impl<R: Runtime> MonitorProvider for TauriMonitorProvider<R> {
 
     fn monitors(&self) -> Result<Vec<MonitorWorkArea>, Self::Error> {
         let primary = self.app.primary_monitor()?;
-        self.app
-            .available_monitors()?
-            .into_iter()
+        let monitors = self.app.available_monitors()?;
+        let names = monitors
+            .iter()
+            .map(|monitor| monitor.name().cloned())
+            .collect::<Vec<_>>();
+        monitors
+            .iter()
             .enumerate()
             .map(|(index, monitor)| {
                 let name = monitor.name().cloned();
@@ -473,8 +492,12 @@ impl<R: Runtime> MonitorProvider for TauriMonitorProvider<R> {
                 Ok(MonitorWorkArea {
                     primary: primary
                         .as_ref()
-                        .is_some_and(|value| same_native_monitor(value, &monitor)),
-                    identity: native_monitor_identity(name, index, None),
+                        .is_some_and(|value| same_native_monitor(value, monitor)),
+                    identity: native_monitor_identity(
+                        name,
+                        index,
+                        duplicate_name_occurrence(&names, index),
+                    ),
                     x: area.position.x,
                     y: area.position.y,
                     width: area.size.width,
@@ -507,10 +530,15 @@ fn dock_monitors<R: Runtime>(
     let primary = window
         .primary_monitor()
         .map_err(|error| error.to_string())?;
-    window
+    let monitors = window
         .available_monitors()
-        .map_err(|error| error.to_string())?
-        .into_iter()
+        .map_err(|error| error.to_string())?;
+    let names = monitors
+        .iter()
+        .map(|monitor| monitor.name().cloned())
+        .collect::<Vec<_>>();
+    monitors
+        .iter()
         .enumerate()
         .map(|(index, monitor)| {
             let name = monitor.name().cloned();
@@ -519,8 +547,12 @@ fn dock_monitors<R: Runtime>(
                 MonitorWorkArea {
                     primary: primary
                         .as_ref()
-                        .is_some_and(|value| same_native_monitor(value, &monitor)),
-                    identity: native_monitor_identity(name, index, None),
+                        .is_some_and(|value| same_native_monitor(value, monitor)),
+                    identity: native_monitor_identity(
+                        name,
+                        index,
+                        duplicate_name_occurrence(&names, index),
+                    ),
                     x: area.position.x,
                     y: area.position.y,
                     width: area.size.width,
@@ -537,21 +569,7 @@ fn global_bar_position(
     size: WindowSize,
     monitors: &[DockMonitorWorkArea],
 ) -> Result<GlobalBarPosition, String> {
-    let monitor = monitors
-        .iter()
-        .find(|candidate| {
-            let area = &candidate.work_area;
-            position.x >= area.x
-                && position.y >= area.y
-                && position.x < area.x.saturating_add_unsigned(area.width)
-                && position.y < area.y.saturating_add_unsigned(area.height)
-        })
-        .or_else(|| {
-            monitors
-                .iter()
-                .find(|candidate| candidate.work_area.primary)
-        })
-        .or_else(|| monitors.first())
+    let monitor = select_dock_monitor(monitors, position, size, None)
         .ok_or_else(|| "no display is available for the Cookbench global Bar".to_owned())?;
     Ok(GlobalBarPosition {
         monitor: monitor.work_area.identity.clone(),
@@ -1100,5 +1118,23 @@ mod dock_tests {
         let second = native_monitor_identity(Some("Panel".into()), 1, Some(1));
         assert_ne!(first.id, second.id);
         assert_eq!(first.name, second.name);
+    }
+
+    #[test]
+    fn monitor_occurrences_preserve_legacy_unique_and_unnamed_ids() {
+        let names = vec![
+            Some("Main".into()),
+            Some("Panel".into()),
+            Some("Panel".into()),
+            None,
+        ];
+        assert_eq!(duplicate_name_occurrence(&names, 0), None);
+        assert_eq!(duplicate_name_occurrence(&names, 1), Some(0));
+        assert_eq!(duplicate_name_occurrence(&names, 2), Some(1));
+        assert_eq!(
+            native_monitor_identity(names[0].clone(), 0, None).id,
+            "Main"
+        );
+        assert_eq!(native_monitor_identity(None, 3, None).id, "monitor-3");
     }
 }

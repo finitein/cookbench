@@ -370,19 +370,28 @@ fn monitors_for_window(window: &tauri::WebviewWindow) -> Result<Vec<MonitorWorkA
     let primary = window
         .primary_monitor()
         .map_err(|error| error.to_string())?;
-    window
+    let monitors = window
         .available_monitors()
-        .map_err(|error| error.to_string())?
-        .into_iter()
+        .map_err(|error| error.to_string())?;
+    let names = monitors
+        .iter()
+        .map(|monitor| monitor.name().cloned())
+        .collect::<Vec<_>>();
+    monitors
+        .iter()
         .enumerate()
         .map(|(index, monitor)| {
             let name = monitor.name().cloned();
             let work_area = monitor.work_area();
             Ok(MonitorWorkArea {
                 primary: primary.as_ref().is_some_and(|value| {
-                    crate::commands::windows::same_native_monitor(value, &monitor)
+                    crate::commands::windows::same_native_monitor(value, monitor)
                 }),
-                identity: crate::commands::windows::native_monitor_identity(name, index, None),
+                identity: crate::commands::windows::native_monitor_identity(
+                    name,
+                    index,
+                    crate::commands::windows::duplicate_name_occurrence(&names, index),
+                ),
                 x: work_area.position.x,
                 y: work_area.position.y,
                 width: work_area.size.width,

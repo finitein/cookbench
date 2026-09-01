@@ -140,7 +140,7 @@ pub fn top_dock_decision(input: TopDockInput<'_>) -> TopDockDecision {
         return TopDockDecision::BestEffortVisible;
     }
     let Some(monitor) =
-        select_monitor(input.monitors, input.position, input.size, input.prior_dock)
+        select_dock_monitor(input.monitors, input.position, input.size, input.prior_dock)
     else {
         return TopDockDecision::Freeform;
     };
@@ -204,7 +204,7 @@ pub fn resolve_top_dock(
     })
 }
 
-fn select_monitor<'a>(
+pub fn select_dock_monitor<'a>(
     monitors: &'a [DockMonitorWorkArea],
     position: WindowPosition,
     size: WindowSize,
