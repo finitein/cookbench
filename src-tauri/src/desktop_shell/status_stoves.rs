@@ -3,7 +3,10 @@
 //! The desktop snapshot already contains the canonical attention order. This
 //! module only retains visual positions and maps safe native-menu targets.
 
-use std::{collections::HashMap, sync::Mutex};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Mutex,
+};
 
 use crate::app_state::{StoveSnapshot, StoveStateWire, StoveWire};
 use cookbench_core::persistence::AppLocale;
@@ -169,9 +172,11 @@ pub fn all_stove_menu_for_locale(
     snapshot: &StoveSnapshot,
     locale: AppLocale,
 ) -> Vec<StatusMenuStove> {
+    let mut seen = HashSet::new();
     snapshot
         .attention_order
         .iter()
+        .filter(|id| seen.insert((*id).clone()))
         .filter_map(|id| snapshot.stoves.iter().find(|stove| stove.id == *id))
         .map(|stove| StatusMenuStove {
             menu_id: stable_menu_id(&stove.id),
@@ -229,12 +234,13 @@ pub fn hit_test(slots: &[StatusSlot], image_x: f64) -> Option<String> {
 }
 
 fn stable_menu_id(stove_id: &str) -> String {
-    let hash = stove_id
-        .bytes()
-        .fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
-            (hash ^ u64::from(byte)).wrapping_mul(0x0000_0100_0000_01b3)
-        });
-    format!("status-stove-{hash:016x}")
+    let mut id = String::with_capacity("status-stove-".len() + stove_id.len() * 2);
+    id.push_str("status-stove-");
+    for byte in stove_id.bytes() {
+        use std::fmt::Write;
+        let _ = write!(id, "{byte:02x}");
+    }
+    id
 }
 fn safe_status_label(stove: &StoveWire, locale: AppLocale) -> String {
     let mut label = String::new();
@@ -446,6 +452,23 @@ mod tests {
         );
         assert_eq!(menu[0].menu_id, all_stove_menu(&input)[0].menu_id);
         assert_ne!(menu[0].menu_id, menu[1].menu_id);
+    }
+    #[test]
+    fn menu_ids_are_injective_for_long_unicode_ids_and_duplicate_order_entries() {
+        let mut input = snapshot(&["alpha", "alpha-very-long-会话", "alpha"]);
+        input.attention_order.push("alpha".into());
+        let menu = all_stove_menu(&input);
+        assert_eq!(menu.len(), 2);
+        assert_ne!(menu[0].menu_id, menu[1].menu_id);
+        assert!(menu
+            .iter()
+            .all(|item| item.menu_id.starts_with("status-stove-")));
+        let state = StatusStovesState::default();
+        state.commit_menu(1, &menu);
+        assert_eq!(
+            state.menu_target(&menu[1].menu_id),
+            Some(menu[1].stove_id.clone())
+        );
     }
     #[test]
     fn scaled_hit_testing_and_gaps_are_exact() {
