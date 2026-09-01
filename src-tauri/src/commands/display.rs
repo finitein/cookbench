@@ -382,18 +382,7 @@ fn monitors_for_window(window: &tauri::WebviewWindow) -> Result<Vec<MonitorWorkA
                 primary: primary.as_ref().is_some_and(|value| {
                     crate::commands::windows::same_native_monitor(value, &monitor)
                 }),
-                identity: crate::commands::windows::native_monitor_identity(
-                    name,
-                    WindowPosition {
-                        x: work_area.position.x,
-                        y: work_area.position.y,
-                    },
-                    cookbench_core::persistence::WindowSize {
-                        width: work_area.size.width,
-                        height: work_area.size.height,
-                    },
-                    index,
-                ),
+                identity: crate::commands::windows::native_monitor_identity(name, index, None),
                 x: work_area.position.x,
                 y: work_area.position.y,
                 width: work_area.size.width,

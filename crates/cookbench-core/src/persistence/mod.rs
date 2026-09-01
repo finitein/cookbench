@@ -22,7 +22,7 @@ pub use dock::{
     TOP_UNDOCK_THRESHOLD_LOGICAL_PX,
 };
 pub use layout::{
-    DetachedStoveLayout, MonitorIdentity, MonitorWorkArea, RelativePosition,
+    resolve_saved_monitor, DetachedStoveLayout, MonitorIdentity, MonitorWorkArea, RelativePosition,
     RestoredDetachedStoveLayout, WindowPosition, WindowSize,
 };
 pub use state::{

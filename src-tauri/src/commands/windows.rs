@@ -25,19 +25,17 @@ use crate::{
 
 pub(crate) fn native_monitor_identity(
     name: Option<String>,
-    position: WindowPosition,
-    size: WindowSize,
     index: usize,
+    duplicate_occurrence: Option<usize>,
 ) -> MonitorIdentity {
     // Display names are not unique (two identical external panels commonly
-    // report the same name). Include geometry before using the enumeration
-    // index as a final deterministic tie-breaker.
-    let name_key = name.as_deref().unwrap_or("unnamed");
+    // report the same name). Keep v0.3 name IDs where unambiguous; only a
+    // duplicate gets a stable occurrence discriminator.
+    let name_key = name.as_deref().unwrap_or("monitor");
     MonitorIdentity {
-        id: format!(
-            "{name_key}:{}:{}:{}:{}:{index}",
-            position.x, position.y, size.width, size.height
-        ),
+        id: duplicate_occurrence
+            .map(|occurrence| format!("{name_key}#{occurrence}"))
+            .unwrap_or_else(|| name.clone().unwrap_or_else(|| format!("monitor-{index}"))),
         name,
     }
 }
@@ -172,12 +170,6 @@ impl GlobalBarDockRuntime {
         }
         controller.phase = GlobalBarDockPhase::DockedCollapsed;
         true
-    }
-    fn reveal_needed(&self) -> Option<GlobalBarTopDock> {
-        let controller = self.0.lock().expect("global bar dock lock poisoned");
-        (controller.phase == GlobalBarDockPhase::DockedCollapsed)
-            .then(|| controller.dock.clone())
-            .flatten()
     }
     fn commit_revealed(&self) -> bool {
         let mut controller = self.0.lock().expect("global bar dock lock poisoned");
@@ -482,18 +474,7 @@ impl<R: Runtime> MonitorProvider for TauriMonitorProvider<R> {
                     primary: primary
                         .as_ref()
                         .is_some_and(|value| same_native_monitor(value, &monitor)),
-                    identity: native_monitor_identity(
-                        name,
-                        WindowPosition {
-                            x: area.position.x,
-                            y: area.position.y,
-                        },
-                        WindowSize {
-                            width: area.size.width,
-                            height: area.size.height,
-                        },
-                        index,
-                    ),
+                    identity: native_monitor_identity(name, index, None),
                     x: area.position.x,
                     y: area.position.y,
                     width: area.size.width,
@@ -539,18 +520,7 @@ fn dock_monitors<R: Runtime>(
                     primary: primary
                         .as_ref()
                         .is_some_and(|value| same_native_monitor(value, &monitor)),
-                    identity: native_monitor_identity(
-                        name,
-                        WindowPosition {
-                            x: area.position.x,
-                            y: area.position.y,
-                        },
-                        WindowSize {
-                            width: area.size.width,
-                            height: area.size.height,
-                        },
-                        index,
-                    ),
+                    identity: native_monitor_identity(name, index, None),
                     x: area.position.x,
                     y: area.position.y,
                     width: area.size.width,
@@ -660,9 +630,8 @@ pub fn finish_global_bar_drag(
         .get_webview_window("main")
         .ok_or_else(|| "Cookbench global Bar window is unavailable".to_owned())?;
     if !reliable_top_dock_positioning() {
-        if let Some(dock) = prior_dock {
-            move_to_dock_geometry(&window, &dock, false)?;
-        }
+        let _ = prior_dock;
+        window.show().map_err(|error| error.to_string())?;
         emit_dock_state(&app, &runtime);
         return Ok(runtime.state());
     }
@@ -779,7 +748,7 @@ pub fn reveal_global_bar_dock<R: Runtime>(
         .get_webview_window("main")
         .ok_or_else(|| "Cookbench global Bar window is unavailable".to_owned())?;
     window.show().map_err(|error| error.to_string())?;
-    if let Some(dock) = runtime.reveal_needed() {
+    if let Some(dock) = runtime.dock() {
         move_to_dock_geometry(&window, &dock, false)?;
         runtime.commit_revealed();
     }
@@ -1127,24 +1096,8 @@ mod dock_tests {
 
     #[test]
     fn native_monitor_identity_keeps_duplicate_names_distinct() {
-        let first = native_monitor_identity(
-            Some("Panel".into()),
-            WindowPosition { x: 0, y: 0 },
-            WindowSize {
-                width: 1920,
-                height: 1080,
-            },
-            0,
-        );
-        let second = native_monitor_identity(
-            Some("Panel".into()),
-            WindowPosition { x: 1920, y: 0 },
-            WindowSize {
-                width: 1920,
-                height: 1080,
-            },
-            1,
-        );
+        let first = native_monitor_identity(Some("Panel".into()), 0, Some(0));
+        let second = native_monitor_identity(Some("Panel".into()), 1, Some(1));
         assert_ne!(first.id, second.id);
         assert_eq!(first.name, second.name);
     }

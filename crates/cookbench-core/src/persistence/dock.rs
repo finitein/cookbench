@@ -6,7 +6,10 @@
 
 use serde::{Deserialize, Deserializer, Serialize};
 
-use super::{MonitorIdentity, MonitorWorkArea, RelativePosition, WindowPosition, WindowSize};
+use super::{
+    resolve_saved_monitor, MonitorIdentity, MonitorWorkArea, RelativePosition, WindowPosition,
+    WindowSize,
+};
 
 pub const TOP_DOCK_THRESHOLD_LOGICAL_PX: u32 = 12;
 pub const TOP_UNDOCK_THRESHOLD_LOGICAL_PX: u32 = 24;
@@ -171,15 +174,14 @@ pub fn resolve_top_dock(
     size: WindowSize,
     monitors: &[DockMonitorWorkArea],
 ) -> Option<TopDockGeometry> {
+    let work_areas = monitors
+        .iter()
+        .map(|candidate| candidate.work_area.clone())
+        .collect::<Vec<_>>();
+    let selected = resolve_saved_monitor(&dock.monitor, &work_areas)?;
     let monitor = monitors
         .iter()
-        .find(|candidate| candidate.work_area.identity.id == dock.monitor.id)
-        .or_else(|| {
-            monitors
-                .iter()
-                .find(|candidate| candidate.work_area.primary)
-        })
-        .or_else(|| monitors.first())?;
+        .find(|candidate| candidate.work_area.identity.id == selected.identity.id)?;
     let relative = RelativePosition {
         x: dock.relative_x.min(RELATIVE_SCALE),
         y: 0,
@@ -214,9 +216,14 @@ fn select_monitor<'a>(
         .filter(|candidate| intersection_area(position, size, &candidate.work_area) > 0)
         .or_else(|| {
             prior_dock.and_then(|dock| {
+                let work_areas = monitors
+                    .iter()
+                    .map(|candidate| candidate.work_area.clone())
+                    .collect::<Vec<_>>();
+                let selected = resolve_saved_monitor(&dock.monitor, &work_areas)?;
                 monitors
                     .iter()
-                    .find(|candidate| candidate.work_area.identity.id == dock.monitor.id)
+                    .find(|candidate| candidate.work_area.identity.id == selected.identity.id)
             })
         })
         .or_else(|| {
