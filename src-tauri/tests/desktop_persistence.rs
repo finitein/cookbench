@@ -217,7 +217,7 @@ fn legacy_cursor_without_a_completion_fingerprint_fails_open() {
           }],
           "cooked_attention_cursors": [{
             "locator": {"host":{"kind":"Local","id":"test-host"},"harness":"Codex","native_session_id":"legacy"},
-            "source":"Hook","confidence":90,"sequence":0,"timestamp_ms":0,"acknowledged_at_ms":1
+            "source":"StructuredSession","confidence":100,"sequence":0,"timestamp_ms":0,"acknowledged_at_ms":1
           }]
         }"#,
     )
@@ -225,6 +225,11 @@ fn legacy_cursor_without_a_completion_fingerprint_fails_open() {
 
     let state = AppState::default();
     state.initialize_persistence(&directory.0);
+    assert!(DesktopPersistence::in_app_data(&directory.0)
+        .load()
+        .state
+        .cooked_attention_cursors
+        .is_empty());
     state
         .stoves
         .apply(

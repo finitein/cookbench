@@ -337,6 +337,25 @@ impl AppState {
     pub fn initialize_persistence(&self, app_data_directory: &Path) {
         let service = DesktopPersistence::in_app_data(app_data_directory);
         let mut loaded = service.load();
+        let legacy_completion_identities = loaded
+            .state
+            .retained
+            .iter()
+            .filter(|retained| retained.completion_event.is_none())
+            .map(|retained| retained.locator.clone())
+            .collect::<HashSet<_>>();
+        if !legacy_completion_identities.is_empty() {
+            let cursor_count = loaded.state.cooked_attention_cursors.len();
+            loaded
+                .state
+                .cooked_attention_cursors
+                .retain(|cursor| !legacy_completion_identities.contains(&cursor.locator));
+            if loaded.state.cooked_attention_cursors.len() != cursor_count {
+                // v0.3 could not persist completion identity. Never let an
+                // unverifiable retained completion inherit an acknowledgement.
+                let _ = service.save_state(&loaded.state);
+            }
+        }
         let cutoff = current_time_ms().saturating_sub(SESSION_VISIBILITY_MS);
         let pinned_identities = loaded
             .state
