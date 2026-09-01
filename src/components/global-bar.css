@@ -140,7 +140,7 @@
 .stove-burner-wrap--compact .host-badge { top: 5px; right: 3px; }
 .stove-burner-wrap--compact .stove-burner__control { opacity: 0; }
 
-.stove-priority-menu { position: absolute; z-index: 20; top: calc(100% + 5px); left: 0; width: min(300px, calc(100vw - 24px)); max-height: min(360px, calc(100vh - 116px)); overflow-x: hidden; overflow-y: auto; border: 1px solid #c5d0da; border-radius: 6px; background: #fff; box-shadow: 0 10px 25px rgb(65 88 112 / 20%); padding: 5px; }
+.stove-priority-menu { position: absolute; z-index: 20; top: calc(100% + 5px); left: 0; width: min(300px, calc(100vw - 24px)); max-height: 360px; overflow-x: hidden; overflow-y: auto; border: 1px solid #c5d0da; border-radius: 6px; background: #fff; box-shadow: 0 10px 25px rgb(65 88 112 / 20%); padding: 5px; }
 .stove-priority-menu__title { margin: 4px 6px; color: var(--bar-muted); font-size: 10px; font-weight: 700; }
 .stove-priority-menu__item { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; width: 100%; gap: 6px; align-items: center; padding: 6px; border: 0; border-radius: 4px; background: transparent; color: var(--bar-ink); cursor: pointer; font: inherit; text-align: left; }
 .stove-priority-menu__item:hover,.stove-priority-menu__item:focus-visible { background: #eef5f8; outline: 2px solid #316f98; outline-offset: -2px; }

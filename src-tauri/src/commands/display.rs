@@ -150,19 +150,6 @@ pub fn patch_display_settings(
             config.layout.global_bar_position = None;
         }
     })?;
-    apply_global_bar_preferences(
-        &app,
-        state.persisted_config().layout.global_bar_visible,
-        state.persisted_config().layout.global_bar_placement,
-        if placement_changed {
-            None
-        } else {
-            previous.global_bar_position.as_ref()
-        },
-    )?;
-    windows
-        .set_global_bar_visible(state.persisted_config().layout.global_bar_visible)
-        .map_err(|error| error.to_string())?;
     let wire = settings_wire(&state.persisted_config());
     if previous_locale != state.persisted_config().preferences.locale {
         let locale = native_locale.set_preference(state.persisted_config().preferences.locale);
@@ -170,6 +157,24 @@ pub fn patch_display_settings(
     }
     app.emit(DISPLAY_SETTINGS_CHANGED_EVENT, &wire)
         .map_err(|error| error.to_string())?;
+    let window_affected =
+        patch.global_bar_visible.is_some() || patch.global_bar_placement.is_some();
+    if window_affected {
+        let current = state.persisted_config().layout;
+        apply_global_bar_preferences(
+            &app,
+            current.global_bar_visible,
+            current.global_bar_placement,
+            if placement_changed {
+                None
+            } else {
+                current.global_bar_position.as_ref()
+            },
+        )?;
+        windows
+            .set_global_bar_visible(current.global_bar_visible)
+            .map_err(|error| error.to_string())?;
+    }
     Ok(wire)
 }
 

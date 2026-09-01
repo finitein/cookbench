@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { stoveDisplayIdentity, type StoveWire } from "../types/stove";
 import { stoveStateLabel } from "./ProgressRing";
@@ -7,17 +7,20 @@ import { useI18n } from "../i18n/i18n";
 export type StovePriorityMenuProps = {
   stoves: readonly StoveWire[];
   onActivate?: (stove: StoveWire) => void;
-  onClose: () => void;
+  onClose: (restoreFocus: boolean) => void;
 };
 
 /** The full attention list remains reachable while the Bar is intentionally tiny. */
 export function StovePriorityMenu({ stoves, onActivate, onClose }: StovePriorityMenuProps) {
   const { t } = useI18n();
   const menuRef = useRef<HTMLDivElement>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
 
   const moveFocus = (index: number) => {
     const items = [...(menuRef.current?.querySelectorAll<HTMLButtonElement>("[role='menuitem']") ?? [])];
-    items.at((index + items.length) % items.length)?.focus();
+    const next = (index + items.length) % items.length;
+    setActiveIndex(next);
+    items.at(next)?.focus();
   };
 
   useEffect(() => {
@@ -28,7 +31,7 @@ export function StovePriorityMenu({ stoves, onActivate, onClose }: StovePriority
       const index = items.indexOf(document.activeElement as HTMLButtonElement);
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        onClose(true);
       } else if (event.key === "ArrowDown") {
         event.preventDefault();
         moveFocus(index < 0 ? 0 : index + 1);
@@ -42,11 +45,11 @@ export function StovePriorityMenu({ stoves, onActivate, onClose }: StovePriority
         event.preventDefault();
         moveFocus(items.length - 1);
       } else if (event.key === "Tab") {
-        onClose();
+        onClose(false);
       }
     };
     const onPointerDown = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) onClose();
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) onClose(false);
     };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("mousedown", onPointerDown);
@@ -65,9 +68,10 @@ export function StovePriorityMenu({ stoves, onActivate, onClose }: StovePriority
           type="button"
           role="menuitem"
           key={stove.id}
+          tabIndex={index === activeIndex ? 0 : -1}
           onClick={() => {
             onActivate?.(stove);
-            onClose();
+            onClose(true);
           }}
         >
           <span className="stove-priority-menu__rank">{index + 1}</span>
