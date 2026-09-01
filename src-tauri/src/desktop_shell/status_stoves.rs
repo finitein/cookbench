@@ -349,8 +349,8 @@ fn draw_stove(image: &mut StatusImage, offset_x: u32, state: StoveStateWire, har
 fn harness_mark(harness_id: &str, x: u32, y: u32, cx: u32, cy: u32) -> bool {
     match harness_id {
         "codex" => (x == cx && y.abs_diff(cy) <= 2) || (y == cy && x.abs_diff(cx) <= 2),
-        "claude-code" => x.abs_diff(cx) == y.abs_diff(cy) && x.abs_diff(cx) <= 2,
-        "cursor" => (x == cx.saturating_sub(2) || x == cx.saturating_add(2)) && y.abs_diff(cy) <= 2,
+        "claudeCode" => x.abs_diff(cx) == y.abs_diff(cy) && x.abs_diff(cx) <= 2,
+        "pi" => (x == cx.saturating_sub(2) || x == cx.saturating_add(2)) && y.abs_diff(cy) <= 2,
         _ => y == cy && x.abs_diff(cx) <= 2,
     }
 }
@@ -521,7 +521,8 @@ mod tests {
     #[test]
     fn harness_marks_are_distinct() {
         assert!(harness_mark("codex", 11, 9, 11, 11));
-        assert!(!harness_mark("claude-code", 11, 9, 11, 11));
-        assert!(harness_mark("claude-code", 9, 9, 11, 11));
+        assert!(!harness_mark("claudeCode", 11, 9, 11, 11));
+        assert!(harness_mark("claudeCode", 9, 9, 11, 11));
+        assert!(harness_mark("pi", 9, 11, 11, 11));
     }
 }
