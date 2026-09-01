@@ -60,6 +60,52 @@ pub struct DisplaySettingsPatch {
 
 pub const DISPLAY_SETTINGS_CHANGED_EVENT: &str = "cookbench://display-settings-changed";
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct DisplayPatchEffects {
+    apply_window_preferences: bool,
+    set_visibility: bool,
+    placement_changed: bool,
+}
+
+fn apply_display_patch(
+    config: &mut PersistedConfig,
+    patch: DisplaySettingsPatch,
+) -> Result<DisplayPatchEffects, String> {
+    if let Some(count) = patch.mac_status_stove_count {
+        validate_mac_status_stove_count(count)?;
+    }
+    let placement_changed = patch
+        .global_bar_placement
+        .is_some_and(|value| config.layout.global_bar_placement != value);
+    if let Some(value) = patch.global_bar_visible {
+        config.layout.global_bar_visible = value;
+    }
+    if let Some(value) = patch.global_bar_placement {
+        config.layout.global_bar_placement = value;
+    }
+    if let Some(value) = patch.global_bar_mode {
+        config.layout.global_bar_mode = value;
+    }
+    if let Some(value) = patch.mac_status_stove_count {
+        config.layout.mac_status_stove_count = value;
+    }
+    if let Some(value) = patch.hover_details_enabled {
+        config.layout.hover_details_enabled = value;
+    }
+    if let Some(value) = patch.locale {
+        config.preferences.locale = value;
+    }
+    if placement_changed {
+        config.layout.global_bar_position = None;
+    }
+    Ok(DisplayPatchEffects {
+        apply_window_preferences: patch.global_bar_visible.is_some()
+            || patch.global_bar_placement.is_some(),
+        set_visibility: patch.global_bar_visible.is_some(),
+        placement_changed,
+    })
+}
+
 pub fn settings_wire(config: &PersistedConfig) -> DisplaySettingsWire {
     DisplaySettingsWire {
         global_bar_visible: config.layout.global_bar_visible,
@@ -122,6 +168,8 @@ pub fn patch_display_settings(
     }
     let previous = state.persisted_config().layout;
     let previous_locale = state.persisted_config().preferences.locale;
+    let mut candidate = state.persisted_config();
+    let effects = apply_display_patch(&mut candidate, patch)?;
     let placement_changed = patch
         .global_bar_placement
         .is_some_and(|placement| previous.global_bar_placement != placement);
@@ -157,23 +205,23 @@ pub fn patch_display_settings(
     }
     app.emit(DISPLAY_SETTINGS_CHANGED_EVENT, &wire)
         .map_err(|error| error.to_string())?;
-    let window_affected =
-        patch.global_bar_visible.is_some() || patch.global_bar_placement.is_some();
-    if window_affected {
+    if effects.apply_window_preferences {
         let current = state.persisted_config().layout;
         apply_global_bar_preferences(
             &app,
             current.global_bar_visible,
             current.global_bar_placement,
-            if placement_changed {
+            if effects.placement_changed {
                 None
             } else {
                 current.global_bar_position.as_ref()
             },
         )?;
-        windows
-            .set_global_bar_visible(current.global_bar_visible)
-            .map_err(|error| error.to_string())?;
+        if effects.set_visibility {
+            windows
+                .set_global_bar_visible(current.global_bar_visible)
+                .map_err(|error| error.to_string())?;
+        }
     }
     Ok(wire)
 }
@@ -458,5 +506,78 @@ mod tests {
             validate_mac_status_stove_count(9),
             Err("macOS status Stove count must be between 0 and 8".to_owned())
         );
+    }
+
+    #[test]
+    fn partial_patch_preserves_unrelated_preferences_and_skips_window_effects() {
+        let mut config = PersistedConfig::default();
+        let effects = apply_display_patch(
+            &mut config,
+            DisplaySettingsPatch {
+                global_bar_mode: Some(GlobalBarMode::Minimal),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(config.layout.global_bar_mode, GlobalBarMode::Minimal);
+        assert_eq!(config.layout.mac_status_stove_count, 3);
+        assert!(!effects.apply_window_preferences);
+        assert!(!effects.set_visibility);
+        for patch in [
+            DisplaySettingsPatch {
+                mac_status_stove_count: Some(2),
+                ..Default::default()
+            },
+            DisplaySettingsPatch {
+                hover_details_enabled: Some(true),
+                ..Default::default()
+            },
+            DisplaySettingsPatch {
+                locale: Some(AppLocale::En),
+                ..Default::default()
+            },
+        ] {
+            assert!(
+                !apply_display_patch(&mut config, patch)
+                    .unwrap()
+                    .apply_window_preferences
+            );
+        }
+    }
+
+    #[test]
+    fn window_patches_declare_effects_and_invalid_counts_do_not_mutate() {
+        let mut config = PersistedConfig::default();
+        let original = config.clone();
+        assert!(apply_display_patch(
+            &mut config,
+            DisplaySettingsPatch {
+                mac_status_stove_count: Some(9),
+                ..Default::default()
+            }
+        )
+        .is_err());
+        assert_eq!(config, original);
+        assert!(
+            apply_display_patch(
+                &mut config,
+                DisplaySettingsPatch {
+                    global_bar_visible: Some(false),
+                    ..Default::default()
+                }
+            )
+            .unwrap()
+            .set_visibility
+        );
+        let effects = apply_display_patch(
+            &mut config,
+            DisplaySettingsPatch {
+                global_bar_placement: Some(GlobalBarPlacement::BottomLeft),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(effects.apply_window_preferences && effects.placement_changed);
+        assert_eq!(config.layout.global_bar_position, None);
     }
 }
