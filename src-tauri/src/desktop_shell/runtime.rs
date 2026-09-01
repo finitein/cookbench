@@ -45,7 +45,7 @@ pub fn install(app: &App, locale: AppLocale) -> tauri::Result<Option<DesktopShel
 fn build_menu<R: Runtime>(
     app: &AppHandle<R>,
     locale: AppLocale,
-    stoves: &[crate::app_state::StoveWire],
+    stoves: &[super::status_stoves::StatusMenuStove],
 ) -> tauri::Result<Menu<R>> {
     let mut items = status_menu_items(app, stoves)?;
     items.extend(
@@ -70,22 +70,13 @@ pub fn update_menu<R: Runtime>(app: &AppHandle<R>, locale: AppLocale) -> tauri::
 
 fn status_menu_items<R: Runtime>(
     app: &AppHandle<R>,
-    stoves: &[crate::app_state::StoveWire],
+    stoves: &[super::status_stoves::StatusMenuStove],
 ) -> tauri::Result<Vec<MenuItem<R>>> {
     #[cfg(target_os = "macos")]
     {
         stoves
             .iter()
-            .enumerate()
-            .map(|(index, stove)| {
-                MenuItem::with_id(
-                    app,
-                    format!("status-stove-{index}"),
-                    safe_status_label(stove),
-                    false,
-                    None::<&str>,
-                )
-            })
+            .map(|stove| MenuItem::with_id(app, &stove.menu_id, &stove.label, true, None::<&str>))
             .collect()
     }
     #[cfg(not(target_os = "macos"))]
@@ -95,13 +86,17 @@ fn status_menu_items<R: Runtime>(
     }
 }
 
-fn status_menu_stoves<R: Runtime>(app: &AppHandle<R>) -> Vec<crate::app_state::StoveWire> {
+fn status_menu_stoves<R: Runtime>(
+    app: &AppHandle<R>,
+) -> Vec<super::status_stoves::StatusMenuStove> {
     #[cfg(target_os = "macos")]
     {
         let state = app.state::<crate::app_state::AppState>();
         let snapshot = state.snapshot();
-        let count = state.persisted_config().layout.mac_status_stove_count;
-        status_stoves_for(&snapshot, count)
+        super::status_stoves::all_stove_menu_for_locale(
+            &snapshot,
+            state.persisted_config().preferences.locale,
+        )
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -110,43 +105,27 @@ fn status_menu_stoves<R: Runtime>(app: &AppHandle<R>) -> Vec<crate::app_state::S
     }
 }
 
-#[cfg(target_os = "macos")]
-fn status_stoves_for(
-    snapshot: &crate::app_state::StoveSnapshot,
-    requested_count: u8,
-) -> Vec<crate::app_state::StoveWire> {
-    snapshot
-        .attention_order
-        .iter()
-        .filter_map(|id| snapshot.stoves.iter().find(|stove| stove.id == *id))
-        .take(usize::from(requested_count.min(8)))
-        .cloned()
-        .collect()
-}
-
-#[cfg(target_os = "macos")]
-fn safe_status_label(stove: &crate::app_state::StoveWire) -> String {
-    let state = match stove.state {
-        crate::app_state::StoveStateWire::Starting => "Starting",
-        crate::app_state::StoveStateWire::Planning => "Planning",
-        crate::app_state::StoveStateWire::Cooking => "Cooking",
-        crate::app_state::StoveStateWire::NeedsHuman => "Needs Human",
-        crate::app_state::StoveStateWire::Cooked => "Cooked",
-        crate::app_state::StoveStateWire::Failed => "Failed",
-        crate::app_state::StoveStateWire::Disconnected => "Disconnected",
-    };
-    let mut label = stove.project_label.chars().take(64).collect::<String>();
-    if label.is_empty() {
-        label = "Project".into();
-    }
-    format!("{state}: {label}")
-}
-
 /// Updates only the macOS combined status item. Other platforms retain the
 /// static tray icon created by Tauri at startup.
 pub fn refresh_status_stoves<R: Runtime>(app: &AppHandle<R>) {
     let snapshot = app.state::<crate::app_state::AppState>().snapshot();
     refresh_status_stoves_snapshot(app, &snapshot);
+}
+
+/// Enqueues native work after the caller has returned to Tauri's event loop.
+/// AppState invokes this while serializing an observation, so synchronously
+/// calling menu APIs there could deadlock with a simultaneous status click.
+pub fn queue_status_stoves_refresh<R: Runtime>(
+    app: &AppHandle<R>,
+    snapshot: crate::app_state::StoveSnapshot,
+) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let callback_app = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            refresh_status_stoves_snapshot(&callback_app, &snapshot);
+        });
+    });
 }
 
 /// Refreshes from the caller's immutable snapshot so AppState can publish
@@ -162,32 +141,35 @@ pub fn refresh_status_stoves_snapshot<R: Runtime>(
         };
         let state = app.state::<crate::app_state::AppState>();
         let count = state.persisted_config().layout.mac_status_stove_count;
-        let rendered = super::status_stoves::presentation(snapshot, count);
-        let slots = rendered
-            .as_ref()
-            .map(|presentation| presentation.slots.clone());
+        let status = app.state::<super::status_stoves::StatusStovesState>();
+        if !status.accepts_revision(snapshot.revision) {
+            return;
+        }
+        let rendered = status.presentation(snapshot, count);
+        let locale = state.persisted_config().preferences.locale;
+        let menu_stoves = super::status_stoves::all_stove_menu_for_locale(snapshot, locale);
         let icon_result = match rendered {
-            Some(presentation) => tray.set_icon(Some(tauri::image::Image::new_owned(
-                presentation.image.rgba,
+            Some(ref presentation) => tray.set_icon(Some(tauri::image::Image::new_owned(
+                presentation.image.rgba.clone(),
                 presentation.image.width,
                 presentation.image.height,
             ))),
             None => tray.set_icon(app.default_window_icon().cloned()),
         };
-        let status = app.state::<super::status_stoves::StatusStovesState>();
         if icon_result.is_ok() {
-            status.replace_slots(slots.unwrap_or_default());
+            status.commit_presentation(snapshot.revision, rendered.as_ref());
         } else {
             let _ = tray.set_icon(app.default_window_icon().cloned());
-            status.clear();
+            status.commit_presentation(snapshot.revision, None);
         }
-        let _ = tray.set_visible(count != 0);
-        if let Ok(menu) = build_menu(
-            app,
-            state.persisted_config().preferences.locale,
-            &status_stoves_for(snapshot, count),
-        ) {
-            let _ = tray.set_menu(Some(menu));
+        let _ = tray.set_visible(true);
+        let _ = tray.set_tooltip(Some(super::status_stoves::accessibility_label_for_locale(
+            snapshot, count, locale,
+        )));
+        if let Ok(menu) = build_menu(app, locale, &menu_stoves) {
+            if tray.set_menu(Some(menu)).is_ok() {
+                status.commit_menu(snapshot.revision, &menu_stoves);
+            }
         }
     }
     #[cfg(not(target_os = "macos"))]
@@ -206,10 +188,11 @@ fn handle_tray_icon_event(app: &AppHandle, event: TrayIconEvent) {
         ..
     } = event
     {
-        let image_x = crate::platform::status_item_image_x(position, rect.position);
+        let local_x = crate::platform::status_item_image_x(position, rect.position);
+        let item_width = f64::from(rect.size.to_physical::<i32>(1.0).width);
         let stove_id = app
             .state::<super::status_stoves::StatusStovesState>()
-            .stove_at(image_x);
+            .stove_at_status_x(local_x, item_width);
         if let Some(stove_id) = stove_id {
             activate_status_stove(app.clone(), stove_id);
         }
@@ -240,6 +223,14 @@ fn activate_status_stove(app: AppHandle, stove_id: String) {
 }
 
 fn dispatch_tray_action(app: &AppHandle, id: &str) {
+    #[cfg(target_os = "macos")]
+    if let Some(stove_id) = app
+        .state::<super::status_stoves::StatusStovesState>()
+        .menu_target(id)
+    {
+        activate_status_stove(app.clone(), stove_id);
+        return;
+    }
     match tray_action(id) {
         Some(TrayAction::ShowBar) => {
             let _ = show_bar(app);

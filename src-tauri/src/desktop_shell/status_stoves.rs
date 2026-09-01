@@ -1,11 +1,12 @@
-//! macOS status-item Stove presentation.
+//! Bounded macOS status-item Stove presentation.
 //!
-//! This module deliberately receives the already ordered desktop snapshot. It
-//! never reads Harness files or derives another priority order.
+//! The desktop snapshot already contains the canonical attention order. This
+//! module only retains visual positions and maps safe native-menu targets.
 
-use std::sync::Mutex;
+use std::{collections::HashMap, sync::Mutex};
 
 use crate::app_state::{StoveSnapshot, StoveStateWire, StoveWire};
+use cookbench_core::persistence::AppLocale;
 
 pub const STATUS_HEIGHT: u32 = 22;
 const SLOT_WIDTH: u32 = 22;
@@ -15,134 +16,278 @@ const HORIZONTAL_PADDING: u32 = 2;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StatusSlot {
     pub stove_id: String,
-    /// Inclusive image-space left edge.
     pub start_x: u32,
-    /// Exclusive image-space right edge.
     pub end_x: u32,
 }
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StatusImage {
     pub rgba: Vec<u8>,
     pub width: u32,
     pub height: u32,
 }
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StatusPresentation {
     pub image: StatusImage,
     pub slots: Vec<StatusSlot>,
 }
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StatusMenuStove {
+    pub menu_id: String,
+    pub stove_id: String,
+    pub label: String,
+}
 
-/// Immutable slots are replaced only after their paired native image update
-/// succeeds. This keeps status-item hit testing tied to exactly one rendering.
+#[derive(Default)]
+struct RenderState {
+    revision: u64,
+    slots: Vec<StatusSlot>,
+    image_width: u32,
+    menu_targets: HashMap<String, String>,
+}
+
+/// Updates are committed only after the native icon/menu operation succeeds.
+/// Clicks therefore use one immutable image/slot or menu/target pairing.
 #[derive(Default)]
 pub struct StatusStovesState {
-    slots: Mutex<Vec<StatusSlot>>,
+    inner: Mutex<RenderState>,
 }
 
 impl StatusStovesState {
-    pub fn replace_slots(&self, slots: Vec<StatusSlot>) {
-        *self.slots.lock().expect("status Stove slots lock poisoned") = slots;
+    pub fn accepts_revision(&self, revision: u64) -> bool {
+        revision
+            >= self
+                .inner
+                .lock()
+                .expect("status Stove state lock poisoned")
+                .revision
     }
 
-    pub fn clear(&self) {
-        self.replace_slots(Vec::new());
+    pub fn presentation(&self, snapshot: &StoveSnapshot, count: u8) -> Option<StatusPresentation> {
+        let inner = self.inner.lock().expect("status Stove state lock poisoned");
+        presentation(snapshot, count, &inner.slots)
     }
-
-    pub fn stove_at(&self, image_x: f64) -> Option<String> {
+    pub fn commit_presentation(&self, revision: u64, presentation: Option<&StatusPresentation>) {
+        let mut inner = self.inner.lock().expect("status Stove state lock poisoned");
+        inner.revision = inner.revision.max(revision);
+        if let Some(presentation) = presentation {
+            inner.slots = presentation.slots.clone();
+            inner.image_width = presentation.image.width;
+        } else {
+            inner.slots.clear();
+            inner.image_width = 0;
+        }
+    }
+    pub fn commit_menu(&self, revision: u64, menu: &[StatusMenuStove]) {
+        let mut inner = self.inner.lock().expect("status Stove state lock poisoned");
+        inner.revision = inner.revision.max(revision);
+        inner.menu_targets = menu
+            .iter()
+            .map(|item| (item.menu_id.clone(), item.stove_id.clone()))
+            .collect();
+    }
+    pub fn stove_at_status_x(&self, local_x: f64, item_width: f64) -> Option<String> {
+        let inner = self.inner.lock().expect("status Stove state lock poisoned");
         hit_test(
-            &self.slots.lock().expect("status Stove slots lock poisoned"),
-            image_x,
+            &inner.slots,
+            normalize_status_x(local_x, item_width, inner.image_width)?,
         )
+    }
+    pub fn menu_target(&self, menu_id: &str) -> Option<String> {
+        self.inner
+            .lock()
+            .expect("status Stove state lock poisoned")
+            .menu_targets
+            .get(menu_id)
+            .cloned()
     }
 }
 
-pub fn presentation(snapshot: &StoveSnapshot, requested_count: u8) -> Option<StatusPresentation> {
-    let count = usize::from(requested_count.min(8));
-    if count == 0 {
+pub fn presentation(
+    snapshot: &StoveSnapshot,
+    count: u8,
+    previous: &[StatusSlot],
+) -> Option<StatusPresentation> {
+    let ids = selected_stove_ids(snapshot, count, previous);
+    if ids.is_empty() {
         return None;
     }
-    let selected = snapshot
+    let stoves = ids
+        .iter()
+        .filter_map(|id| snapshot.stoves.iter().find(|stove| stove.id == *id))
+        .collect::<Vec<_>>();
+    Some(render(&stoves))
+}
+
+/// The selected set is always the canonical top N. Retained IDs keep their
+/// old slot index; newly qualifying IDs replace vacant lower-priority slots.
+pub fn selected_stove_ids(
+    snapshot: &StoveSnapshot,
+    count: u8,
+    previous: &[StatusSlot],
+) -> Vec<String> {
+    let count = usize::from(count.min(8));
+    let canonical = snapshot
+        .attention_order
+        .iter()
+        .filter(|id| snapshot.stoves.iter().any(|stove| stove.id == ***id))
+        .take(count)
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut positions = vec![None; canonical.len()];
+    for (index, slot) in previous.iter().take(positions.len()).enumerate() {
+        if canonical.contains(&slot.stove_id) {
+            positions[index] = Some(slot.stove_id.clone());
+        }
+    }
+    let assigned = positions.iter().flatten().cloned().collect::<Vec<_>>();
+    let mut new_ids = canonical.into_iter().filter(|id| !assigned.contains(id));
+    for position in &mut positions {
+        if position.is_none() {
+            *position = new_ids.next();
+        }
+    }
+    positions.into_iter().flatten().collect()
+}
+
+pub fn all_stove_menu(snapshot: &StoveSnapshot) -> Vec<StatusMenuStove> {
+    all_stove_menu_for_locale(snapshot, AppLocale::En)
+}
+
+pub fn all_stove_menu_for_locale(
+    snapshot: &StoveSnapshot,
+    locale: AppLocale,
+) -> Vec<StatusMenuStove> {
+    snapshot
         .attention_order
         .iter()
         .filter_map(|id| snapshot.stoves.iter().find(|stove| stove.id == *id))
-        .take(count)
-        .collect::<Vec<_>>();
-    if selected.is_empty() {
-        return None;
-    }
-    Some(render(&selected))
+        .map(|stove| StatusMenuStove {
+            menu_id: stable_menu_id(&stove.id),
+            stove_id: stove.id.clone(),
+            label: safe_status_label(stove, locale),
+        })
+        .collect()
 }
 
-pub fn hit_test(slots: &[StatusSlot], image_x: f64) -> Option<String> {
-    if !image_x.is_finite() || image_x < 0.0 {
+pub fn accessibility_label(snapshot: &StoveSnapshot, count: u8) -> String {
+    accessibility_label_for_locale(snapshot, count, AppLocale::En)
+}
+
+pub fn accessibility_label_for_locale(
+    snapshot: &StoveSnapshot,
+    count: u8,
+    locale: AppLocale,
+) -> String {
+    let states = selected_stove_ids(snapshot, count, &[])
+        .iter()
+        .filter_map(|id| snapshot.stoves.iter().find(|stove| stove.id == *id))
+        .map(|stove| state_label(stove.state, locale))
+        .collect::<Vec<_>>();
+    if states.is_empty() {
+        "Cookbench".into()
+    } else {
+        format!("Cookbench: {} Stoves, {}", states.len(), states.join(", "))
+    }
+}
+
+/// Maps an actual status-item physical width to source-image pixels. This is
+/// what keeps hit testing correct when AppKit rescales an RGBA image on Retina.
+pub fn normalize_status_x(local_x: f64, item_width: f64, image_width: u32) -> Option<f64> {
+    if !local_x.is_finite() || !item_width.is_finite() || local_x < 0.0 || item_width <= 0.0 {
         return None;
     }
+    let image_x = local_x * f64::from(image_width) / item_width;
+    (image_x < f64::from(image_width)).then_some(image_x)
+}
+pub fn hit_test(slots: &[StatusSlot], image_x: f64) -> Option<String> {
     slots
         .iter()
         .find(|slot| image_x >= f64::from(slot.start_x) && image_x < f64::from(slot.end_x))
         .map(|slot| slot.stove_id.clone())
 }
 
+fn stable_menu_id(stove_id: &str) -> String {
+    let hash = stove_id
+        .bytes()
+        .fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+            (hash ^ u64::from(byte)).wrapping_mul(0x0000_0100_0000_01b3)
+        });
+    format!("status-stove-{hash:016x}")
+}
+fn safe_status_label(stove: &StoveWire, locale: AppLocale) -> String {
+    let label = stove
+        .project_label
+        .chars()
+        .filter(|character| !character.is_control())
+        .take(64)
+        .collect::<String>();
+    let label = if label.is_empty() {
+        "Project".into()
+    } else {
+        label
+    };
+    format!("{}: {label}", state_label(stove.state, locale))
+}
+fn state_label(state: StoveStateWire, locale: AppLocale) -> &'static str {
+    match (locale, state) {
+        (AppLocale::ZhCn, StoveStateWire::Starting) => "启动中",
+        (AppLocale::ZhCn, StoveStateWire::Planning) => "规划中",
+        (AppLocale::ZhCn, StoveStateWire::Cooking) => "运行中",
+        (AppLocale::ZhCn, StoveStateWire::NeedsHuman) => "需要协助",
+        (AppLocale::ZhCn, StoveStateWire::Cooked) => "已完成",
+        (AppLocale::ZhCn, StoveStateWire::Failed) => "失败",
+        (AppLocale::ZhCn, StoveStateWire::Disconnected) => "已断开",
+        (AppLocale::Ja, StoveStateWire::Starting) => "開始中",
+        (AppLocale::Ja, StoveStateWire::Planning) => "計画中",
+        (AppLocale::Ja, StoveStateWire::Cooking) => "実行中",
+        (AppLocale::Ja, StoveStateWire::NeedsHuman) => "対応待ち",
+        (AppLocale::Ja, StoveStateWire::Cooked) => "完了",
+        (AppLocale::Ja, StoveStateWire::Failed) => "失敗",
+        (AppLocale::Ja, StoveStateWire::Disconnected) => "切断",
+        (AppLocale::Ko, StoveStateWire::Starting) => "시작 중",
+        (AppLocale::Ko, StoveStateWire::Planning) => "계획 중",
+        (AppLocale::Ko, StoveStateWire::Cooking) => "진행 중",
+        (AppLocale::Ko, StoveStateWire::NeedsHuman) => "지원 필요",
+        (AppLocale::Ko, StoveStateWire::Cooked) => "완료",
+        (AppLocale::Ko, StoveStateWire::Failed) => "실패",
+        (AppLocale::Ko, StoveStateWire::Disconnected) => "연결 끊김",
+        (_, state) => match state {
+            StoveStateWire::Starting => "Starting",
+            StoveStateWire::Planning => "Planning",
+            StoveStateWire::Cooking => "Cooking",
+            StoveStateWire::NeedsHuman => "Needs Human",
+            StoveStateWire::Cooked => "Cooked",
+            StoveStateWire::Failed => "Failed",
+            StoveStateWire::Disconnected => "Disconnected",
+        },
+    }
+}
+
 fn render(stoves: &[&StoveWire]) -> StatusPresentation {
-    let count = u32::try_from(stoves.len()).expect("status Stove count is bounded");
+    let count = stoves.len() as u32;
     let width = HORIZONTAL_PADDING * 2 + count * SLOT_WIDTH + (count - 1) * SLOT_GAP;
     let mut image = StatusImage {
-        rgba: vec![0; usize::try_from(width * STATUS_HEIGHT * 4).expect("bounded image size")],
+        rgba: vec![0; (width * STATUS_HEIGHT * 4) as usize],
         width,
         height: STATUS_HEIGHT,
     };
-    let mut slots = Vec::with_capacity(stoves.len());
-    for (index, stove) in stoves.iter().enumerate() {
-        let index = u32::try_from(index).expect("bounded status Stove index");
-        let start_x = HORIZONTAL_PADDING + index * (SLOT_WIDTH + SLOT_GAP);
-        draw_stove(&mut image, start_x, stove.state);
-        slots.push(StatusSlot {
-            stove_id: stove.id.clone(),
-            start_x,
-            end_x: start_x + SLOT_WIDTH,
-        });
-    }
+    let slots = stoves
+        .iter()
+        .enumerate()
+        .map(|(index, stove)| {
+            let start_x = HORIZONTAL_PADDING + index as u32 * (SLOT_WIDTH + SLOT_GAP);
+            draw_stove(&mut image, start_x, stove.state);
+            StatusSlot {
+                stove_id: stove.id.clone(),
+                start_x,
+                end_x: start_x + SLOT_WIDTH,
+            }
+        })
+        .collect();
     StatusPresentation { image, slots }
 }
-
 fn draw_stove(image: &mut StatusImage, offset_x: u32, state: StoveStateWire) {
-    let color = state_color(state);
-    let center_x = offset_x + SLOT_WIDTH / 2;
-    let center_y = STATUS_HEIGHT / 2;
-    let outer_radius = 8_i32;
-    let inner_radius = 5_i32;
-    for y in 0..STATUS_HEIGHT {
-        for x in offset_x..offset_x + SLOT_WIDTH {
-            let dx =
-                i32::try_from(x).expect("bounded x") - i32::try_from(center_x).expect("bounded x");
-            let dy =
-                i32::try_from(y).expect("bounded y") - i32::try_from(center_y).expect("bounded y");
-            let distance_squared = dx * dx + dy * dy;
-            if distance_squared <= outer_radius * outer_radius
-                && distance_squared >= inner_radius * inner_radius
-            {
-                put_pixel(image, x, y, color);
-            }
-        }
-    }
-    // A compact centered mark makes the ring identifiable at menu-bar scale.
-    for y in center_y.saturating_sub(2)..=center_y + 2 {
-        put_pixel(image, center_x, y, color);
-    }
-    for x in center_x.saturating_sub(2)..=center_x + 2 {
-        put_pixel(image, x, center_y, color);
-    }
-}
-
-fn put_pixel(image: &mut StatusImage, x: u32, y: u32, color: [u8; 4]) {
-    let index = usize::try_from((y * image.width + x) * 4).expect("bounded image index");
-    image.rgba[index..index + 4].copy_from_slice(&color);
-}
-
-fn state_color(state: StoveStateWire) -> [u8; 4] {
-    match state {
+    let color = match state {
         StoveStateWire::NeedsHuman => [194, 72, 69, 255],
         StoveStateWire::Failed => [166, 54, 62, 255],
         StoveStateWire::Disconnected => [96, 112, 128, 255],
@@ -150,15 +295,30 @@ fn state_color(state: StoveStateWire) -> [u8; 4] {
         StoveStateWire::Starting | StoveStateWire::Planning | StoveStateWire::Cooking => {
             [46, 116, 174, 255]
         }
+    };
+    let cx = offset_x + SLOT_WIDTH / 2;
+    let cy = STATUS_HEIGHT / 2;
+    for y in 0..STATUS_HEIGHT {
+        for x in offset_x..offset_x + SLOT_WIDTH {
+            let dx = x as i32 - cx as i32;
+            let dy = y as i32 - cy as i32;
+            let d = dx * dx + dy * dy;
+            if (25..=64).contains(&d)
+                || (x == cx && y.abs_diff(cy) <= 2)
+                || (y == cy && x.abs_diff(cx) <= 2)
+            {
+                let index = ((y * image.width + x) * 4) as usize;
+                image.rgba[index..index + 4].copy_from_slice(&color);
+            }
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app_state::{HarnessWire, HostKindWire, HostWire};
-
-    fn stove(id: &str, state: StoveStateWire) -> StoveWire {
+    use crate::app_state::{HarnessWire, HostKindWire, HostWire, LocatorCapability};
+    fn stove(id: &str) -> StoveWire {
         StoveWire {
             id: id.into(),
             harness: HarnessWire {
@@ -170,48 +330,39 @@ mod tests {
                 id: "local".into(),
             },
             project_root: "Project".into(),
-            project_label: "Project".into(),
+            project_label: id.into(),
             project_root_display: "Project".into(),
             task_title: None,
             current_action: None,
             next_action: None,
             elapsed_ms: None,
-            state,
+            state: StoveStateWire::Cooking,
             progress: None,
-            locator_capability: crate::app_state::LocatorCapability::Available,
+            locator_capability: LocatorCapability::Available,
             retained_completion: false,
             pinned: false,
         }
     }
-
-    fn snapshot(count: usize) -> StoveSnapshot {
-        let stoves = (0..count)
-            .map(|index| stove(&format!("stove-{index}"), StoveStateWire::Cooking))
-            .collect::<Vec<_>>();
+    fn snapshot(ids: &[&str]) -> StoveSnapshot {
         StoveSnapshot {
             revision: 1,
-            attention_order: stoves.iter().map(|stove| stove.id.clone()).collect(),
-            stoves,
+            attention_order: ids.iter().map(|id| (*id).into()).collect(),
+            stoves: ids.iter().map(|id| stove(id)).collect(),
         }
     }
-
     #[test]
-    fn requested_zero_or_an_empty_snapshot_uses_the_static_icon_fallback() {
-        assert!(presentation(&snapshot(1), 0).is_none());
-        assert!(presentation(&snapshot(0), 3).is_none());
+    fn empty_or_zero_slots_restore_static_mark() {
+        assert!(presentation(&snapshot(&["a"]), 0, &[]).is_none());
+        assert!(presentation(&snapshot(&[]), 3, &[]).is_none());
     }
-
     #[test]
-    fn rasterizer_is_nonblank_and_bounded_for_one_three_and_eight_slots() {
+    fn render_is_nonblank_for_one_three_and_eight() {
         for count in [1, 3, 8] {
-            let rendered = presentation(&snapshot(count), 8).expect("stoves render");
-            assert_eq!(rendered.slots.len(), count);
-            assert_eq!(rendered.image.height, STATUS_HEIGHT);
-            assert_eq!(
-                rendered.image.rgba.len(),
-                (rendered.image.width * STATUS_HEIGHT * 4) as usize
-            );
-            assert!(rendered
+            let ids = (0..count).map(|i| format!("s{i}")).collect::<Vec<_>>();
+            let refs = ids.iter().map(String::as_str).collect::<Vec<_>>();
+            let p = presentation(&snapshot(&refs), 8, &[]).unwrap();
+            assert_eq!(p.slots.len(), count);
+            assert!(p
                 .image
                 .rgba
                 .as_chunks::<4>()
@@ -220,50 +371,82 @@ mod tests {
                 .any(|pixel| pixel[3] != 0));
         }
     }
-
     #[test]
-    fn slots_follow_canonical_attention_order_without_reranking() {
-        let mut input = snapshot(3);
-        input.attention_order = vec!["stove-2".into(), "stove-0".into(), "stove-1".into()];
-        let rendered = presentation(&input, 3).expect("stoves render");
+    fn stable_slots_replace_only_lowest_removed_selection() {
+        let old = presentation(&snapshot(&["a", "b", "c"]), 3, &[]).unwrap();
         assert_eq!(
-            rendered
-                .slots
-                .iter()
-                .map(|slot| slot.stove_id.as_str())
+            selected_stove_ids(&snapshot(&["d", "a", "b", "c"]), 3, &old.slots),
+            ["a", "b", "d"]
+        );
+        assert_eq!(
+            selected_stove_ids(&snapshot(&["a", "c", "d"]), 3, &old.slots),
+            ["a", "d", "c"]
+        );
+    }
+    #[test]
+    fn all_stove_menu_is_canonical_and_stable() {
+        let input = snapshot(&["c", "a", "b"]);
+        let menu = all_stove_menu(&input);
+        assert_eq!(
+            menu.iter()
+                .map(|item| item.stove_id.as_str())
                 .collect::<Vec<_>>(),
-            ["stove-2", "stove-0", "stove-1"]
+            ["c", "a", "b"]
         );
+        assert_eq!(menu[0].menu_id, all_stove_menu(&input)[0].menu_id);
+        assert_ne!(menu[0].menu_id, menu[1].menu_id);
     }
-
     #[test]
-    fn hit_testing_refuses_gaps_and_uses_exact_slot_boundaries() {
-        let rendered = presentation(&snapshot(3), 3).expect("stoves render");
-        let first = &rendered.slots[0];
-        let second = &rendered.slots[1];
+    fn scaled_hit_testing_and_gaps_are_exact() {
+        let p = presentation(&snapshot(&["a", "b"]), 2, &[]).unwrap();
+        let first = &p.slots[0];
         assert_eq!(
-            hit_test(&rendered.slots, f64::from(first.start_x)),
-            Some("stove-0".into())
+            hit_test(
+                &p.slots,
+                normalize_status_x(
+                    f64::from(first.start_x),
+                    f64::from(p.image.width),
+                    p.image.width
+                )
+                .unwrap()
+            ),
+            Some("a".into())
         );
         assert_eq!(
-            hit_test(&rendered.slots, f64::from(first.end_x) - 0.01),
-            Some("stove-0".into())
+            hit_test(
+                &p.slots,
+                normalize_status_x(
+                    f64::from(first.end_x) * 2.0,
+                    f64::from(p.image.width) * 2.0,
+                    p.image.width
+                )
+                .unwrap()
+            ),
+            None
         );
-        assert_eq!(hit_test(&rendered.slots, f64::from(first.end_x)), None);
-        assert_eq!(
-            hit_test(&rendered.slots, f64::from(second.start_x)),
-            Some("stove-1".into())
-        );
-        assert_eq!(hit_test(&rendered.slots, -1.0), None);
+        assert_eq!(normalize_status_x(50.0, 100.0, 50), Some(25.0));
     }
-
     #[test]
-    fn clearing_the_atomic_slot_snapshot_refuses_stale_clicks() {
+    fn stale_slots_and_menu_targets_do_nothing() {
         let state = StatusStovesState::default();
-        let rendered = presentation(&snapshot(1), 1).expect("stove renders");
-        state.replace_slots(rendered.slots);
-        assert_eq!(state.stove_at(3.0), Some("stove-0".into()));
-        state.clear();
-        assert_eq!(state.stove_at(3.0), None);
+        let p = presentation(&snapshot(&["a"]), 1, &[]).unwrap();
+        state.commit_presentation(1, Some(&p));
+        state.commit_menu(1, &all_stove_menu(&snapshot(&["a"])));
+        assert_eq!(
+            state.stove_at_status_x(3.0, f64::from(p.image.width)),
+            Some("a".into())
+        );
+        state.commit_presentation(2, None);
+        state.commit_menu(2, &[]);
+        assert!(state.stove_at_status_x(3.0, 22.0).is_none());
+        assert!(state.menu_target("missing").is_none());
+    }
+    #[test]
+    fn accessibility_label_uses_only_safe_state_metadata() {
+        assert_eq!(accessibility_label(&snapshot(&[]), 3), "Cookbench");
+        assert_eq!(
+            accessibility_label(&snapshot(&["a", "b"]), 1),
+            "Cookbench: 1 Stoves, Cooking"
+        );
     }
 }

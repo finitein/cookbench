@@ -85,7 +85,7 @@ pub fn publish_presentation_snapshot<R: tauri::Runtime>(
     snapshot: &StoveSnapshot,
 ) {
     publish_optional_gnome_snapshot(snapshot);
-    crate::desktop_shell::runtime::refresh_status_stoves_snapshot(app, snapshot);
+    crate::desktop_shell::runtime::queue_status_stoves_refresh(app, snapshot.clone());
 }
 
 pub fn publish_optional_gnome_snapshot(snapshot: &StoveSnapshot) {
