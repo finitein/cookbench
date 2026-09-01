@@ -583,4 +583,62 @@ mod tests {
         assert!(effects.apply_window_preferences && effects.placement_changed);
         assert_eq!(config.layout.global_bar_position, None);
     }
+
+    #[test]
+    fn explicit_same_placement_clears_saved_freeform_and_dock_overrides() {
+        let mut config = PersistedConfig::default();
+        config.layout.global_bar_placement = GlobalBarPlacement::TopCenter;
+        config.layout.global_bar_position = Some(GlobalBarPosition {
+            monitor: MonitorIdentity {
+                id: "primary".into(),
+                name: Some("Primary".into()),
+            },
+            relative_position: RelativePosition { x: 5_000, y: 0 },
+        });
+        config.layout.global_bar_top_dock = Some(cookbench_core::persistence::GlobalBarTopDock {
+            monitor: MonitorIdentity {
+                id: "primary".into(),
+                name: Some("Primary".into()),
+            },
+            relative_x: 5_000,
+        });
+
+        let effects = apply_display_patch(
+            &mut config,
+            DisplaySettingsPatch {
+                global_bar_placement: Some(GlobalBarPlacement::TopCenter),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(effects.apply_window_preferences);
+        assert!(effects.placement_changed);
+        assert_eq!(config.layout.global_bar_position, None);
+        assert_eq!(config.layout.global_bar_top_dock, None);
+
+        config.layout.global_bar_position = Some(GlobalBarPosition {
+            monitor: MonitorIdentity {
+                id: "primary".into(),
+                name: Some("Primary".into()),
+            },
+            relative_position: RelativePosition { x: 5_000, y: 0 },
+        });
+        config.layout.global_bar_top_dock = Some(cookbench_core::persistence::GlobalBarTopDock {
+            monitor: MonitorIdentity {
+                id: "primary".into(),
+                name: Some("Primary".into()),
+            },
+            relative_x: 5_000,
+        });
+        apply_display_patch(
+            &mut config,
+            DisplaySettingsPatch {
+                global_bar_mode: Some(GlobalBarMode::Minimal),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(config.layout.global_bar_position.is_some());
+        assert!(config.layout.global_bar_top_dock.is_some());
+    }
 }

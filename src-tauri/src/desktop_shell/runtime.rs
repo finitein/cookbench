@@ -91,24 +91,51 @@ pub fn hide_bar<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         .hide()
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ToggleBarAction {
+    Hide,
+    ShowReveal,
+    Reveal,
+}
+
+pub(crate) fn toggle_bar_action(visible: bool, collapsed: bool) -> ToggleBarAction {
+    match (visible, collapsed) {
+        (false, _) => ToggleBarAction::ShowReveal,
+        (true, true) => ToggleBarAction::Reveal,
+        (true, false) => ToggleBarAction::Hide,
+    }
+}
+
 pub fn toggle_bar<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let window = app
         .get_webview_window("main")
         .ok_or(tauri::Error::WindowNotFound)?;
-    if window.is_visible()? {
-        if app
-            .try_state::<crate::commands::windows::GlobalBarDockRuntime>()
-            .is_some_and(|runtime| runtime.state().collapsed)
-        {
-            return show_bar(app);
+    let collapsed = app
+        .try_state::<crate::commands::windows::GlobalBarDockRuntime>()
+        .is_some_and(|runtime| runtime.state().collapsed);
+    match toggle_bar_action(window.is_visible()?, collapsed) {
+        ToggleBarAction::Hide => window.hide(),
+        ToggleBarAction::ShowReveal | ToggleBarAction::Reveal => {
+            window.show()?;
+            if let Some(runtime) = app.try_state::<crate::commands::windows::GlobalBarDockRuntime>()
+            {
+                crate::commands::windows::reveal_global_bar_dock(app, runtime.inner())
+                    .map_err(|error| tauri::Error::Anyhow(std::io::Error::other(error).into()))?;
+            }
+            window.set_focus()
         }
-        window.hide()
-    } else {
-        window.show()?;
-        if let Some(runtime) = app.try_state::<crate::commands::windows::GlobalBarDockRuntime>() {
-            crate::commands::windows::reveal_global_bar_dock(app, runtime.inner())
-                .map_err(|error| tauri::Error::Anyhow(std::io::Error::other(error).into()))?;
-        }
-        window.set_focus()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn toggle_action_reveals_hidden_or_collapsed_bar_and_hides_only_expanded_bar() {
+        assert_eq!(toggle_bar_action(false, false), ToggleBarAction::ShowReveal);
+        assert_eq!(toggle_bar_action(false, true), ToggleBarAction::ShowReveal);
+        assert_eq!(toggle_bar_action(true, true), ToggleBarAction::Reveal);
+        assert_eq!(toggle_bar_action(true, false), ToggleBarAction::Hide);
     }
 }

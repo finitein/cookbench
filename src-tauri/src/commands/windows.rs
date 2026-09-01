@@ -96,6 +96,20 @@ struct GlobalBarDockController {
     next_drag_token: u64,
     active_drag: Option<u64>,
     guards: GlobalBarDockGuards,
+    generation: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct DockGeometryCandidate {
+    generation: u64,
+    dock: GlobalBarTopDock,
+    collapsed: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum CollapseCompensation {
+    Expand(GlobalBarTopDock),
+    KeepVisible,
 }
 
 #[derive(Default)]
@@ -131,6 +145,7 @@ impl GlobalBarDockRuntime {
         if controller.dock.is_some() {
             controller.phase = GlobalBarDockPhase::DockedExpanded;
         }
+        controller.generation = controller.generation.wrapping_add(1);
         controller.next_drag_token = controller.next_drag_token.wrapping_add(1).max(1);
         controller.active_drag = Some(controller.next_drag_token);
         controller.next_drag_token
@@ -139,6 +154,7 @@ impl GlobalBarDockRuntime {
         let mut controller = self.0.lock().expect("global bar dock lock poisoned");
         if controller.active_drag == Some(token) {
             controller.active_drag = None;
+            controller.generation = controller.generation.wrapping_add(1);
         }
     }
     fn consume_drag(&self, token: u64) -> Option<Option<GlobalBarTopDock>> {
@@ -147,12 +163,14 @@ impl GlobalBarDockRuntime {
             return None;
         }
         controller.active_drag = None;
+        controller.generation = controller.generation.wrapping_add(1);
         Some(controller.dock.clone())
     }
     pub(crate) fn commit_dock(&self, dock: Option<GlobalBarTopDock>) {
         let mut controller = self.0.lock().expect("global bar dock lock poisoned");
         controller.dock = dock;
         controller.active_drag = None;
+        controller.generation = controller.generation.wrapping_add(1);
         controller.phase = if controller.dock.is_some() {
             GlobalBarDockPhase::DockedExpanded
         } else {
@@ -162,9 +180,10 @@ impl GlobalBarDockRuntime {
     fn set_guards(&self, guards: GlobalBarDockGuards) -> bool {
         let mut controller = self.0.lock().expect("global bar dock lock poisoned");
         controller.guards = guards;
+        controller.generation = controller.generation.wrapping_add(1);
         guards.blocks_collapse() && controller.phase == GlobalBarDockPhase::DockedCollapsed
     }
-    fn collapse_candidate(&self) -> Option<GlobalBarTopDock> {
+    fn collapse_candidate(&self) -> Option<DockGeometryCandidate> {
         let controller = self.0.lock().expect("global bar dock lock poisoned");
         if controller.dock.is_none()
             || controller.phase != GlobalBarDockPhase::DockedExpanded
@@ -173,23 +192,41 @@ impl GlobalBarDockRuntime {
         {
             return None;
         }
-        controller.dock.clone()
+        controller.dock.clone().map(|dock| DockGeometryCandidate {
+            generation: controller.generation,
+            dock,
+            collapsed: true,
+        })
     }
-    fn commit_collapsed(&self, dock: &GlobalBarTopDock) -> bool {
+    fn refresh_candidate(&self) -> Option<DockGeometryCandidate> {
+        let controller = self.0.lock().expect("global bar dock lock poisoned");
+        controller.dock.clone().map(|dock| DockGeometryCandidate {
+            generation: controller.generation,
+            dock,
+            collapsed: controller.phase == GlobalBarDockPhase::DockedCollapsed,
+        })
+    }
+    fn commit_geometry(&self, candidate: &DockGeometryCandidate) -> bool {
         let mut controller = self.0.lock().expect("global bar dock lock poisoned");
-        if controller.phase != GlobalBarDockPhase::DockedExpanded
-            || controller.guards.blocks_collapse()
-            || controller.dock.as_ref() != Some(dock)
+        if controller.generation != candidate.generation
+            || controller.dock.as_ref() != Some(&candidate.dock)
+            || (candidate.collapsed
+                && (controller.phase != GlobalBarDockPhase::DockedExpanded
+                    || controller.guards.blocks_collapse()))
         {
             return false;
         }
-        controller.phase = GlobalBarDockPhase::DockedCollapsed;
+        if candidate.collapsed {
+            controller.phase = GlobalBarDockPhase::DockedCollapsed;
+            controller.generation = controller.generation.wrapping_add(1);
+        }
         true
     }
     fn commit_revealed(&self) -> bool {
         let mut controller = self.0.lock().expect("global bar dock lock poisoned");
         if controller.dock.is_some() && controller.phase == GlobalBarDockPhase::DockedCollapsed {
             controller.phase = GlobalBarDockPhase::DockedExpanded;
+            controller.generation = controller.generation.wrapping_add(1);
             true
         } else {
             false
@@ -201,6 +238,11 @@ impl GlobalBarDockRuntime {
             .expect("global bar dock lock poisoned")
             .dock
             .clone()
+    }
+    fn collapse_compensation(&self) -> CollapseCompensation {
+        self.dock()
+            .map(CollapseCompensation::Expand)
+            .unwrap_or(CollapseCompensation::KeepVisible)
     }
 }
 
@@ -606,6 +648,20 @@ fn move_to_dock_geometry<R: Runtime>(
         .map_err(|error| error.to_string())
 }
 
+fn compensate_stale_geometry<R: Runtime>(
+    window: &tauri::WebviewWindow<R>,
+    runtime: &GlobalBarDockRuntime,
+) -> Result<(), String> {
+    // A native move is not transactional. Once another interaction invalidates
+    // its candidate, put the window at the current expanded dock instead of
+    // leaving it physically hidden behind the trigger strip.
+    window.show().map_err(|error| error.to_string())?;
+    match runtime.collapse_compensation() {
+        CollapseCompensation::Expand(dock) => move_to_dock_geometry(window, &dock, false),
+        CollapseCompensation::KeepVisible => Ok(()),
+    }
+}
+
 #[tauri::command]
 pub fn get_global_bar_dock_state(
     runtime: State<'_, GlobalBarDockRuntime>,
@@ -641,77 +697,87 @@ pub fn finish_global_bar_drag(
     state: State<'_, crate::app_state::AppState>,
     runtime: State<'_, GlobalBarDockRuntime>,
 ) -> Result<GlobalBarDockStateWire, String> {
-    let Some(prior_dock) = runtime.consume_drag(token) else {
+    // Persistence is the recovery authority. Snapshot it before consuming the
+    // one-shot token so a failed native finish always knows where to return.
+    let prior_dock = state.persisted_config().layout.global_bar_top_dock;
+    let Some(_runtime_prior) = runtime.consume_drag(token) else {
         return Ok(runtime.state());
     };
-    let window = app
-        .get_webview_window("main")
-        .ok_or_else(|| "Cookbench global Bar window is unavailable".to_owned())?;
-    if !reliable_top_dock_positioning() {
-        let _ = prior_dock;
-        window.show().map_err(|error| error.to_string())?;
-        emit_dock_state(&app, &runtime);
-        return Ok(runtime.state());
-    }
-    let outer = window.outer_position().map_err(|error| error.to_string())?;
-    let size = window.outer_size().map_err(|error| error.to_string())?;
-    let position = WindowPosition {
-        x: outer.x,
-        y: outer.y,
-    };
-    let size = WindowSize {
-        width: size.width,
-        height: size.height,
-    };
-    let monitors = dock_monitors(&window)?;
-    let decision = top_dock_decision(TopDockInput {
-        position,
-        size,
-        monitors: &monitors,
-        prior_dock: prior_dock.as_ref(),
-        reliable_positioning: true,
-    });
-    match decision {
-        TopDockDecision::Dock(dock) | TopDockDecision::RemainDocked(dock) => {
-            move_to_dock_geometry(&window, &dock, false)?;
-            if let Err(error) = state.update_persisted_config(|config| {
-                config.layout.global_bar_top_dock = Some(dock.clone())
-            }) {
-                let rollback = if let Some(old) = prior_dock.as_ref() {
-                    move_to_dock_geometry(&window, old, false)
-                } else {
-                    window
-                        .set_position(PhysicalPosition::new(position.x, position.y))
-                        .map_err(|move_error| move_error.to_string())
-                };
-                if let Err(rollback_error) = rollback {
-                    return Err(format!(
-                        "{error}; could not restore prior Global Bar position: {rollback_error}"
-                    ));
-                }
-                return Err(error);
+    execute_drag_transition(
+        prior_dock.as_ref(),
+        || {
+            let window = app
+                .get_webview_window("main")
+                .ok_or_else(|| "Cookbench global Bar window is unavailable".to_owned())?;
+            if !reliable_top_dock_positioning() {
+                window.show().map_err(|error| error.to_string())?;
+                emit_dock_state(&app, &runtime);
+                return Ok(runtime.state());
             }
-            runtime.commit_dock(Some(dock));
-        }
-        TopDockDecision::Undock | TopDockDecision::Freeform => {
-            let saved = global_bar_position(position, size, &monitors)?;
-            if let Err(error) = state.update_persisted_config(|config| {
-                config.layout.global_bar_top_dock = None;
-                config.layout.global_bar_position = Some(saved);
+            let outer = window.outer_position().map_err(|error| error.to_string())?;
+            let native_size = window.outer_size().map_err(|error| error.to_string())?;
+            let position = WindowPosition {
+                x: outer.x,
+                y: outer.y,
+            };
+            let size = WindowSize {
+                width: native_size.width,
+                height: native_size.height,
+            };
+            let monitors = dock_monitors(&window)?;
+            match top_dock_decision(TopDockInput {
+                position,
+                size,
+                monitors: &monitors,
+                prior_dock: prior_dock.as_ref(),
+                reliable_positioning: true,
             }) {
-                if let Some(old) = prior_dock.as_ref() {
-                    if let Err(rollback_error) = move_to_dock_geometry(&window, old, false) {
-                        return Err(format!("{error}; could not restore dock after persistence failure: {rollback_error}"));
-                    }
+                TopDockDecision::Dock(dock) | TopDockDecision::RemainDocked(dock) => {
+                    move_to_dock_geometry(&window, &dock, false)?;
+                    state.update_persisted_config(|config| {
+                        config.layout.global_bar_top_dock = Some(dock.clone())
+                    })?;
+                    runtime.commit_dock(Some(dock));
                 }
-                return Err(error);
+                TopDockDecision::Undock | TopDockDecision::Freeform => {
+                    let saved = global_bar_position(position, size, &monitors)?;
+                    state.update_persisted_config(|config| {
+                        config.layout.global_bar_top_dock = None;
+                        config.layout.global_bar_position = Some(saved);
+                    })?;
+                    runtime.commit_dock(None);
+                }
+                TopDockDecision::BestEffortVisible => {}
             }
-            runtime.commit_dock(None);
-        }
-        TopDockDecision::BestEffortVisible => {}
+            emit_dock_state(&app, &runtime);
+            Ok(runtime.state())
+        },
+        |old| {
+            let window = app.get_webview_window("main").ok_or_else(|| {
+                "Cookbench global Bar window is unavailable for rollback".to_owned()
+            })?;
+            move_to_dock_geometry(&window, old, false)
+        },
+    )
+}
+
+fn execute_drag_transition<T>(
+    prior_dock: Option<&GlobalBarTopDock>,
+    transition: impl FnOnce() -> Result<T, String>,
+    rollback: impl FnOnce(&GlobalBarTopDock) -> Result<(), String>,
+) -> Result<T, String> {
+    match transition() {
+        Ok(value) => Ok(value),
+        Err(primary) => match prior_dock {
+            Some(prior) => match rollback(prior) {
+                Ok(()) => Err(primary),
+                Err(rollback_error) => Err(format!(
+                    "{primary}; could not restore the prior expanded Global Bar: {rollback_error}"
+                )),
+            },
+            None => Err(primary),
+        },
     }
-    emit_dock_state(&app, &runtime);
-    Ok(runtime.state())
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize)]
@@ -746,13 +812,17 @@ pub fn request_global_bar_dock_collapse(
     app: AppHandle,
     runtime: State<'_, GlobalBarDockRuntime>,
 ) -> Result<GlobalBarDockStateWire, String> {
-    if let Some(dock) = runtime.collapse_candidate() {
+    if let Some(candidate) = runtime.collapse_candidate() {
         let window = app
             .get_webview_window("main")
             .ok_or_else(|| "Cookbench global Bar window is unavailable".to_owned())?;
-        move_to_dock_geometry(&window, &dock, true)?;
-        if runtime.commit_collapsed(&dock) {
+        move_to_dock_geometry(&window, &candidate.dock, true)?;
+        if runtime.commit_geometry(&candidate) {
             emit_dock_state(&app, &runtime);
+        } else if let Err(rollback_error) = compensate_stale_geometry(&window, runtime.inner()) {
+            return Err(format!(
+                "Global Bar collapse was superseded; could not restore the expanded Bar: {rollback_error}"
+            ));
         }
     }
     Ok(runtime.state())
@@ -788,12 +858,17 @@ pub fn refresh_global_bar_dock_geometry(
     app: AppHandle,
     runtime: State<'_, GlobalBarDockRuntime>,
 ) -> Result<GlobalBarDockStateWire, String> {
-    if let Some(dock) = runtime.dock() {
+    if let Some(candidate) = runtime.refresh_candidate() {
         let window = app
             .get_webview_window("main")
             .ok_or_else(|| "Cookbench global Bar window is unavailable".to_owned())?;
-        let collapsed = runtime.state().collapsed && reliable_top_dock_positioning();
-        move_to_dock_geometry(&window, &dock, collapsed)?;
+        let collapsed = candidate.collapsed && reliable_top_dock_positioning();
+        move_to_dock_geometry(&window, &candidate.dock, collapsed)?;
+        if !runtime.commit_geometry(&candidate) {
+            compensate_stale_geometry(&window, runtime.inner()).map_err(|error| {
+                format!("Global Bar refresh was superseded; could not restore the expanded Bar: {error}")
+            })?;
+        }
     }
     Ok(runtime.state())
 }
@@ -1038,7 +1113,7 @@ mod dock_tests {
         let runtime = GlobalBarDockRuntime::default();
         runtime.commit_dock(Some(dock()));
         let collapse = runtime.collapse_candidate().unwrap();
-        assert!(runtime.commit_collapsed(&collapse));
+        assert!(runtime.commit_geometry(&collapse));
         assert_eq!(runtime.drag_reveal_needed(), Some(dock()));
         runtime.commit_revealed();
         let token = runtime.begin_drag_after_reveal();
@@ -1081,7 +1156,7 @@ mod dock_tests {
         let runtime = GlobalBarDockRuntime::default();
         runtime.commit_dock(Some(dock()));
         let collapse = runtime.collapse_candidate().unwrap();
-        assert!(runtime.commit_collapsed(&collapse));
+        assert!(runtime.commit_geometry(&collapse));
         assert!(runtime.set_guards(GlobalBarDockGuards {
             focused: true,
             ..Default::default()
@@ -1110,6 +1185,76 @@ mod dock_tests {
         assert_eq!(runtime.consume_drag(first), None);
         runtime.cancel_drag(second);
         assert_eq!(runtime.consume_drag(second), None);
+    }
+
+    #[test]
+    fn failed_native_drag_start_cancels_its_token_and_rejects_stale_finish() {
+        let runtime = GlobalBarDockRuntime::default();
+        let token = runtime.begin_drag_after_reveal();
+        // This is the model operation used by start_global_bar_drag when
+        // Tauri rejects start_dragging.
+        runtime.cancel_drag(token);
+        assert_eq!(runtime.consume_drag(token), None);
+    }
+
+    #[test]
+    fn stale_collapse_and_refresh_request_expanded_compensation() {
+        let runtime = GlobalBarDockRuntime::default();
+        runtime.commit_dock(Some(dock()));
+        let collapse = runtime.collapse_candidate().unwrap();
+        runtime.set_guards(GlobalBarDockGuards {
+            pointer_inside: true,
+            ..Default::default()
+        });
+        assert!(!runtime.commit_geometry(&collapse));
+        assert_eq!(
+            runtime.collapse_compensation(),
+            CollapseCompensation::Expand(dock())
+        );
+
+        let refresh = runtime.refresh_candidate().unwrap();
+        runtime.commit_dock(None);
+        assert!(!runtime.commit_geometry(&refresh));
+        assert_eq!(
+            runtime.collapse_compensation(),
+            CollapseCompensation::KeepVisible
+        );
+    }
+
+    #[test]
+    fn drag_transition_rolls_back_query_move_and_save_failures() {
+        for stage in ["query", "move", "save"] {
+            let disk = Some(dock());
+            let mut rollbacks = 0;
+            let result = execute_drag_transition(
+                disk.as_ref(),
+                || Err::<(), _>(format!("{stage} failed")),
+                |_| {
+                    rollbacks += 1;
+                    Ok(())
+                },
+            );
+            assert_eq!(result, Err(format!("{stage} failed")));
+            assert_eq!(rollbacks, 1);
+            assert_eq!(disk, Some(dock()));
+        }
+    }
+
+    #[test]
+    fn drag_transition_preserves_primary_and_rollback_errors() {
+        let prior = dock();
+        let result = execute_drag_transition(
+            Some(&prior),
+            || Err::<(), _>("save failed".to_owned()),
+            |_| Err("restore move failed".to_owned()),
+        );
+        assert_eq!(
+            result,
+            Err(
+                "save failed; could not restore the prior expanded Global Bar: restore move failed"
+                    .to_owned()
+            )
+        );
     }
 
     #[test]
