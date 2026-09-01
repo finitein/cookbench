@@ -62,10 +62,19 @@ fn build_menu<R: Runtime>(
 }
 
 pub fn update_menu<R: Runtime>(app: &AppHandle<R>, locale: AppLocale) -> tauri::Result<()> {
-    let Some(tray) = app.tray_by_id("cookbench") else {
-        return Ok(());
-    };
-    tray.set_menu(Some(build_menu(app, locale, &status_menu_stoves(app))?))
+    #[cfg(target_os = "macos")]
+    {
+        let _ = locale;
+        refresh_status_stoves(app);
+        Ok(())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let Some(tray) = app.tray_by_id("cookbench") else {
+            return Ok(());
+        };
+        tray.set_menu(Some(build_menu(app, locale, &[])?))
+    }
 }
 
 fn status_menu_items<R: Runtime>(
@@ -83,25 +92,6 @@ fn status_menu_items<R: Runtime>(
     {
         let _ = (app, stoves);
         Ok(Vec::new())
-    }
-}
-
-fn status_menu_stoves<R: Runtime>(
-    app: &AppHandle<R>,
-) -> Vec<super::status_stoves::StatusMenuStove> {
-    #[cfg(target_os = "macos")]
-    {
-        let state = app.state::<crate::app_state::AppState>();
-        let snapshot = state.snapshot();
-        super::status_stoves::all_stove_menu_for_locale(
-            &snapshot,
-            state.persisted_config().preferences.locale,
-        )
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = app;
-        Vec::new()
     }
 }
 
@@ -146,7 +136,7 @@ pub fn refresh_status_stoves_snapshot<R: Runtime>(
             return;
         }
         let rendered = status.presentation(snapshot, count);
-        let locale = state.persisted_config().preferences.locale;
+        let locale = app.state::<crate::i18n::NativeLocaleState>().current();
         let menu_stoves = super::status_stoves::all_stove_menu_for_locale(snapshot, locale);
         let icon_result = match rendered {
             Some(ref presentation) => tray.set_icon(Some(tauri::image::Image::new_owned(

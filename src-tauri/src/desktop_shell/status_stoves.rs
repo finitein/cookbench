@@ -66,8 +66,15 @@ impl StatusStovesState {
         let inner = self.inner.lock().expect("status Stove state lock poisoned");
         presentation(snapshot, count, &inner.slots)
     }
-    pub fn commit_presentation(&self, revision: u64, presentation: Option<&StatusPresentation>) {
+    pub fn commit_presentation(
+        &self,
+        revision: u64,
+        presentation: Option<&StatusPresentation>,
+    ) -> bool {
         let mut inner = self.inner.lock().expect("status Stove state lock poisoned");
+        if revision < inner.revision {
+            return false;
+        }
         inner.revision = inner.revision.max(revision);
         if let Some(presentation) = presentation {
             inner.slots = presentation.slots.clone();
@@ -76,14 +83,19 @@ impl StatusStovesState {
             inner.slots.clear();
             inner.image_width = 0;
         }
+        true
     }
-    pub fn commit_menu(&self, revision: u64, menu: &[StatusMenuStove]) {
+    pub fn commit_menu(&self, revision: u64, menu: &[StatusMenuStove]) -> bool {
         let mut inner = self.inner.lock().expect("status Stove state lock poisoned");
+        if revision < inner.revision {
+            return false;
+        }
         inner.revision = inner.revision.max(revision);
         inner.menu_targets = menu
             .iter()
             .map(|item| (item.menu_id.clone(), item.stove_id.clone()))
             .collect();
+        true
     }
     pub fn stove_at_status_x(&self, local_x: f64, item_width: f64) -> Option<String> {
         let inner = self.inner.lock().expect("status Stove state lock poisoned");
@@ -215,18 +227,42 @@ fn stable_menu_id(stove_id: &str) -> String {
     format!("status-stove-{hash:016x}")
 }
 fn safe_status_label(stove: &StoveWire, locale: AppLocale) -> String {
-    let label = stove
-        .project_label
-        .chars()
-        .filter(|character| !character.is_control())
-        .take(64)
-        .collect::<String>();
+    let mut label = String::new();
+    let mut needs_space = false;
+    for character in stove.project_label.chars() {
+        if character.is_control() || is_unsafe_presentation_character(character) {
+            continue;
+        }
+        if character.is_whitespace() {
+            needs_space = !label.is_empty();
+        } else {
+            if needs_space {
+                label.push(' ');
+                needs_space = false;
+            }
+            label.push(character);
+        }
+        if label.chars().count() >= 64 {
+            break;
+        }
+    }
     let label = if label.is_empty() {
-        "Project".into()
+        project_fallback(locale).into()
     } else {
         label
     };
     format!("{}: {label}", state_label(stove.state, locale))
+}
+fn is_unsafe_presentation_character(character: char) -> bool {
+    matches!(character, '\u{00ad}' | '\u{061c}' | '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2060}'..='\u{206f}' | '\u{feff}')
+}
+fn project_fallback(locale: AppLocale) -> &'static str {
+    match locale {
+        AppLocale::ZhCn => "项目",
+        AppLocale::Ja => "プロジェクト",
+        AppLocale::Ko => "프로젝트",
+        _ => "Project",
+    }
 }
 fn state_label(state: StoveStateWire, locale: AppLocale) -> &'static str {
     match (locale, state) {
@@ -276,7 +312,7 @@ fn render(stoves: &[&StoveWire]) -> StatusPresentation {
         .enumerate()
         .map(|(index, stove)| {
             let start_x = HORIZONTAL_PADDING + index as u32 * (SLOT_WIDTH + SLOT_GAP);
-            draw_stove(&mut image, start_x, stove.state);
+            draw_stove(&mut image, start_x, stove.state, &stove.harness.id);
             StatusSlot {
                 stove_id: stove.id.clone(),
                 start_x,
@@ -286,7 +322,7 @@ fn render(stoves: &[&StoveWire]) -> StatusPresentation {
         .collect();
     StatusPresentation { image, slots }
 }
-fn draw_stove(image: &mut StatusImage, offset_x: u32, state: StoveStateWire) {
+fn draw_stove(image: &mut StatusImage, offset_x: u32, state: StoveStateWire, harness_id: &str) {
     let color = match state {
         StoveStateWire::NeedsHuman => [194, 72, 69, 255],
         StoveStateWire::Failed => [166, 54, 62, 255],
@@ -303,14 +339,19 @@ fn draw_stove(image: &mut StatusImage, offset_x: u32, state: StoveStateWire) {
             let dx = x as i32 - cx as i32;
             let dy = y as i32 - cy as i32;
             let d = dx * dx + dy * dy;
-            if (25..=64).contains(&d)
-                || (x == cx && y.abs_diff(cy) <= 2)
-                || (y == cy && x.abs_diff(cx) <= 2)
-            {
+            if (25..=64).contains(&d) || harness_mark(harness_id, x, y, cx, cy) {
                 let index = ((y * image.width + x) * 4) as usize;
                 image.rgba[index..index + 4].copy_from_slice(&color);
             }
         }
+    }
+}
+fn harness_mark(harness_id: &str, x: u32, y: u32, cx: u32, cy: u32) -> bool {
+    match harness_id {
+        "codex" => (x == cx && y.abs_diff(cy) <= 2) || (y == cy && x.abs_diff(cx) <= 2),
+        "claude-code" => x.abs_diff(cx) == y.abs_diff(cy) && x.abs_diff(cx) <= 2,
+        "cursor" => (x == cx.saturating_sub(2) || x == cx.saturating_add(2)) && y.abs_diff(cy) <= 2,
+        _ => y == cy && x.abs_diff(cx) <= 2,
     }
 }
 
@@ -448,5 +489,39 @@ mod tests {
             accessibility_label(&snapshot(&["a", "b"]), 1),
             "Cookbench: 1 Stoves, Cooking"
         );
+    }
+
+    #[test]
+    fn stale_commits_cannot_replace_a_newer_snapshot() {
+        let state = StatusStovesState::default();
+        let current = presentation(&snapshot(&["a"]), 1, &[]).unwrap();
+        assert!(state.commit_presentation(2, Some(&current)));
+        assert!(!state.commit_presentation(1, None));
+        assert_eq!(
+            state.stove_at_status_x(3.0, f64::from(current.image.width)),
+            Some("a".into())
+        );
+    }
+
+    #[test]
+    fn labels_remove_formatting_and_normalize_whitespace() {
+        let mut input = snapshot(&["a"]);
+        input.stoves[0].project_label = "  alpha\u{202e}\n beta\u{200b}  ".into();
+        assert_eq!(
+            all_stove_menu_for_locale(&input, AppLocale::En)[0].label,
+            "Cooking: alpha beta"
+        );
+        input.stoves[0].project_label = "\u{202e}".into();
+        assert_eq!(
+            all_stove_menu_for_locale(&input, AppLocale::Ja)[0].label,
+            "実行中: プロジェクト"
+        );
+    }
+
+    #[test]
+    fn harness_marks_are_distinct() {
+        assert!(harness_mark("codex", 11, 9, 11, 11));
+        assert!(!harness_mark("claude-code", 11, 9, 11, 11));
+        assert!(harness_mark("claude-code", 9, 9, 11, 11));
     }
 }
