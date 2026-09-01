@@ -234,6 +234,7 @@ impl GlobalBarDockRuntime {
         let controller = self.0.lock().expect("global bar dock lock poisoned");
         if controller.dock.is_none()
             || controller.phase != GlobalBarDockPhase::DockedExpanded
+            || controller.active_drag.is_some()
             || controller.guards.blocks_collapse()
             || !reliable_top_dock_positioning()
         {
@@ -1286,6 +1287,16 @@ mod dock_tests {
             assert!(runtime.collapse_candidate().is_none());
             assert_eq!(runtime.state().phase, GlobalBarDockPhase::DockedExpanded);
         }
+    }
+
+    #[test]
+    fn active_drag_blocks_collapse_until_its_token_finishes() {
+        let runtime = GlobalBarDockRuntime::default();
+        runtime.commit_dock(Some(dock()));
+        let token = runtime.begin_drag_after_reveal();
+        assert!(runtime.collapse_candidate().is_none());
+        assert_eq!(runtime.consume_drag(token), Some(Some(dock())));
+        assert!(runtime.collapse_candidate().is_some());
     }
 
     #[test]

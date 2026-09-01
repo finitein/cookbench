@@ -108,6 +108,7 @@ export function GlobalBar({
       className={`global-bar global-bar--${mode}${stoves.length === 0 ? " global-bar--empty" : ""}${tooltipStove ? " global-bar--tooltip-open" : ""}${activeAlertStoveId === LOCAL_ALERT_TEST_STOVE_ID ? " global-bar--alert" : ""}`}
       aria-label={t("bar.global", { count: stoves.length })}
       data-layout={layout.grouped ? "grouped" : "mixed"}
+      data-menu-open={priorityMenuOpen ? "true" : "false"}
     >
       <div className="global-bar__brand" aria-label="Cookbench">
         <img src={mark} alt="Cookbench" />

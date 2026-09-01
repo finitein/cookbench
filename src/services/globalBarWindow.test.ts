@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   attachGlobalBarDragHandle,
   clampGlobalBarSize,
+  createGlobalBarDockController,
+  type GlobalBarDockTransport,
   intrinsicGlobalBarMinimumHeight,
   prepareNativeGlobalBarDocument,
   recordGlobalBarPosition,
@@ -10,11 +12,7 @@ import {
 } from "./globalBarWindow";
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
-const { startDragging } = vi.hoisted(() => ({ startDragging: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
-vi.mock("@tauri-apps/api/window", () => ({
-  getCurrentWindow: () => ({ startDragging }),
-}));
 
 describe("global bar window sizing", () => {
   it("keeps the transparent native hit area usable without imposing a preset width", () => {
@@ -34,12 +32,13 @@ describe("global bar window sizing", () => {
     const blank = document.createElement("div");
     const button = document.createElement("button");
     surface.append(blank, button);
-    const detach = attachGlobalBarDragHandle(surface);
+    const startDrag = vi.fn();
+    const detach = attachGlobalBarDragHandle(surface, startDrag);
 
     blank.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
     button.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
 
-    expect(startDragging).toHaveBeenCalledTimes(1);
+    expect(startDrag).toHaveBeenCalledTimes(1);
     detach();
   });
 
@@ -94,5 +93,34 @@ describe("global bar window sizing", () => {
     vi.spyOn(menu, "getBoundingClientRect").mockReturnValue({ bottom: 352, height: 260 } as DOMRect);
     expect(menu.getBoundingClientRect().height).toBeGreaterThan(0);
     expect(intrinsicGlobalBarMinimumHeight(bar)).toBe(363);
+  });
+});
+
+describe("global bar dock controller", () => {
+  const expanded = { phase: "dockedExpanded" as const, docked: true, collapsed: false, bestEffort: false };
+  function transport(): GlobalBarDockTransport {
+    return {
+      getState: vi.fn().mockResolvedValue(expanded), listen: vi.fn().mockResolvedValue(() => {}),
+      startDrag: vi.fn().mockResolvedValue(7), finishDrag: vi.fn().mockResolvedValue(expanded),
+      setGuards: vi.fn().mockResolvedValue(expanded), collapse: vi.fn().mockResolvedValue({ ...expanded, phase: "dockedCollapsed", collapsed: true }),
+      reveal: vi.fn().mockResolvedValue(expanded), refreshGeometry: vi.fn().mockResolvedValue(expanded),
+    };
+  }
+
+  it("collapses only after 600ms with every guard clear", async () => {
+    vi.useFakeTimers(); const native = transport(); const controller = createGlobalBarDockController(native);
+    await controller.initialize();
+    await vi.advanceTimersByTimeAsync(599); expect(native.collapse).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1); expect(native.collapse).toHaveBeenCalledOnce();
+    controller.dispose(); vi.useRealTimers();
+  });
+
+  it("finishes a token exactly once when pointerup comes before native start resolves", async () => {
+    let resolve!: (token: number) => void;
+    const native = transport(); native.startDrag = vi.fn(() => new Promise<number>((done) => { resolve = done; }));
+    const controller = createGlobalBarDockController(native);
+    controller.start(); controller.endDrag(); resolve(9); await Promise.resolve(); await Promise.resolve();
+    expect(native.finishDrag).toHaveBeenCalledTimes(1); expect(native.finishDrag).toHaveBeenCalledWith(9);
+    controller.dispose();
   });
 });

@@ -212,6 +212,17 @@
 }
 
 .global-bar:hover > .global-bar__resize-handle { opacity: 1; }
+:root[data-cookbench-dock-state="dockedCollapsed"] .global-bar__resize-handle { display: none; }
+:root[data-cookbench-dock-state="dockedCollapsed"] .global-bar::after {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  content: "";
+  background: rgb(49 111 152 / 18%);
+  pointer-events: auto;
+}
 .global-bar__resize-handle[data-resize-direction="North"],
 .global-bar__resize-handle[data-resize-direction="South"] {
   right: 12px;

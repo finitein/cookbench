@@ -1,5 +1,4 @@
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 
 export type GlobalBarSize = { width: number; height: number };
 export type GlobalBarResizeDirection =
@@ -22,13 +21,118 @@ export function clampGlobalBarSize({ width, height }: GlobalBarSize): GlobalBarS
   };
 }
 
-export function attachGlobalBarDragHandle(handle: HTMLElement) {
+export type GlobalBarDockPhase = "undocked" | "dockedExpanded" | "dockedCollapsed";
+export type GlobalBarDockState = { phase: GlobalBarDockPhase; docked: boolean; collapsed: boolean; bestEffort: boolean };
+export type GlobalBarDockGuards = { pointerInside: boolean; focused: boolean; menuOpen: boolean; resizing: boolean };
+export type GlobalBarDockTransport = {
+  getState(): Promise<GlobalBarDockState>;
+  listen(handler: (state: GlobalBarDockState) => void): Promise<() => void>;
+  startDrag(): Promise<number>;
+  finishDrag(token: number): Promise<GlobalBarDockState>;
+  setGuards(input: GlobalBarDockGuards): Promise<GlobalBarDockState>;
+  collapse(): Promise<GlobalBarDockState>;
+  reveal(): Promise<GlobalBarDockState>;
+  refreshGeometry(): Promise<GlobalBarDockState>;
+};
+
+const EMPTY_DOCK_GUARDS: GlobalBarDockGuards = { pointerInside: false, focused: false, menuOpen: false, resizing: false };
+
+export function createGlobalBarDockTransport(): GlobalBarDockTransport {
+  return {
+    getState: () => invoke<GlobalBarDockState>("get_global_bar_dock_state"),
+    listen: async (handler) => {
+      const { listen } = await import("@tauri-apps/api/event");
+      return listen<GlobalBarDockState>("cookbench://global-bar-dock-state-changed", ({ payload }) => handler(payload));
+    },
+    startDrag: () => invoke<number>("start_global_bar_drag"),
+    finishDrag: (token) => invoke<GlobalBarDockState>("finish_global_bar_drag", { token }),
+    setGuards: (input) => invoke<GlobalBarDockState>("set_global_bar_dock_guards", { input }),
+    collapse: () => invoke<GlobalBarDockState>("request_global_bar_dock_collapse"),
+    reveal: () => invoke<GlobalBarDockState>("reveal_global_bar_dock_command"),
+    refreshGeometry: () => invoke<GlobalBarDockState>("refresh_global_bar_dock_geometry"),
+  };
+}
+
+/** Native dock lifecycle, kept independent of React and Tauri globals for deterministic tests. */
+export function createGlobalBarDockController(transport: GlobalBarDockTransport, onState?: (state: GlobalBarDockState) => void) {
+  let state: GlobalBarDockState = { phase: "undocked", docked: false, collapsed: false, bestEffort: false };
+  let guards = { ...EMPTY_DOCK_GUARDS };
+  let collapseTimer: ReturnType<typeof setTimeout> | undefined;
+  let activeToken: number | undefined;
+  let pointerEnded = false;
+  let quietTimer: ReturnType<typeof setTimeout> | undefined;
+  let disposed = false;
+  const apply = (next: GlobalBarDockState) => { state = next; onState?.(next); scheduleCollapse(); };
+  const clearCollapse = () => { if (collapseTimer) clearTimeout(collapseTimer); collapseTimer = undefined; };
+  const hasGuard = () => Object.values(guards).some(Boolean);
+  const safe = (promise: Promise<GlobalBarDockState>) => void promise.then(apply).catch(() => undefined);
+  const scheduleCollapse = () => {
+    clearCollapse();
+    if (disposed || hasGuard() || state.phase !== "dockedExpanded" || state.bestEffort || activeToken != null) return;
+    collapseTimer = setTimeout(() => {
+      collapseTimer = undefined;
+      if (!disposed && !hasGuard() && state.phase === "dockedExpanded" && !state.bestEffort && activeToken == null) safe(transport.collapse());
+    }, 600);
+  };
+  const setGuards = (next: Partial<GlobalBarDockGuards>) => {
+    guards = { ...guards, ...next };
+    clearCollapse();
+    safe(transport.setGuards(guards));
+    scheduleCollapse();
+  };
+  const finish = () => {
+    if (activeToken == null) return;
+    const token = activeToken;
+    activeToken = undefined;
+    if (quietTimer) clearTimeout(quietTimer);
+    quietTimer = undefined;
+    pointerEnded = false;
+    clearCollapse();
+    safe(transport.finishDrag(token));
+    scheduleCollapse();
+  };
+  return {
+    start() {
+      if (activeToken != null || disposed) return;
+      pointerEnded = false;
+      void transport.startDrag().then((token) => {
+        if (disposed) { void transport.finishDrag(token).catch(() => undefined); return; }
+        activeToken = token;
+        if (pointerEnded) finish();
+      }).catch(() => undefined);
+    },
+    endDrag() { pointerEnded = true; finish(); },
+    noteMoved() {
+      if (activeToken == null || disposed) return;
+      if (quietTimer) clearTimeout(quietTimer);
+      quietTimer = setTimeout(() => finish(), 700);
+    },
+    setGuards,
+    refresh() { safe(transport.refreshGeometry()); },
+    reveal() { safe(transport.reveal()); },
+    async initialize() {
+      await transport.getState().then(apply).catch(() => undefined);
+      return transport.listen(apply).then((unlisten) => {
+        if (disposed) unlisten();
+        return unlisten;
+      }).catch(() => () => {});
+    },
+    state: () => state,
+    dispose(unlisten?: () => void) {
+      disposed = true; clearCollapse(); if (quietTimer) clearTimeout(quietTimer); unlisten?.();
+      void transport.setGuards(EMPTY_DOCK_GUARDS).catch(() => undefined);
+      if (activeToken != null) { const token = activeToken; activeToken = undefined; void transport.finishDrag(token).catch(() => undefined); }
+    },
+  };
+}
+
+export function attachGlobalBarDragHandle(handle: HTMLElement, onDragStart?: () => void) {
   handle.setAttribute("data-tauri-drag-region", "");
   const drag = (event: PointerEvent) => {
     if ((event.target as Element | null)?.closest(
       "button, a, input, select, textarea, [data-resize-direction]",
     )) return;
-    void getCurrentWindow().startDragging();
+    onDragStart?.();
   };
   handle.addEventListener("pointerdown", drag);
   return () => handle.removeEventListener("pointerdown", drag);
@@ -45,7 +149,7 @@ export function attachGlobalBarResizeHandle(
     event.preventDefault();
     event.stopPropagation();
     onStart?.();
-    void getCurrentWindow().startResizeDragging(direction);
+    void import("@tauri-apps/api/window").then(({ getCurrentWindow }) => getCurrentWindow().startResizeDragging(direction)).catch(() => undefined);
   };
   handle.addEventListener("pointerdown", resize);
   return () => handle.removeEventListener("pointerdown", resize);
