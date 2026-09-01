@@ -772,7 +772,7 @@ pub fn get_global_bar_dock_state(
 }
 
 #[tauri::command]
-pub fn start_global_bar_drag(
+pub async fn start_global_bar_drag(
     app: AppHandle,
     state: State<'_, crate::app_state::AppState>,
     runtime: State<'_, GlobalBarDockRuntime>,
@@ -802,11 +802,26 @@ pub fn start_global_bar_drag(
         })
     }
     #[cfg(not(target_os = "macos"))]
-    Ok(GlobalBarDragStartWire {
-        token,
-        completed: false,
-        state: None,
-    })
+    {
+        let evidence =
+            tauri::async_runtime::spawn_blocking(crate::platform::wait_for_local_drag_release)
+                .await
+                .unwrap_or(crate::platform::DragReleaseEvidence::Unavailable);
+        if evidence == crate::platform::DragReleaseEvidence::Released {
+            let state = finish_global_bar_drag_inner(token, &app, state.inner(), runtime.inner())?;
+            Ok(GlobalBarDragStartWire {
+                token,
+                completed: true,
+                state: Some(state),
+            })
+        } else {
+            Ok(GlobalBarDragStartWire {
+                token,
+                completed: false,
+                state: None,
+            })
+        }
+    }
 }
 
 #[tauri::command]

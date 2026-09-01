@@ -15,6 +15,23 @@ mod overlay;
 #[cfg(target_os = "windows")]
 mod windows;
 
+/// Evidence from a single native drag gesture. This deliberately never uses a
+/// process-wide hook: callers may only wait while they own an active token.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DragReleaseEvidence {
+    Released,
+    Unavailable,
+}
+
+pub fn wait_for_local_drag_release() -> DragReleaseEvidence {
+    #[cfg(target_os = "windows")]
+    return windows::wait_for_left_release();
+    #[cfg(target_os = "linux")]
+    return linux::wait_for_left_release();
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+    DragReleaseEvidence::Unavailable
+}
+
 pub use capabilities::{
     capabilities_for, current_desktop_environment, DesktopEnvironment, OverlayCapabilities,
     OverlaySupport,

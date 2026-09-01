@@ -49,7 +49,9 @@ export function useGlobalBarWindow() {
     const persistNativeSize = () => {
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
-        dock.setGuards({ resizing: false }); dock.refresh();
+        // A resize event is not release evidence. Keep its guard active until
+        // the local pointer lifecycle ends, then refresh through the settled
+        // interaction callback.
         void Promise.all([getCurrentWindow().outerSize(), getCurrentWindow().scaleFactor()]).then(([{ width, height }, scaleFactor]) => {
           const size = { width: width / scaleFactor, height: height / scaleFactor };
           const programmaticHeightOnly = Date.now() < suppressResizeUntil && lastKnownWidth != null && Math.abs(lastKnownWidth - size.width) < 1;
