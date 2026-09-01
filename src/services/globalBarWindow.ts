@@ -154,7 +154,7 @@ export function createGlobalBarDockController(
       }).catch(() => { pendingStart = false; pointerEnded = false; if (!disposed) onInteractionSettled?.(); scheduleCollapse(); });
     },
     endDrag() {
-      const shouldRefresh = releaseUnconfirmed;
+      const shouldRefresh = releaseUnconfirmed && !resizePending;
       pointerEnded = true;
       releaseUnconfirmed = false;
       if (shouldRefresh) safe(transport.refreshGeometry());

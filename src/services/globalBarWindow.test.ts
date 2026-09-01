@@ -215,6 +215,18 @@ describe("global bar dock controller", () => {
     vi.useRealTimers();
   });
 
+  it("refreshes once when resize pointerup runs drag end before resize settle", async () => {
+    const native = transport();
+    native.waitForPointerRelease = vi.fn().mockResolvedValue(false);
+    const controller = createGlobalBarDockController(native);
+    controller.startResize();
+    await Promise.resolve();
+    controller.endDrag();
+    controller.settleResize();
+    expect(native.refreshGeometry).toHaveBeenCalledOnce();
+    controller.dispose();
+  });
+
   it("honors pointerup observed while a completed start is still pending", async () => {
     let resolve!: (value: { token: number; completed: boolean; releaseConfirmed: boolean; state: typeof expanded }) => void;
     const native = transport(); native.startDrag = vi.fn(() => new Promise<{ token: number; completed: boolean; releaseConfirmed: boolean; state: typeof expanded }>((done) => { resolve = done; }));
