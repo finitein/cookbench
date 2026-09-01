@@ -62,7 +62,11 @@ logical-point item with a localized three-Stove accessibility description:
 Native residual checks remain pending: Windows/X11/Wayland live dock behavior;
 macOS VoiceOver navigation, light/dark, fullscreen, multi-monitor and
 constrained-menu-space behavior; every slot edge/gap and right-click action;
-and the signed-stable gate. These gaps do not change Cookbench's boundary:
+and the signed-stable gate. Five production-emission persistence tests use
+Tauri's mock runtime on macOS/Linux only because upstream
+[`tauri-apps/tauri#13419`](https://github.com/tauri-apps/tauri/issues/13419)
+prevents those mock binaries from loading on Windows; platform-neutral Windows
+persistence coverage remains enabled. These gaps do not change Cookbench's boundary:
 native Harness Session files remain authoritative, Cookbench stores no full
 transcripts, and it does not prompt, approve, start, stop, or control Agents.
 

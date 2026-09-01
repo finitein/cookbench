@@ -54,7 +54,11 @@ fn session(state: StoveState) -> SessionRecord {
     session_with_id("session-42", state)
 }
 
+// Tauri issue #13419 prevents MockRuntime test binaries from loading on
+// Windows. These production-emission cases still run on macOS and Linux; the
+// platform-neutral persistence cases below continue to run everywhere.
 #[test]
+#[cfg(not(target_os = "windows"))]
 fn production_path_normalizes_hook_completion_before_persisting_acknowledgement() {
     let directory = TestDirectory::new();
     let app = tauri::test::mock_app();
@@ -129,6 +133,7 @@ fn production_path_normalizes_hook_completion_before_persisting_acknowledgement(
 }
 
 #[test]
+#[cfg(not(target_os = "windows"))]
 fn newer_normalized_completion_with_the_same_timestamp_re_elevates_after_restart() {
     let directory = TestDirectory::new();
     let app = tauri::test::mock_app();
@@ -217,6 +222,7 @@ fn newer_normalized_completion_with_the_same_timestamp_re_elevates_after_restart
 }
 
 #[test]
+#[cfg(not(target_os = "windows"))]
 fn replaying_the_same_raw_completion_after_restart_keeps_it_acknowledged() {
     let directory = TestDirectory::new();
     let app = tauri::test::mock_app();
@@ -303,6 +309,7 @@ fn replaying_the_same_raw_completion_after_restart_keeps_it_acknowledged() {
 }
 
 #[test]
+#[cfg(not(target_os = "windows"))]
 fn clear_then_new_raw_events_restore_the_new_cooked_completion() {
     let directory = TestDirectory::new();
     let app = tauri::test::mock_app();
@@ -402,6 +409,7 @@ fn legacy_cursor_without_a_completion_fingerprint_fails_open() {
 }
 
 #[test]
+#[cfg(not(target_os = "windows"))]
 fn clearing_a_legacy_completion_does_not_guess_a_raw_replay_cursor() {
     let directory = TestDirectory::new();
     let persistence = DesktopPersistence::in_app_data(&directory.0);
