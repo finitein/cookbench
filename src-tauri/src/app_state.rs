@@ -474,11 +474,14 @@ impl AppState {
         let Some(runtime) = guard.as_mut() else {
             return Err("desktop persistence is not initialized".to_owned());
         };
-        update(&mut runtime.config);
+        let mut candidate = runtime.config.clone();
+        update(&mut candidate);
         runtime
             .service
-            .save_config(&runtime.config)
-            .map_err(|error| error.to_string())
+            .save_config(&candidate)
+            .map_err(|error| error.to_string())?;
+        runtime.config = candidate;
+        Ok(())
     }
 
     pub fn set_pinned_and_emit<R: tauri::Runtime>(

@@ -918,3 +918,21 @@ fn failed_archive_writes_leave_restore_and_inventory_state_unchanged() {
         .is_err());
     assert_eq!(inventory_state, inventory_before);
 }
+
+#[test]
+fn failed_config_write_keeps_the_in_memory_preference_unchanged() {
+    let directory = TestDirectory::new();
+    let blocked_parent = directory.0.join("not-a-directory");
+    fs::write(&blocked_parent, b"block config writes").unwrap();
+    let state = AppState::default();
+    state.initialize_persistence(&blocked_parent);
+    let before = state.persisted_config();
+
+    assert!(state
+        .update_persisted_config(|config| config.layout.global_bar_visible = false)
+        .is_err());
+    assert_eq!(state.persisted_config(), before);
+    assert!(!DesktopPersistence::in_app_data(&blocked_parent)
+        .config_path()
+        .exists());
+}

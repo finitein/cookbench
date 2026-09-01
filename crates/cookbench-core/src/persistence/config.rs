@@ -56,7 +56,8 @@ fn deserialize_mac_status_stove_count<'de, D>(deserializer: D) -> Result<u8, D::
 where
     D: Deserializer<'de>,
 {
-    Ok(u8::deserialize(deserializer)?.min(MAX_MAC_STATUS_STOVE_COUNT))
+    let count = i64::deserialize(deserializer)?;
+    Ok(count.clamp(0, i64::from(MAX_MAC_STATUS_STOVE_COUNT)) as u8)
 }
 
 /// The last user-dragged global Bar position, relative to a monitor work area.

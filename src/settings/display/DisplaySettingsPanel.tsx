@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   closeDetachedBar,
@@ -34,9 +34,15 @@ export function DisplaySettingsPanel() {
   const [status, setStatus] = useState<TranslationKey | null>(null);
   const [closing, setClosing] = useState<string | null>(null);
   const [launchAtLogin, setLaunchAtLoginState] = useState<boolean | null>(null);
+  const desiredSettings = useRef<DisplaySettingsWire | null>(null);
+  const saveGeneration = useRef(0);
+  const saveQueue = useRef(Promise.resolve());
 
   useEffect(() => {
-    void getDisplaySettings().then(setSettings).catch(() => {
+    void getDisplaySettings().then((loaded) => {
+      desiredSettings.current = loaded;
+      setSettings(loaded);
+    }).catch(() => {
       setStatus("display.unavailable");
     });
     void getLaunchAtLogin().then((preference) => {
@@ -50,20 +56,40 @@ export function DisplaySettingsPanel() {
     DisplaySettingsWire,
     "globalBarVisible" | "globalBarPlacement" | "globalBarMode" | "macStatusStoveCount" | "hoverDetailsEnabled" | "locale"
   >>) => {
-    if (!settings) return;
-    const next = { ...settings, ...change };
+    const current = desiredSettings.current ?? settings;
+    if (!current) return;
+    const next = { ...current, ...change };
+    desiredSettings.current = next;
     setSettings(next);
     setStatus(null);
-    void configureDisplaySettings({
+    const generation = ++saveGeneration.current;
+    const input = {
       globalBarVisible: next.globalBarVisible,
       globalBarPlacement: next.globalBarPlacement,
       globalBarMode: next.globalBarMode,
       macStatusStoveCount: next.macStatusStoveCount,
       hoverDetailsEnabled: next.hoverDetailsEnabled,
       locale: next.locale,
-    }).then(setSettings).catch(() => {
-      setSettings(settings);
-      setStatus("display.saveFailed");
+    };
+    saveQueue.current = saveQueue.current.then(async () => {
+      try {
+        const saved = await configureDisplaySettings(input);
+        if (generation === saveGeneration.current) {
+          desiredSettings.current = saved;
+          setSettings(saved);
+        }
+      } catch {
+        if (generation !== saveGeneration.current) return;
+        try {
+          const authoritative = await getDisplaySettings();
+          if (generation === saveGeneration.current) {
+            desiredSettings.current = authoritative;
+            setSettings(authoritative);
+          }
+        } catch {
+          if (generation === saveGeneration.current) setStatus("display.saveFailed");
+        }
+      }
     });
   };
 

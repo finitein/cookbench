@@ -326,9 +326,13 @@ fn legacy_config_defaults_display_mode_and_mac_status_count() {
 
 #[test]
 fn persisted_mac_status_count_is_bounded_but_preserves_valid_edges() {
-    let oversized: PersistedConfig =
-        serde_json::from_str(r#"{"version":1,"layout":{"mac_status_stove_count":255}}"#).unwrap();
-    assert_eq!(oversized.layout.mac_status_stove_count, 8);
+    for (persisted, expected) in [(-1, 0), (9, 8), (256, 8)] {
+        let config: PersistedConfig = serde_json::from_str(&format!(
+            r#"{{"version":1,"layout":{{"mac_status_stove_count":{persisted}}}}}"#,
+        ))
+        .unwrap();
+        assert_eq!(config.layout.mac_status_stove_count, expected);
+    }
 
     for count in [0, 8] {
         let mut config = PersistedConfig::default();
