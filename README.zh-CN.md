@@ -68,6 +68,21 @@ Stove 过多时，Bar 会自动增加行数，而不是把工作藏到横向或�
 Archive，可以恢复误删内容。除了 Cooked，所有可见 Stove 都可以从 Cookbench
 移除，但这不会删除 Harness 的原生 Session。
 
+## 让桌面聚焦，但不丢失全局
+
+**Full** 仍是默认模式：它列出所有可见 Stove，并在密度变高时扩展为 Bench，而不是藏起
+工作。打开 **Minimal** 后，Bar 只保留一个圆形 Stove，按共享注意力优先级显示：Needs
+Human、Failed、Disconnected、未确认的 Cooked、活跃工作、已确认的 Cooked；同级取最新
+状态证据。它没有定时轮播，优先级菜单仍可进入其他 Stove。
+
+把全局 Bar 拖到当前显示器顶端即可吸附：距离顶边 12 px 内松开就会吸附，600 ms 后自动
+隐藏，鼠标进入顶端 3 px 即会展示；向下拉开 24 px 会解除吸附。独立 Stove 保持原有的自由
+移动能力。Wayland 的窗口行为由合成器决定，因此吸附是尽力支持。
+
+在 macOS 上，合并的状态栏项可按同一优先级展示 0 到 8 个 Stove，默认 3 个。点击可见
+Stove 可返回，右键打开完整列表。这些只改变呈现，不改变生命周期证据、隐私边界或
+Cookbench“只观察、不指挥”的产品边界。
+
 ## 为可观测性而生，不做编排层
 
 | Cookbench 会做 | Cookbench 刻意不做 |
@@ -113,8 +128,8 @@ macOS/Linux 可使用 `--dry-run`，所有平台都可以设置 `COOKBENCH_DRY_R
    **Settings > Hook Health** 查看机器上实际存在的生命周期信号。
 4. 点击 Stove，在可用时返回已验证的终端/IDE 目标，或使用受保护的 Codex Desktop
    任务导航及明确标注的应用/项目降级目标。
-5. 在 Settings 中调整语言、悬浮详情、两天新鲜度、Archive、声音、系统横幅、
-   Bar 闪烁与桌面提醒。
+5. 在 Settings 中调整语言、Full 或 Minimal、顶端吸附、macOS 状态栏 Stove 数量、
+   悬浮详情、两天新鲜度、Archive、声音、系统横幅、Bar 闪烁与桌面提醒。
 
 本地通知默认只开启声音。Cooked Stove 可以持续闪烁，直到你点击它进行确认。
 临时报错会在 20 秒后自动消失，不会长期占据 Bar 下方的一整行。
@@ -261,7 +276,7 @@ cargo test --workspace
 
 完整本地发布门禁是 `./scripts/verify.sh`。发布制品前请阅读[发布文档](docs/releasing.md)。
 
-## 13 张图看完 Cookbench
+## 14 张图看完 Cookbench
 
 下面的完整中文视觉介绍面向 AI 小白、日常 Agent 用户，以及已经并行运行到需要一张
 真正工作台的重度用户。所有页面都由可编辑 HTML 离线生成，只使用 Cookbench 自有
@@ -269,7 +284,7 @@ cargo test --workspace
 [docs/showcase](docs/showcase/README.md)。
 
 <details>
-<summary><strong>展开完整 13 张产品介绍图</strong></summary>
+<summary><strong>展开完整 14 张产品介绍图</strong></summary>
 
 <table>
   <tr><td><img src="docs/showcase/rendered/01-overview.png" alt="Cookbench 项目概览"></td><td><img src="docs/showcase/rendered/02-one-glance.png" alt="一眼看清所有 Agent Session"></td></tr>
@@ -278,7 +293,7 @@ cargo test --workspace
   <tr><td><img src="docs/showcase/rendered/07-ssh.png" alt="只读 SSH 观察"></td><td><img src="docs/showcase/rendered/08-privacy.png" alt="本地优先隐私边界"></td></tr>
   <tr><td><img src="docs/showcase/rendered/09-hooks.png" alt="Hook 安装和健康管理"></td><td><img src="docs/showcase/rendered/10-workflow.png" alt="固定、归档、恢复与通知"></td></tr>
   <tr><td><img src="docs/showcase/rendered/11-multibench.png" alt="响应式多排工作台"></td><td><img src="docs/showcase/rendered/12-install.png" alt="一行命令安装"></td></tr>
-  <tr><td><img src="docs/showcase/rendered/13-footprint.png" alt="低内存和低存储占用"></td><td></td></tr>
+  <tr><td><img src="docs/showcase/rendered/13-footprint.png" alt="低内存和低存储占用"></td><td><img src="docs/showcase/rendered/14-focus-surfaces.png" alt="极简模式、顶端吸附与 macOS 状态栏 Stove"></td></tr>
 </table>
 
 </details>

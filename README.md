@@ -73,6 +73,27 @@ stores expired or manually removed sessions, and Restore brings back an
 accidental removal. Except for Cooked sessions, visible Stoves can be removed
 without deleting the original Harness session.
 
+## Focus the Desk, Without Losing It
+
+**Full** remains the default: it lists every visible Stove and grows into
+Benches instead of hiding work. Turn on **Minimal** when one circular Stove is
+enough. It shows the shared attention priority, in this order: Needs Human,
+Failed, Disconnected, unacknowledged Cooked, active work, then acknowledged
+Cooked; newer state evidence breaks ties. It does not use a timed carousel, and
+its priority menu keeps the other Stoves reachable.
+
+Drag the global Bar to the top of its current monitor to dock it. A drop within
+12 px docks; after 600 ms it auto-hides and the top 3 px reveals it again.
+Pulling the Bar 24 px away undocks it. Detached Stoves keep their usual movable
+behavior. Wayland docking is best effort because the compositor owns that
+interaction.
+
+On macOS, the combined status-bar item can show 0 to 8 priority Stoves (3 by
+default) using the same order. Click a visible Stove to return to it, or
+right-click for the complete list. These are presentation preferences only:
+they do not change lifecycle evidence, privacy boundaries, or Cookbench's
+observe-not-command product boundary.
+
 ## Built for Observability, Not Orchestration
 
 | Cookbench does | Cookbench deliberately does not do |
@@ -123,8 +144,9 @@ commands that do not work yet.
    **Settings > Hook Health** to see which lifecycle signals actually exist.
 4. Click a Stove to use a verified terminal/IDE target where available, guarded
    Codex Desktop task navigation, or an explicit application/project fallback.
-5. Tune language, optional hover details, two-day freshness, Archive, sound,
-   system banners, Bar flash, and desktop attention from Settings.
+5. Tune language, Full or Minimal display, top docking, macOS status-bar Stove
+   count, optional hover details, two-day freshness, Archive, sound, system
+   banners, Bar flash, and desktop attention from Settings.
 
 Local notifications default to sound only. A Cooked Stove may keep flashing
 until you acknowledge it by clicking that Stove. Temporary error messages
@@ -298,7 +320,7 @@ cargo test --workspace
 The full local release gate is `./scripts/verify.sh`. See
 [Releasing Cookbench](docs/releasing.md) before making package claims.
 
-## Cookbench in 13 Frames
+## Cookbench in 14 Frames
 
 The complete Chinese visual tour is included below for AI newcomers, daily
 Agent users, and people running enough parallel sessions to need a real bench.
@@ -307,7 +329,7 @@ system fonts, and CSS only. The source and deterministic renderer live in
 [docs/showcase](docs/showcase/README.md).
 
 <details>
-<summary><strong>Open the complete 13-image product tour</strong></summary>
+<summary><strong>Open the complete 14-image product tour</strong></summary>
 
 <table>
   <tr><td><img src="docs/showcase/rendered/01-overview.png" alt="Cookbench project overview"></td><td><img src="docs/showcase/rendered/02-one-glance.png" alt="See all agent sessions at a glance"></td></tr>
@@ -316,7 +338,7 @@ system fonts, and CSS only. The source and deterministic renderer live in
   <tr><td><img src="docs/showcase/rendered/07-ssh.png" alt="Read-only SSH observation"></td><td><img src="docs/showcase/rendered/08-privacy.png" alt="Local-first privacy boundary"></td></tr>
   <tr><td><img src="docs/showcase/rendered/09-hooks.png" alt="Hook installation and health"></td><td><img src="docs/showcase/rendered/10-workflow.png" alt="Pin archive restore and notifications"></td></tr>
   <tr><td><img src="docs/showcase/rendered/11-multibench.png" alt="Responsive multi-bench layout"></td><td><img src="docs/showcase/rendered/12-install.png" alt="One-command installation"></td></tr>
-  <tr><td><img src="docs/showcase/rendered/13-footprint.png" alt="Low memory and storage footprint"></td><td></td></tr>
+  <tr><td><img src="docs/showcase/rendered/13-footprint.png" alt="Low memory and storage footprint"></td><td><img src="docs/showcase/rendered/14-focus-surfaces.png" alt="Minimal mode, top docking, and macOS status Stove"></td></tr>
 </table>
 
 </details>

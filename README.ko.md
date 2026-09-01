@@ -72,6 +72,24 @@ Bar는 가로·세로 스크롤바 뒤로 작업을 숨기지 않고 여러 행�
 있습니다. Cooked를 제외한 표시 중 Stove는 원래 Harness Session을 지우지 않고 제거할 수
 있습니다.
 
+## 책상은 집중하고, 전체는 잃지 않습니다
+
+**Full**은 계속 기본값입니다. 보이는 모든 Stove를 나열하고 밀도가 높으면 Bench로 넓어지며
+작업을 숨기지 않습니다. **Minimal**을 켜면 하나의 원형 Stove만 공유 주의 우선순위로
+표시합니다. 순서는 Needs Human, Failed, Disconnected, 확인하지 않은 Cooked, active work,
+확인한 Cooked이며, 같은 순위에서는 더 새로운 state evidence가 이깁니다. timed carousel은
+없고 priority menu로 다른 Stove에도 도달할 수 있습니다.
+
+전역 Bar를 현재 monitor 상단으로 drag하면 dock됩니다. 상단 12 px 안에서 drop하면 dock되고,
+600 ms 뒤 auto-hide되며 상단 3 px에 마우스를 가져가면 다시 보입니다. 24 px 아래로 끌면
+undock됩니다. detached Stove는 기존처럼 자유롭게 움직입니다. Wayland dock은 compositor
+제약 때문에 best effort입니다.
+
+macOS에서는 하나의 combined status-bar item이 같은 우선순위로 0~8개의 Stove를 표시하며,
+기본값은 3개입니다. 보이는 Stove를 click해 return하고 right-click으로 complete list를 엽니다.
+이는 presentation preference일 뿐 lifecycle evidence, privacy boundary, observe-not-command
+product boundary를 바꾸지 않습니다.
+
 ## Orchestration이 아닌 Observability를 위해 만들었습니다
 
 | Cookbench가 하는 일 | Cookbench가 의도적으로 하지 않는 일 |
@@ -121,8 +139,8 @@ APT 저장소에 배포되지 않으므로, 동작하지 않는 설치 명령은
    실제로 어떤 생명주기 신호가 존재하는지 확인합니다.
 4. Stove를 클릭하면 가능한 경우 검증된 터미널/IDE 대상을 사용하고, 그렇지 않으면 보호된
    Codex Desktop 작업 탐색 또는 명시적 애플리케이션/프로젝트 fallback을 사용합니다.
-5. Settings에서 언어, 선택적 Hover 상세 정보, 2일 freshness, Archive, 소리, 시스템 배너,
-   Bar 점멸, 데스크톱 주의 요청을 조절합니다.
+5. Settings에서 언어, Full / Minimal, top docking, macOS status-bar Stove count, 선택적 Hover
+   상세 정보, 2일 freshness, Archive, 소리, 시스템 배너, Bar 점멸, 데스크톱 주의 요청을 조절합니다.
 
 로컬 알림의 기본값은 소리만 켜짐입니다. Cooked Stove는 클릭해 확인할 때까지 계속 점멸할 수
 있습니다. 일시 오류 메시지는 Bar 아래를 영구 점유하지 않고 20초 뒤 사라집니다.
@@ -282,7 +300,7 @@ cargo test --workspace
 전체 로컬 release gate는 `./scripts/verify.sh`입니다. 패키지 관련 주장을 하기 전에는
 [Cookbench 릴리스](docs/releasing.md)를 읽으세요.
 
-## 13장의 Cookbench 프레임
+## 14장의 Cookbench 프레임
 
 아래에는 AI 입문자, 매일 Agent를 쓰는 사람, 병렬 Session이 많아 진짜 Bench가 필요한
 사람을 위한 완전한 중국어 시각 투어가 있습니다. 모든 카드는 Cookbench mark, 시스템 글꼴,
@@ -290,7 +308,7 @@ CSS만으로 수정 가능한 HTML에서 offline 생성되었습니다. 소스�
 [docs/showcase](docs/showcase/README.md)에 있습니다.
 
 <details>
-<summary><strong>13장 전체 제품 투어 열기</strong></summary>
+<summary><strong>14장 전체 제품 투어 열기</strong></summary>
 
 <table>
   <tr><td><img src="docs/showcase/rendered/01-overview.png" alt="Cookbench 프로젝트 개요"></td><td><img src="docs/showcase/rendered/02-one-glance.png" alt="모든 Agent Session을 한눈에 보기"></td></tr>
@@ -299,7 +317,7 @@ CSS만으로 수정 가능한 HTML에서 offline 생성되었습니다. 소스�
   <tr><td><img src="docs/showcase/rendered/07-ssh.png" alt="읽기 전용 SSH 관찰"></td><td><img src="docs/showcase/rendered/08-privacy.png" alt="로컬 우선 개인정보 경계"></td></tr>
   <tr><td><img src="docs/showcase/rendered/09-hooks.png" alt="Hook 설치와 상태"></td><td><img src="docs/showcase/rendered/10-workflow.png" alt="pin archive restore와 알림"></td></tr>
   <tr><td><img src="docs/showcase/rendered/11-multibench.png" alt="반응형 multi-bench 레이아웃"></td><td><img src="docs/showcase/rendered/12-install.png" alt="한 줄 설치"></td></tr>
-  <tr><td><img src="docs/showcase/rendered/13-footprint.png" alt="낮은 메모리와 저장 공간 사용량"></td><td></td></tr>
+  <tr><td><img src="docs/showcase/rendered/13-footprint.png" alt="낮은 메모리와 저장 공간 사용량"></td><td><img src="docs/showcase/rendered/14-focus-surfaces.png" alt="Minimal mode, top docking, macOS status Stove"></td></tr>
 </table>
 
 </details>

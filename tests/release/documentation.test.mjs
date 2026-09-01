@@ -32,6 +32,17 @@ test("language navigation is complete and reciprocal", async () => {
   }
 });
 
+test("all language landing pages document the same v0.4 focus-surface contract", async () => {
+  const required = ["Minimal", "Wayland", "12", "600", "3", "0", "8", "macOS"];
+  for (const path of readmes) {
+    const contents = await read(path);
+    for (const term of required) {
+      assert.ok(contents.includes(term), `${path} does not document ${term}`);
+    }
+    assert.match(contents, /right-click|右键/i, `${path} does not document the complete status list`);
+  }
+});
+
 test("canonical compatibility document lists every catalog id exactly once", async () => {
   const catalog = await read("crates/cookbench-adapters/src/catalog.rs");
   const compatibility = await read("docs/harness-compatibility.md");
