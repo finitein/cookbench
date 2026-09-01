@@ -174,7 +174,19 @@ describe("global bar dock controller", () => {
     const native = transport(); native.startDrag = vi.fn().mockResolvedValue({ token: 8, completed: true, releaseConfirmed: false, state: expanded });
     const controller = createGlobalBarDockController(native); controller.start(); await Promise.resolve();
     controller.refresh(); expect(native.refreshGeometry).not.toHaveBeenCalled();
-    controller.endDrag(); controller.refresh(); expect(native.refreshGeometry).toHaveBeenCalledOnce(); controller.dispose();
+    controller.endDrag(); expect(native.refreshGeometry).toHaveBeenCalledOnce();
+    controller.refresh(); expect(native.refreshGeometry).toHaveBeenCalledTimes(2); controller.dispose();
+  });
+
+  it("refreshes geometry once when local pointerup follows an unconfirmed drag result", async () => {
+    const native = transport();
+    native.startDrag = vi.fn().mockResolvedValue({ token: 8, completed: true, releaseConfirmed: false, state: expanded });
+    const controller = createGlobalBarDockController(native);
+    controller.start();
+    await Promise.resolve();
+    controller.endDrag();
+    expect(native.refreshGeometry).toHaveBeenCalledOnce();
+    controller.dispose();
   });
 
   it("settles resize once from either native evidence or pointer fallback", async () => {
@@ -219,6 +231,21 @@ describe("global bar dock controller", () => {
     expect(native.refreshGeometry).toHaveBeenCalledTimes(2);
     controller.startResize(); controller.startResize(); expect(native.waitForPointerRelease).toHaveBeenCalledTimes(3);
     resolvers[2](true); await Promise.resolve(); expect(native.refreshGeometry).toHaveBeenCalledTimes(4); controller.dispose();
+  });
+
+  it("settles an unresolved resize before starting a new drag", async () => {
+    const native = transport();
+    native.waitForPointerRelease = vi.fn(() => new Promise<boolean>(() => undefined));
+    native.startDrag = vi.fn().mockResolvedValue({ token: 14, completed: true, releaseConfirmed: true, state: expanded });
+    const controller = createGlobalBarDockController(native);
+    controller.startResize();
+    expect(controller.interactionActive()).toBe(true);
+    controller.start();
+    expect(native.setGuards).toHaveBeenLastCalledWith(expect.objectContaining({ resizing: false }));
+    expect(native.refreshGeometry).toHaveBeenCalledOnce();
+    await Promise.resolve();
+    expect(controller.interactionActive()).toBe(false);
+    controller.dispose();
   });
 
   it("does not publish deferred initialization state after disposal and unlistens once", async () => {

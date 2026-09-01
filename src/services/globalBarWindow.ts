@@ -129,8 +129,9 @@ export function createGlobalBarDockController(
   };
   return {
     start() {
-      releaseUnconfirmed = false;
       if (activeToken != null || pendingStart || pendingFinish || disposed) return;
+      if (resizePending) settleResize();
+      releaseUnconfirmed = false;
       pendingStart = true;
       pointerEnded = false;
       clearCollapse();
@@ -152,7 +153,14 @@ export function createGlobalBarDockController(
         if (pointerEnded) finish();
       }).catch(() => { pendingStart = false; pointerEnded = false; if (!disposed) onInteractionSettled?.(); scheduleCollapse(); });
     },
-    endDrag() { pointerEnded = true; releaseUnconfirmed = false; finish(); scheduleCollapse(); },
+    endDrag() {
+      const shouldRefresh = releaseUnconfirmed;
+      pointerEnded = true;
+      releaseUnconfirmed = false;
+      if (shouldRefresh) safe(transport.refreshGeometry());
+      finish();
+      scheduleCollapse();
+    },
     setGuards,
     interactionActive: () => pendingStart || activeToken != null || pendingFinish || resizePending || releaseUnconfirmed,
     canRefresh: () => !disposed && !releaseUnconfirmed && !pendingStart && activeToken == null && !pendingFinish && !guards.resizing,
