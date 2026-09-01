@@ -129,6 +129,40 @@ describe("StoveSync", () => {
     await vi.waitFor(() => expect(received.at(-1)?.revision).toBe(5));
   });
 
+  it("clears a rejected recovery so a later gap can fetch again", async () => {
+    let handler: ((change: { revision: number; stove: StoveWire | null; removedStoveId: string | null; attentionOrder?: string[] }) => void) | undefined;
+    const transport: StoveTransport = {
+      snapshot: vi.fn()
+        .mockResolvedValueOnce({ revision: 1, stoves: [] })
+        .mockRejectedValueOnce(new Error("synthetic snapshot failure"))
+        .mockResolvedValueOnce({ revision: 4, stoves: [stove], attentionOrder: [stove.id] }),
+      listen: vi.fn(async (next) => { handler = next; return () => {}; }),
+    };
+    const received: StoveSnapshot[] = [];
+    await subscribeToStoves((next) => received.push(next), transport);
+
+    handler?.({ revision: 3, stove, removedStoveId: null, attentionOrder: [stove.id] });
+    await vi.waitFor(() => expect(transport.snapshot).toHaveBeenCalledTimes(2));
+    handler?.({ revision: 4, stove, removedStoveId: null, attentionOrder: [stove.id] });
+    await vi.waitFor(() => expect(transport.snapshot).toHaveBeenCalledTimes(3));
+    await vi.waitFor(() => expect(received.at(-1)).toEqual({ revision: 4, stoves: [stove], attentionOrder: [stove.id] }));
+  });
+
+  it("stops recovery when a retry snapshot makes no progress", async () => {
+    let handler: ((change: { revision: number; stove: StoveWire | null; removedStoveId: string | null; attentionOrder?: string[] }) => void) | undefined;
+    const transport: StoveTransport = {
+      snapshot: vi.fn()
+        .mockResolvedValueOnce({ revision: 1, stoves: [] })
+        .mockResolvedValueOnce({ revision: 1, stoves: [] }),
+      listen: vi.fn(async (next) => { handler = next; return () => {}; }),
+    };
+    await subscribeToStoves(() => {}, transport);
+    handler?.({ revision: 3, stove, removedStoveId: null, attentionOrder: [stove.id] });
+    await vi.waitFor(() => expect(transport.snapshot).toHaveBeenCalledTimes(2));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(transport.snapshot).toHaveBeenCalledTimes(2);
+  });
+
   it("delivers the authoritative snapshot when live event registration is unavailable", async () => {
     const transport: StoveTransport = {
       snapshot: vi.fn(async () => ({ revision: 56, stoves: [stove] })),

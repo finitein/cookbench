@@ -111,14 +111,19 @@ export async function subscribeToStoves(
   };
   const recoverSnapshot = async (): Promise<void> => {
     let previousRevision = sync.current().revision;
-    while (true) {
-      const snapshot = await transport.snapshot();
-      const current = sync.replace(snapshot);
-      onSnapshot(current);
-      if (current.revision >= highestObservedRevision || current.revision <= previousRevision) break;
-      previousRevision = current.revision;
+    try {
+      while (true) {
+        const snapshot = await transport.snapshot();
+        const current = sync.replace(snapshot);
+        onSnapshot(current);
+        if (current.revision >= highestObservedRevision || current.revision <= previousRevision) break;
+        previousRevision = current.revision;
+      }
+    } catch {
+      // Keep the known revision; a later gap can trigger a fresh recovery.
+    } finally {
+      recovery = null;
     }
-    recovery = null;
   };
   const unlisten = await transport.listen(handle).catch((): UnlistenFn => () => {});
   onSnapshot(sync.replace(await transport.snapshot()));
