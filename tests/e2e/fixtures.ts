@@ -53,8 +53,16 @@ export async function e2eDriver(page: Page) {
       page.evaluate((value) => window.__COOKBENCH_E2E__!.replaceSnapshot(value), snapshot),
     setGlobalBarMode: (mode: "full" | "minimal") =>
       page.evaluate((value) => window.__COOKBENCH_E2E__!.setGlobalBarMode(value), mode),
-    setDockState: (phase: "undocked" | "dockedExpanded" | "dockedCollapsed", bestEffort?: boolean) =>
-      page.evaluate(([value, fallback]) => window.__COOKBENCH_E2E__!.setDockState(value, fallback), [phase, bestEffort] as const),
+    setDockState: async (phase: "undocked" | "dockedExpanded" | "dockedCollapsed", bestEffort?: boolean) => {
+      if (phase === "dockedCollapsed") {
+        const viewport = page.viewportSize();
+        await page.mouse.move(1, Math.max(4, (viewport?.height ?? 720) - 1));
+      }
+      await page.evaluate(
+        ([value, fallback]) => window.__COOKBENCH_E2E__!.setDockState(value, fallback),
+        [phase, bestEffort] as const,
+      );
+    },
     setMacStatusFixture: (available: boolean, stoveCount: number) =>
       page.evaluate(([value, count]) => window.__COOKBENCH_E2E__!.setMacStatusFixture(value, count), [available, stoveCount] as const),
     acknowledgeCooked: (stoveId: string, postAcknowledgementOrder: string[]) =>

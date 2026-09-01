@@ -122,7 +122,7 @@ pub fn queue_status_stoves_refresh<R: Runtime>(
 /// while it owns its serialization lock without recursively taking it.
 pub fn refresh_status_stoves_snapshot<R: Runtime>(
     app: &AppHandle<R>,
-    snapshot: &crate::app_state::StoveSnapshot,
+    _snapshot: &crate::app_state::StoveSnapshot,
 ) {
     #[cfg(target_os = "macos")]
     {
@@ -132,12 +132,12 @@ pub fn refresh_status_stoves_snapshot<R: Runtime>(
         let state = app.state::<crate::app_state::AppState>();
         let count = state.persisted_config().layout.mac_status_stove_count;
         let status = app.state::<super::status_stoves::StatusStovesState>();
-        if !status.accepts_revision(snapshot.revision) {
+        if !status.accepts_revision(_snapshot.revision) {
             return;
         }
-        let rendered = status.presentation(snapshot, count);
+        let rendered = status.presentation(_snapshot, count);
         let locale = app.state::<crate::i18n::NativeLocaleState>().current();
-        let menu_stoves = super::status_stoves::all_stove_menu_for_locale(snapshot, locale);
+        let menu_stoves = super::status_stoves::all_stove_menu_for_locale(_snapshot, locale);
         let icon_result = match rendered {
             Some(ref presentation) => tray.set_icon(Some(tauri::image::Image::new_owned(
                 presentation.image.rgba.clone(),
@@ -147,18 +147,18 @@ pub fn refresh_status_stoves_snapshot<R: Runtime>(
             None => tray.set_icon(app.default_window_icon().cloned()),
         };
         if icon_result.is_ok() {
-            status.commit_presentation(snapshot.revision, rendered.as_ref());
+            status.commit_presentation(_snapshot.revision, rendered.as_ref());
         } else {
             let _ = tray.set_icon(app.default_window_icon().cloned());
-            status.commit_presentation(snapshot.revision, None);
+            status.commit_presentation(_snapshot.revision, None);
         }
         let _ = tray.set_visible(true);
         let _ = tray.set_tooltip(Some(super::status_stoves::accessibility_label_for_locale(
-            snapshot, count, locale,
+            _snapshot, count, locale,
         )));
         if let Ok(menu) = build_menu(app, locale, &menu_stoves) {
             if tray.set_menu(Some(menu)).is_ok() {
-                status.commit_menu(snapshot.revision, &menu_stoves);
+                status.commit_menu(_snapshot.revision, &menu_stoves);
             }
         }
     }
