@@ -15,7 +15,7 @@ export function useGlobalBarWindow() {
     let disposed = false;
     const dock = createGlobalBarDockController(createGlobalBarDockTransport(), (state) => {
       document.documentElement.dataset.cookbenchDockState = state.phase;
-    });
+    }, () => updateMinimum());
     dock.setGuards({
       pointerInside: bar.matches(":hover"),
       focused: bar.contains(document.activeElement),
@@ -24,7 +24,7 @@ export function useGlobalBarWindow() {
     let stopDock = () => {};
     void dock.initialize().then((unlisten) => { if (disposed) unlisten(); else stopDock = unlisten; });
     const detach = attachGlobalBarDragHandle(bar, () => dock.start());
-    const endDrag = () => { dock.endDrag(); dock.setGuards({ resizing: false }); dock.refresh(); };
+    const endDrag = () => { dock.endDrag(); dock.setGuards({ resizing: false }); };
     window.addEventListener("pointerup", endDrag);
     window.addEventListener("pointercancel", endDrag);
     const enter = () => { dock.setGuards({ pointerInside: true }); if (dock.state().collapsed) dock.reveal(); };

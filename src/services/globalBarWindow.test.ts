@@ -124,4 +124,28 @@ describe("global bar dock controller", () => {
     expect(native.finishDrag).toHaveBeenCalledTimes(1); expect(native.finishDrag).toHaveBeenCalledWith(9);
     controller.dispose();
   });
+
+  it("does not finish a platform-completed drag or accept duplicate starts", async () => {
+    const native = transport();
+    native.startDrag = vi.fn().mockResolvedValue({ token: 4, completed: true, state: expanded });
+    const controller = createGlobalBarDockController(native);
+    controller.start(); controller.start(); controller.endDrag();
+    await Promise.resolve(); await Promise.resolve();
+    expect(native.startDrag).toHaveBeenCalledTimes(1);
+    expect(native.finishDrag).not.toHaveBeenCalled();
+    controller.dispose();
+  });
+
+  it("does not refresh while a start or finish is pending", async () => {
+    let resolveStart!: (result: { token: number; completed: boolean }) => void;
+    const native = transport();
+    native.startDrag = vi.fn(() => new Promise<{ token: number; completed: boolean }>((done) => { resolveStart = done; }));
+    const controller = createGlobalBarDockController(native);
+    controller.start(); controller.refresh();
+    expect(native.refreshGeometry).not.toHaveBeenCalled();
+    resolveStart({ token: 3, completed: false }); await Promise.resolve();
+    controller.endDrag(); controller.refresh();
+    expect(native.refreshGeometry).not.toHaveBeenCalled();
+    await Promise.resolve(); controller.dispose();
+  });
 });

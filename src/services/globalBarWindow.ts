@@ -55,44 +55,68 @@ export function createGlobalBarDockTransport(): GlobalBarDockTransport {
 }
 
 /** Native dock lifecycle, kept independent of React and Tauri globals for deterministic tests. */
-export function createGlobalBarDockController(transport: GlobalBarDockTransport, onState?: (state: GlobalBarDockState) => void) {
+export function createGlobalBarDockController(
+  transport: GlobalBarDockTransport,
+  onState?: (state: GlobalBarDockState) => void,
+  onInteractionSettled?: () => void,
+) {
   let state: GlobalBarDockState = { phase: "undocked", docked: false, collapsed: false, bestEffort: false };
   let guards = { ...EMPTY_DOCK_GUARDS };
   let collapseTimer: ReturnType<typeof setTimeout> | undefined;
   let activeToken: number | undefined;
   let pendingStart = false;
+  let pendingFinish = false;
   let pointerEnded = false;
   let disposed = false;
-  const apply = (next: GlobalBarDockState) => { state = next; onState?.(next); scheduleCollapse(); };
+  const apply = (next: GlobalBarDockState) => {
+    if (disposed) return;
+    state = next;
+    onState?.(next);
+    scheduleCollapse();
+  };
   const clearCollapse = () => { if (collapseTimer) clearTimeout(collapseTimer); collapseTimer = undefined; };
   const hasGuard = () => Object.values(guards).some(Boolean);
-  const safe = (promise: Promise<GlobalBarDockState>) => void promise.then(apply).catch(() => undefined);
+  const safe = (promise: Promise<GlobalBarDockState>, settled = false) => void promise.then((next) => {
+    apply(next);
+    if (settled && !disposed) onInteractionSettled?.();
+  }).catch(() => {
+    if (settled && !disposed) onInteractionSettled?.();
+  });
   const scheduleCollapse = () => {
     clearCollapse();
-    if (disposed || hasGuard() || state.phase !== "dockedExpanded" || state.bestEffort || activeToken != null || pendingStart) return;
+    if (disposed || hasGuard() || state.phase !== "dockedExpanded" || state.bestEffort || activeToken != null || pendingStart || pendingFinish) return;
     collapseTimer = setTimeout(() => {
       collapseTimer = undefined;
-      if (!disposed && !hasGuard() && state.phase === "dockedExpanded" && !state.bestEffort && activeToken == null && !pendingStart) safe(transport.collapse());
+      if (!disposed && !hasGuard() && state.phase === "dockedExpanded" && !state.bestEffort && activeToken == null && !pendingStart && !pendingFinish) safe(transport.collapse());
     }, 600);
   };
   const setGuards = (next: Partial<GlobalBarDockGuards>) => {
     guards = { ...guards, ...next };
     clearCollapse();
-    safe(transport.setGuards(guards));
+    if (!disposed) safe(transport.setGuards(guards));
     scheduleCollapse();
   };
   const finish = () => {
-    if (activeToken == null) return;
+    if (activeToken == null || pendingFinish || disposed) return;
     const token = activeToken;
     activeToken = undefined;
+    pendingFinish = true;
     pointerEnded = false;
     clearCollapse();
-    safe(transport.finishDrag(token));
-    scheduleCollapse();
+    void transport.finishDrag(token).then((next) => {
+      pendingFinish = false;
+      apply(next);
+      if (!disposed) onInteractionSettled?.();
+      scheduleCollapse();
+    }).catch(() => {
+      pendingFinish = false;
+      if (!disposed) onInteractionSettled?.();
+      scheduleCollapse();
+    });
   };
   return {
     start() {
-      if (activeToken != null || pendingStart || disposed) return;
+      if (activeToken != null || pendingStart || pendingFinish || disposed) return;
       pendingStart = true;
       pointerEnded = false;
       clearCollapse();
@@ -103,19 +127,20 @@ export function createGlobalBarDockController(transport: GlobalBarDockTransport,
           return;
         }
         if (result.state) apply(result.state);
-        if (result.completed) { pointerEnded = false; scheduleCollapse(); return; }
+        if (result.completed) { pointerEnded = false; onInteractionSettled?.(); scheduleCollapse(); return; }
         activeToken = result.token;
         if (pointerEnded) finish();
-      }).catch(() => { pendingStart = false; pointerEnded = false; scheduleCollapse(); });
+      }).catch(() => { pendingStart = false; pointerEnded = false; if (!disposed) onInteractionSettled?.(); scheduleCollapse(); });
     },
     endDrag() { pointerEnded = true; finish(); },
     setGuards,
-    interactionActive: () => pendingStart || activeToken != null || guards.resizing,
-    canRefresh: () => !disposed && !pendingStart && activeToken == null && !guards.resizing,
-    refresh() { if (!pendingStart && activeToken == null && !guards.resizing) safe(transport.refreshGeometry()); },
-    reveal() { safe(transport.reveal()); },
+    interactionActive: () => pendingStart || activeToken != null || pendingFinish || guards.resizing,
+    canRefresh: () => !disposed && !pendingStart && activeToken == null && !pendingFinish && !guards.resizing,
+    refresh() { if (!disposed && !pendingStart && activeToken == null && !pendingFinish && !guards.resizing) safe(transport.refreshGeometry()); },
+    reveal() { if (!disposed) safe(transport.reveal()); },
     async initialize() {
       await transport.getState().then(apply).catch(() => undefined);
+      if (disposed) return () => {};
       return transport.listen(apply).then((unlisten) => {
         if (disposed) unlisten();
         return unlisten;
@@ -125,7 +150,7 @@ export function createGlobalBarDockController(transport: GlobalBarDockTransport,
     dispose(unlisten?: () => void) {
       disposed = true; clearCollapse(); unlisten?.();
       void transport.setGuards(EMPTY_DOCK_GUARDS).catch(() => undefined);
-      if (activeToken != null) { const token = activeToken; activeToken = undefined; void transport.finishDrag(token).catch(() => undefined); }
+      if (activeToken != null && !pendingFinish) { const token = activeToken; activeToken = undefined; pendingFinish = true; void transport.finishDrag(token).catch(() => undefined); }
     },
   };
 }
