@@ -69,6 +69,7 @@ export function createGlobalBarDockController(
   let pendingStart = false;
   let pendingFinish = false;
   let resizePending = false;
+  let resizeGeneration = 0;
   let releaseUnconfirmed = false;
   let pointerEnded = false;
   let disposed = false;
@@ -121,6 +122,7 @@ export function createGlobalBarDockController(
   const settleResize = () => {
     if (disposed || !resizePending) return;
     resizePending = false;
+    resizeGeneration += 1;
     setGuards({ resizing: false });
     safe(transport.refreshGeometry());
   };
@@ -138,7 +140,13 @@ export function createGlobalBarDockController(
           return;
         }
         if (result.state) apply(result.state);
-        if (result.completed) { pointerEnded = false; releaseUnconfirmed = !result.releaseConfirmed; onInteractionSettled?.(); scheduleCollapse(); return; }
+        if (result.completed) {
+          const releasedDuringStart = pointerEnded;
+          pointerEnded = false;
+          releaseUnconfirmed = !result.releaseConfirmed && !releasedDuringStart;
+          if (releasedDuringStart) safe(transport.refreshGeometry());
+          onInteractionSettled?.(); scheduleCollapse(); return;
+        }
         activeToken = result.token;
         if (pointerEnded) finish();
       }).catch(() => { pendingStart = false; pointerEnded = false; if (!disposed) onInteractionSettled?.(); scheduleCollapse(); });
@@ -150,13 +158,17 @@ export function createGlobalBarDockController(
     refresh() { if (!disposed && !releaseUnconfirmed && !pendingStart && activeToken == null && !pendingFinish && !guards.resizing) safe(transport.refreshGeometry()); },
     reveal() { if (!disposed) safe(transport.reveal()); },
     startResize() {
+      if (disposed) return;
+      if (resizePending) settleResize();
       releaseUnconfirmed = false;
-      if (disposed || resizePending) return;
+      const generation = resizeGeneration + 1;
+      resizeGeneration = generation;
       resizePending = true;
       setGuards({ resizing: true });
       void transport.waitForPointerRelease().then((released) => {
-        if (!disposed && released) settleResize();
-        else if (!disposed) releaseUnconfirmed = true;
+        if (disposed || generation !== resizeGeneration || !resizePending) return;
+        if (released) settleResize();
+        else releaseUnconfirmed = true;
       }).catch(() => undefined);
     },
     settleResize,

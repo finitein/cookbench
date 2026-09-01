@@ -184,6 +184,24 @@ describe("global bar dock controller", () => {
     await Promise.resolve(); expect(native.refreshGeometry).toHaveBeenCalledOnce(); controller.dispose();
   });
 
+  it("honors pointerup observed while a completed start is still pending", async () => {
+    let resolve!: (value: { token: number; completed: boolean; releaseConfirmed: boolean; state: typeof expanded }) => void;
+    const native = transport(); native.startDrag = vi.fn(() => new Promise<{ token: number; completed: boolean; releaseConfirmed: boolean; state: typeof expanded }>((done) => { resolve = done; }));
+    const controller = createGlobalBarDockController(native); controller.start(); controller.endDrag();
+    resolve({ token: 12, completed: true, releaseConfirmed: false, state: expanded }); await Promise.resolve(); await Promise.resolve();
+    controller.refresh(); expect(native.refreshGeometry).toHaveBeenCalled(); controller.dispose();
+  });
+
+  it("ignores late resize evidence and lets a new pointerdown replace an old resize", async () => {
+    const resolvers: Array<(value: boolean) => void> = [];
+    const native = transport(); native.waitForPointerRelease = vi.fn(() => new Promise<boolean>((done) => { resolvers.push(done); }));
+    const controller = createGlobalBarDockController(native); controller.startResize(); controller.settleResize();
+    resolvers[0](false); await Promise.resolve(); controller.refresh();
+    expect(native.refreshGeometry).toHaveBeenCalledTimes(2);
+    controller.startResize(); controller.startResize(); expect(native.waitForPointerRelease).toHaveBeenCalledTimes(3);
+    resolvers[2](true); await Promise.resolve(); expect(native.refreshGeometry).toHaveBeenCalledTimes(4); controller.dispose();
+  });
+
   it("does not publish deferred initialization state after disposal and unlistens once", async () => {
     let resolveState!: (value: typeof expanded) => void; let resolveListen!: (value: () => void) => void;
     const native = transport(); native.getState = vi.fn(() => new Promise<typeof expanded>((done) => { resolveState = done; }));
