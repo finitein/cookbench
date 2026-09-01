@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { StoveWire } from "../types/stove";
@@ -51,6 +52,13 @@ describe("GlobalBar", () => {
     expect(document.querySelector(".global-bar__minimal-mark")).toBeInTheDocument();
   });
 
+  it("expands from the named empty minimal mark", () => {
+    const onModeChange = vi.fn();
+    render(<GlobalBar stoves={[]} mode="minimal" onModeChange={onModeChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "Use full Bar" }));
+    expect(onModeChange).toHaveBeenCalledWith("full");
+  });
+
   it("opens the ordered priority menu from context menu or keyboard trigger", () => {
     const first = makeStove(0);
     const second = makeStove(1);
@@ -74,6 +82,32 @@ describe("GlobalBar", () => {
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Use full Bar" }));
     expect(onModeChange).toHaveBeenCalledWith("full");
+  });
+
+  it("closes an open priority menu across mode and empty-list transitions", () => {
+    const stove = makeStove(0);
+    const view = render(<GlobalBar stoves={[stove]} mode="minimal" />);
+    const open = () => fireEvent.click(screen.getByRole("button", { name: "Stove priority list" }));
+    open(); expect(screen.getByRole("menu")).toBeInTheDocument();
+    view.rerender(<GlobalBar stoves={[stove]} mode="full" />);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    view.rerender(<GlobalBar stoves={[stove]} mode="minimal" />);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    open(); view.rerender(<GlobalBar stoves={[]} mode="minimal" />);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    view.rerender(<GlobalBar stoves={[stove]} mode="minimal" />);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("expands through its callback before exposing the regular management actions", () => {
+    const stove = makeStove(0, { state: "cooked", retainedCompletion: true });
+    function Harness() {
+      const [mode, setMode] = useState<"full" | "minimal">("minimal");
+      return <GlobalBar stoves={[stove]} mode={mode} onModeChange={setMode} onDetachStove={vi.fn()} onPinStove={vi.fn()} onClearStove={vi.fn()} />;
+    }
+    render(<Harness />);
+    fireEvent.click(screen.getByRole("button", { name: "Use full Bar" }));
+    expect(screen.getByRole("button", { name: "Detach Codex Stove" })).toBeInTheDocument();
   });
 
   it("roves menu focus and restores the actual button opener only on Escape", () => {
