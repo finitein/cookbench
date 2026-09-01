@@ -80,6 +80,7 @@ export function DisplaySettingsPanel() {
         }
       } catch {
         if (generation !== saveGeneration.current) return;
+        setStatus("display.saveFailed");
         try {
           const authoritative = await getDisplaySettings();
           if (generation === saveGeneration.current) {

@@ -209,6 +209,19 @@ describe("DisplaySettingsPanel", () => {
     });
   });
 
+  it("reloads native settings and reports a latest save failure", async () => {
+    configureDisplaySettings.mockRejectedValueOnce(new Error("save failed"));
+    render(<DisplaySettingsPanel />);
+
+    fireEvent.click(await screen.findByRole("radio", { name: "Minimal" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("radio", { name: "Full" })).toBeChecked();
+      expect(screen.getByRole("status")).toHaveTextContent("Display settings could not be saved.");
+    });
+    expect(getDisplaySettings).toHaveBeenCalledTimes(2);
+  });
+
   it("closes only the selected independent Bar", async () => {
     render(<DisplaySettingsPanel />);
     fireEvent.click(await screen.findByRole("button", { name: "Close independent Bar host-a:session-1" }));
