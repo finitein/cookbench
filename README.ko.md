@@ -322,6 +322,8 @@ CSS만으로 수정 가능한 HTML에서 offline 생성되었습니다. 소스�
 
 </details>
 
+silent-first 소셜용 23.5초 세로형 [Minimal, top-dock, macOS status Stove 기능 영상](videos/cookbench-focus-surfaces/renders/cookbench-focus-surfaces-vertical.mp4)도 확인할 수 있습니다.
+
 ## 느낌이 아니라 증거
 
 Cookbench는 오픈 소스 프리뷰입니다. 자동 CI는 Rust와 TypeScript test, 상태 머신,

@@ -1,0 +1,12 @@
+{
+  "duration": 23.5,
+  "assertions": [
+    { "kind": "appearsBy", "selector": "#focus-pain-title", "bySec": 0.7 },
+    { "kind": "before", "a": "#focus-pain-title", "b": "#focus-minimal-title" },
+    { "kind": "before", "a": "#focus-minimal-title", "b": "#focus-showcase-window" },
+    { "kind": "before", "a": "#focus-showcase-window", "b": "#focus-boundary-title" },
+    { "kind": "before", "a": "#focus-boundary-title", "b": "#focus-close-brand" },
+    { "kind": "staysInFrame", "selector": "#focus-showcase-window" },
+    { "kind": "keepsMoving", "withinSelector": "#focus-vertical" }
+  ]
+}

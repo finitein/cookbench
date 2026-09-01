@@ -343,6 +343,8 @@ system fonts, and CSS only. The source and deterministic renderer live in
 
 </details>
 
+Watch the 23.5-second vertical [Minimal, top-dock, and macOS status Stove feature film](videos/cookbench-focus-surfaces/renders/cookbench-focus-surfaces-vertical.mp4), designed for silent-first social viewing.
+
 ## Evidence, Not Vibes
 
 Cookbench is an open-source preview. Automated CI covers Rust and TypeScript

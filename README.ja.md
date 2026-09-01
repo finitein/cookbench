@@ -325,6 +325,8 @@ font、CSS のみで editable HTML から offline 生成されています。sou
 
 </details>
 
+silent-first social 向け 23.5 秒縦型の [Minimal、top-dock、macOS status Stove feature film](videos/cookbench-focus-surfaces/renders/cookbench-focus-surfaces-vertical.mp4) も公開しています。
+
 ## Vibes ではなく Evidence
 
 Cookbench は open-source preview です。automated CI は Rust / TypeScript test、state machine、

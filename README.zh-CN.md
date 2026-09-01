@@ -298,6 +298,8 @@ cargo test --workspace
 
 </details>
 
+观看适配小红书、抖音静音浏览的 23.5 秒竖版[极简模式、顶端吸附与 macOS 状态栏功能片](videos/cookbench-focus-surfaces/renders/cookbench-focus-surfaces-vertical.mp4)。
+
 ## 证据，而不是氛围
 
 Cookbench 仍是开源预览版。自动化 CI 覆盖 Rust 与 TypeScript 测试、状态机、Adapter
