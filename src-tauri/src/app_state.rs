@@ -358,7 +358,6 @@ impl AppState {
             }
         }
         let retained = loaded.state.retained.clone();
-        let cooked_attention_cursors = loaded.state.cooked_attention_cursors.clone();
         let pinned = loaded.state.pinned.clone();
         *self
             .persistence
@@ -369,33 +368,14 @@ impl AppState {
             state: loaded.state,
         });
         for completion in retained {
-            let completion_event = completion
-                .completion_event
-                .clone()
-                .or_else(|| {
-                    cooked_attention_cursors
-                        .iter()
-                        .find(|cursor| {
-                            cursor.locator == completion.locator
-                                && cursor.timestamp_ms == completion.completed_at_ms
-                        })
-                        .map(|cursor| {
-                            EventMetadata::new(
-                                cursor.source,
-                                cursor.confidence,
-                                cursor.sequence,
-                                cursor.timestamp_ms,
-                            )
-                        })
-                })
-                .unwrap_or_else(|| {
-                    EventMetadata::new(
-                        EventSource::StructuredSession,
-                        100,
-                        0,
-                        completion.completed_at_ms,
-                    )
-                });
+            let completion_event = completion.completion_event.clone().unwrap_or_else(|| {
+                EventMetadata::new(
+                    EventSource::StructuredSession,
+                    100,
+                    0,
+                    completion.completed_at_ms,
+                )
+            });
             let project_root = if completion.presentation.project_root_display.is_empty() {
                 "(retained Cookbench completion)".to_owned()
             } else {
@@ -943,7 +923,7 @@ impl AppState {
                         &mut runtime.state,
                         identity_for_persistence.clone(),
                         stove.state,
-                        &metadata,
+                        stove.last_event.as_ref().unwrap_or(&metadata),
                         presentation.clone(),
                     );
                     if stove.state == StoveState::Cooked {
