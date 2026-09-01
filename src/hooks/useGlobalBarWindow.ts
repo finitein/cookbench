@@ -24,9 +24,12 @@ export function useGlobalBarWindow() {
     let stopDock = () => {};
     void dock.initialize().then((unlisten) => { if (disposed) unlisten(); else stopDock = unlisten; });
     const detach = attachGlobalBarDragHandle(bar, () => dock.start());
-    const endDrag = () => { dock.endDrag(); dock.setGuards({ resizing: false }); };
+    const endDrag = () => dock.endDrag();
+    const endResize = () => dock.settleResize();
     window.addEventListener("pointerup", endDrag);
     window.addEventListener("pointercancel", endDrag);
+    window.addEventListener("pointerup", endResize);
+    window.addEventListener("pointercancel", endResize);
     const enter = () => { dock.setGuards({ pointerInside: true }); if (dock.state().collapsed) dock.reveal(); };
     const leave = () => dock.setGuards({ pointerInside: false });
     const focusIn = () => dock.setGuards({ focused: true });
@@ -42,8 +45,7 @@ export function useGlobalBarWindow() {
     const resizeCleanups = resizeHandles.map((direction) => {
       const handle = document.createElement("div"); handle.className = "global-bar__resize-handle"; bar.append(handle);
       const detachResize = attachGlobalBarResizeHandle(handle, direction, () => {
-        dock.setGuards({ resizing: true });
-        dock.waitForResizeRelease();
+        dock.startResize();
       });
       return () => { detachResize(); handle.remove(); };
     });
@@ -85,6 +87,7 @@ export function useGlobalBarWindow() {
       stopResizing?.(); stopDock(); dock.dispose(); delete document.documentElement.dataset.cookbenchDockState;
       menuObserver.disconnect(); observer.disconnect(); mutations.disconnect(); detach(); resizeCleanups.forEach((cleanup) => cleanup());
       window.removeEventListener("pointerup", endDrag); window.removeEventListener("pointercancel", endDrag);
+      window.removeEventListener("pointerup", endResize); window.removeEventListener("pointercancel", endResize);
       bar.removeEventListener("pointerenter", enter); bar.removeEventListener("pointerleave", leave);
       bar.removeEventListener("focusin", focusIn); bar.removeEventListener("focusout", focusOut);
     };

@@ -68,6 +68,7 @@ export function createGlobalBarDockController(
   let activeToken: number | undefined;
   let pendingStart = false;
   let pendingFinish = false;
+  let resizePending = false;
   let pointerEnded = false;
   let disposed = false;
   const apply = (next: GlobalBarDockState) => {
@@ -116,6 +117,12 @@ export function createGlobalBarDockController(
       scheduleCollapse();
     });
   };
+  const settleResize = () => {
+    if (disposed || !resizePending) return;
+    resizePending = false;
+    setGuards({ resizing: false });
+    safe(transport.refreshGeometry());
+  };
   return {
     start() {
       if (activeToken != null || pendingStart || pendingFinish || disposed) return;
@@ -136,24 +143,24 @@ export function createGlobalBarDockController(
     },
     endDrag() { pointerEnded = true; finish(); },
     setGuards,
-    interactionActive: () => pendingStart || activeToken != null || pendingFinish || guards.resizing,
+    interactionActive: () => pendingStart || activeToken != null || pendingFinish || resizePending,
     canRefresh: () => !disposed && !pendingStart && activeToken == null && !pendingFinish && !guards.resizing,
     refresh() { if (!disposed && !pendingStart && activeToken == null && !pendingFinish && !guards.resizing) safe(transport.refreshGeometry()); },
     reveal() { if (!disposed) safe(transport.reveal()); },
-    waitForResizeRelease() {
-      if (disposed || !guards.resizing) return;
+    startResize() {
+      if (disposed || resizePending) return;
+      resizePending = true;
+      setGuards({ resizing: true });
       void transport.waitForPointerRelease().then((released) => {
-        if (!disposed && released) {
-          setGuards({ resizing: false });
-          safe(transport.refreshGeometry());
-        }
+        if (!disposed && released) settleResize();
       }).catch(() => undefined);
     },
+    settleResize,
     async initialize() {
       await transport.getState().then(apply).catch(() => undefined);
       if (disposed) return () => {};
       return transport.listen(apply).then((unlisten) => {
-        if (disposed) unlisten();
+        if (disposed) { unlisten(); return () => {}; }
         return unlisten;
       }).catch(() => () => {});
     },
