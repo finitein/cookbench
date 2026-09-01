@@ -19,6 +19,8 @@ describe("display settings service", () => {
     await configureDisplaySettings({
       globalBarVisible: false,
       globalBarPlacement: "bottomCenter",
+      globalBarMode: "minimal",
+      macStatusStoveCount: 0,
       hoverDetailsEnabled: false,
       locale: "system",
     });
@@ -29,6 +31,8 @@ describe("display settings service", () => {
       input: {
         globalBarVisible: false,
         globalBarPlacement: "bottomCenter",
+        globalBarMode: "minimal",
+        macStatusStoveCount: 0,
         hoverDetailsEnabled: false,
         locale: "system",
       },
@@ -49,6 +53,9 @@ describe("display settings service", () => {
     const initial = {
       globalBarVisible: true,
       globalBarPlacement: "topCenter" as const,
+      globalBarMode: "full" as const,
+      macStatusStoveCount: 3,
+      macStatusAvailable: false,
       hoverDetailsEnabled: false,
       locale: "system" as const,
       detachedBars: [],

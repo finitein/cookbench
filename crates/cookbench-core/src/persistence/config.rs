@@ -36,6 +36,29 @@ pub enum GlobalBarPlacement {
     BottomRight,
 }
 
+/// The global Bar presentation density. Minimal mode deliberately remains a
+/// display preference; it does not alter the observed Stove lifecycle.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum GlobalBarMode {
+    #[default]
+    Full,
+    Minimal,
+}
+
+pub const MAX_MAC_STATUS_STOVE_COUNT: u8 = 8;
+
+const fn default_mac_status_stove_count() -> u8 {
+    3
+}
+
+fn deserialize_mac_status_stove_count<'de, D>(deserializer: D) -> Result<u8, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Ok(u8::deserialize(deserializer)?.min(MAX_MAC_STATUS_STOVE_COUNT))
+}
+
 /// The last user-dragged global Bar position, relative to a monitor work area.
 /// It takes precedence over the placement anchor on restore and contains no
 /// session, project, or harness data.
@@ -55,6 +78,13 @@ pub struct BarLayout {
     pub hover_details_enabled: bool,
     #[serde(default)]
     pub global_bar_placement: GlobalBarPlacement,
+    #[serde(default)]
+    pub global_bar_mode: GlobalBarMode,
+    #[serde(
+        default = "default_mac_status_stove_count",
+        deserialize_with = "deserialize_mac_status_stove_count"
+    )]
+    pub mac_status_stove_count: u8,
     /// The last deliberate native window size. It is unset until the user
     /// resizes the Bar, keeping legacy installs on their platform default.
     #[serde(
@@ -148,6 +178,8 @@ impl Default for BarLayout {
             global_bar_visible: true,
             hover_details_enabled: false,
             global_bar_placement: GlobalBarPlacement::default(),
+            global_bar_mode: GlobalBarMode::default(),
+            mac_status_stove_count: default_mac_status_stove_count(),
             global_bar_size: None,
             global_bar_position: None,
             detached_stoves: Vec::new(),

@@ -10,9 +10,9 @@ mod state;
 
 pub use atomic_file::{AtomicJsonFile, PersistenceError, Versioned};
 pub use config::{
-    AppLocale, BarLayout, CredentialReference, GlobalBarPlacement, GlobalBarPosition,
-    LocalNotificationPreferences, NotificationDestinationConfig, PersistedConfig,
-    RemoteSourceConfig, UserPreferences,
+    AppLocale, BarLayout, CredentialReference, GlobalBarMode, GlobalBarPlacement,
+    GlobalBarPosition, LocalNotificationPreferences, NotificationDestinationConfig,
+    PersistedConfig, RemoteSourceConfig, UserPreferences, MAX_MAC_STATUS_STOVE_COUNT,
 };
 pub use layout::{
     DetachedStoveLayout, MonitorIdentity, MonitorWorkArea, RelativePosition,

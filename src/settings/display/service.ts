@@ -12,6 +12,7 @@ export type GlobalBarPlacement =
   | "bottomRight";
 
 export type AppLocale = "system" | "en" | "zh-CN" | "ja" | "ko";
+export type GlobalBarMode = "full" | "minimal";
 
 export type DetachedBarWire = {
   stoveId: string;
@@ -20,6 +21,9 @@ export type DetachedBarWire = {
 export type DisplaySettingsWire = {
   globalBarVisible: boolean;
   globalBarPlacement: GlobalBarPlacement;
+  globalBarMode: GlobalBarMode;
+  macStatusStoveCount: number;
+  macStatusAvailable: boolean;
   hoverDetailsEnabled: boolean;
   locale: AppLocale;
   detachedBars: DetachedBarWire[];
@@ -27,7 +31,7 @@ export type DisplaySettingsWire = {
 
 export type DisplaySettingsInput = Pick<
   DisplaySettingsWire,
-  "globalBarVisible" | "globalBarPlacement" | "hoverDetailsEnabled" | "locale"
+  "globalBarVisible" | "globalBarPlacement" | "globalBarMode" | "macStatusStoveCount" | "hoverDetailsEnabled" | "locale"
 >;
 
 export function getDisplaySettings(): Promise<DisplaySettingsWire> {

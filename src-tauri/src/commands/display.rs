@@ -4,8 +4,8 @@
 //! or manage a harness session.
 
 use cookbench_core::persistence::{
-    AppLocale, GlobalBarPlacement, GlobalBarPosition, MonitorIdentity, MonitorWorkArea,
-    PersistedConfig, RelativePosition, WindowPosition,
+    AppLocale, GlobalBarMode, GlobalBarPlacement, GlobalBarPosition, MonitorIdentity,
+    MonitorWorkArea, PersistedConfig, RelativePosition, WindowPosition, MAX_MAC_STATUS_STOVE_COUNT,
 };
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, State};
@@ -28,6 +28,9 @@ pub struct DetachedBarWire {
 pub struct DisplaySettingsWire {
     pub global_bar_visible: bool,
     pub global_bar_placement: GlobalBarPlacement,
+    pub global_bar_mode: GlobalBarMode,
+    pub mac_status_stove_count: u8,
+    pub mac_status_available: bool,
     pub hover_details_enabled: bool,
     pub locale: AppLocale,
     pub detached_bars: Vec<DetachedBarWire>,
@@ -38,6 +41,8 @@ pub struct DisplaySettingsWire {
 pub struct DisplaySettingsInput {
     pub global_bar_visible: bool,
     pub global_bar_placement: GlobalBarPlacement,
+    pub global_bar_mode: GlobalBarMode,
+    pub mac_status_stove_count: u8,
     pub hover_details_enabled: bool,
     pub locale: AppLocale,
 }
@@ -48,6 +53,9 @@ pub fn settings_wire(config: &PersistedConfig) -> DisplaySettingsWire {
     DisplaySettingsWire {
         global_bar_visible: config.layout.global_bar_visible,
         global_bar_placement: config.layout.global_bar_placement,
+        global_bar_mode: config.layout.global_bar_mode,
+        mac_status_stove_count: config.layout.mac_status_stove_count,
+        mac_status_available: cfg!(target_os = "macos"),
         hover_details_enabled: config.layout.hover_details_enabled,
         locale: config.preferences.locale,
         detached_bars: config
@@ -74,12 +82,15 @@ pub fn configure_display_settings(
     native_locale: State<'_, NativeLocaleState>,
     windows: State<'_, TauriWindowCommandService>,
 ) -> Result<DisplaySettingsWire, String> {
+    validate_mac_status_stove_count(input.mac_status_stove_count)?;
     let previous = state.persisted_config().layout;
     let previous_locale = state.persisted_config().preferences.locale;
     let placement_changed = previous.global_bar_placement != input.global_bar_placement;
     state.update_persisted_config(|config| {
         config.layout.global_bar_visible = input.global_bar_visible;
         config.layout.global_bar_placement = input.global_bar_placement;
+        config.layout.global_bar_mode = input.global_bar_mode;
+        config.layout.mac_status_stove_count = input.mac_status_stove_count;
         config.layout.hover_details_enabled = input.hover_details_enabled;
         config.preferences.locale = input.locale;
         if placement_changed {
@@ -109,6 +120,15 @@ pub fn configure_display_settings(
     app.emit(DISPLAY_SETTINGS_CHANGED_EVENT, &wire)
         .map_err(|error| error.to_string())?;
     Ok(wire)
+}
+
+fn validate_mac_status_stove_count(count: u8) -> Result<(), String> {
+    if count > MAX_MAC_STATUS_STOVE_COUNT {
+        return Err(format!(
+            "macOS status Stove count must be between 0 and {MAX_MAC_STATUS_STOVE_COUNT}"
+        ));
+    }
+    Ok(())
 }
 
 /// Synchronizes the browser-resolved system locale to native surfaces. The
@@ -355,12 +375,32 @@ mod tests {
             DisplaySettingsWire {
                 global_bar_visible: false,
                 global_bar_placement: GlobalBarPlacement::BottomRight,
+                global_bar_mode: GlobalBarMode::Full,
+                mac_status_stove_count: 3,
+                mac_status_available: cfg!(target_os = "macos"),
                 hover_details_enabled: false,
                 locale: AppLocale::System,
                 detached_bars: vec![DetachedBarWire {
                     stove_id: "remote-a:session-1".into()
                 }],
             }
+        );
+    }
+
+    #[test]
+    fn settings_wire_exposes_compile_time_mac_status_capability() {
+        assert_eq!(
+            settings_wire(&PersistedConfig::default()).mac_status_available,
+            cfg!(target_os = "macos")
+        );
+    }
+
+    #[test]
+    fn command_input_rejects_an_out_of_range_mac_status_count() {
+        assert!(validate_mac_status_stove_count(8).is_ok());
+        assert_eq!(
+            validate_mac_status_stove_count(9),
+            Err("macOS status Stove count must be between 0 and 8".to_owned())
         );
     }
 }

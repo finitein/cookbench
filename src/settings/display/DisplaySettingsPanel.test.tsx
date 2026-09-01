@@ -32,6 +32,9 @@ describe("DisplaySettingsPanel", () => {
     getDisplaySettings.mockResolvedValue({
       globalBarVisible: true,
       globalBarPlacement: "topCenter",
+      globalBarMode: "full",
+      macStatusStoveCount: 3,
+      macStatusAvailable: false,
       hoverDetailsEnabled: false,
       locale: "system",
       detachedBars: [{ stoveId: "host-a:session-1" }],
@@ -64,6 +67,8 @@ describe("DisplaySettingsPanel", () => {
       expect(configureDisplaySettings).toHaveBeenCalledWith({
         globalBarVisible: false,
         globalBarPlacement: "topCenter",
+        globalBarMode: "full",
+        macStatusStoveCount: 3,
         hoverDetailsEnabled: false,
         locale: "system",
       });
@@ -82,6 +87,8 @@ describe("DisplaySettingsPanel", () => {
       expect(configureDisplaySettings).toHaveBeenCalledWith({
         globalBarVisible: true,
         globalBarPlacement: "topCenter",
+        globalBarMode: "full",
+        macStatusStoveCount: 3,
         hoverDetailsEnabled: true,
         locale: "system",
       });
@@ -97,9 +104,49 @@ describe("DisplaySettingsPanel", () => {
     await waitFor(() => expect(configureDisplaySettings).toHaveBeenCalledWith({
       globalBarVisible: true,
       globalBarPlacement: "topCenter",
+      globalBarMode: "full",
+      macStatusStoveCount: 3,
       hoverDetailsEnabled: false,
       locale: "zh-CN",
     }));
+  });
+
+  it("persists the selected global Bar mode", async () => {
+    render(<DisplaySettingsPanel />);
+    fireEvent.click(await screen.findByRole("radio", { name: "Minimal" }));
+
+    await waitFor(() => expect(configureDisplaySettings).toHaveBeenCalledWith({
+      globalBarVisible: true,
+      globalBarPlacement: "topCenter",
+      globalBarMode: "minimal",
+      macStatusStoveCount: 3,
+      hoverDetailsEnabled: false,
+      locale: "system",
+    }));
+  });
+
+  it("uses the native capability rather than browser detection for macOS status settings", async () => {
+    getDisplaySettings.mockResolvedValue({
+      globalBarVisible: true,
+      globalBarPlacement: "topCenter",
+      globalBarMode: "full",
+      macStatusStoveCount: 3,
+      macStatusAvailable: true,
+      hoverDetailsEnabled: false,
+      locale: "system",
+      detachedBars: [],
+    });
+    render(<DisplaySettingsPanel />);
+    const count = await waitFor(() => {
+      const input = document.getElementById("mac-status-stove-count");
+      expect(input).not.toBeNull();
+      return input as HTMLInputElement;
+    });
+    fireEvent.change(count, { target: { value: "5" } });
+
+    await waitFor(() => expect(configureDisplaySettings).toHaveBeenCalledWith(expect.objectContaining({
+      macStatusStoveCount: 5,
+    })));
   });
 
   it("closes only the selected independent Bar", async () => {

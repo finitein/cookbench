@@ -14,8 +14,8 @@ use cookbench_core::{
     notifications::NotificationEventKind,
     persistence::{
         AppLocale, ArchiveReason, ArchivedSession, AtomicJsonFile, ClearCursor,
-        CookedAttentionCursor, GlobalBarPlacement, PersistedConfig, PersistedState, PinnedSession,
-        RetainedStove, RetainedStovePresentation, SessionRecord,
+        CookedAttentionCursor, GlobalBarMode, GlobalBarPlacement, PersistedConfig, PersistedState,
+        PinnedSession, RetainedStove, RetainedStovePresentation, SessionRecord,
     },
 };
 
@@ -310,8 +310,35 @@ fn config_never_serializes_credential_values() {
         config.layout.global_bar_placement,
         GlobalBarPlacement::TopCenter
     );
+    assert_eq!(config.layout.global_bar_mode, GlobalBarMode::Full);
+    assert_eq!(config.layout.mac_status_stove_count, 3);
     assert!(config.preferences.always_on_top);
     assert_eq!(config.preferences.locale, AppLocale::System);
+}
+
+#[test]
+fn legacy_config_defaults_display_mode_and_mac_status_count() {
+    let config: PersistedConfig = serde_json::from_str(r#"{"version":1,"layout":{}}"#).unwrap();
+
+    assert_eq!(config.layout.global_bar_mode, GlobalBarMode::Full);
+    assert_eq!(config.layout.mac_status_stove_count, 3);
+}
+
+#[test]
+fn persisted_mac_status_count_is_bounded_but_preserves_valid_edges() {
+    let oversized: PersistedConfig =
+        serde_json::from_str(r#"{"version":1,"layout":{"mac_status_stove_count":255}}"#).unwrap();
+    assert_eq!(oversized.layout.mac_status_stove_count, 8);
+
+    for count in [0, 8] {
+        let mut config = PersistedConfig::default();
+        config.layout.global_bar_mode = GlobalBarMode::Minimal;
+        config.layout.mac_status_stove_count = count;
+        let restored: PersistedConfig =
+            serde_json::from_value(serde_json::to_value(config).unwrap()).unwrap();
+        assert_eq!(restored.layout.global_bar_mode, GlobalBarMode::Minimal);
+        assert_eq!(restored.layout.mac_status_stove_count, count);
+    }
 }
 
 #[test]

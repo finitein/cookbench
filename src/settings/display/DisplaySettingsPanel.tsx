@@ -7,6 +7,7 @@ import {
   getLaunchAtLogin,
   setLaunchAtLogin,
   type DisplaySettingsWire,
+  type GlobalBarMode,
   type GlobalBarPlacement,
   type AppLocale,
 } from "./service";
@@ -21,6 +22,10 @@ const PLACEMENT_KEYS: Record<GlobalBarPlacement, TranslationKey> = {
 };
 const LOCALE_KEYS: Record<AppLocale, TranslationKey> = {
   system: "language.system", en: "language.en", "zh-CN": "language.zh-CN", ja: "language.ja", ko: "language.ko",
+};
+const MODE_KEYS: Record<GlobalBarMode, TranslationKey> = {
+  full: "display.modeFull",
+  minimal: "display.modeMinimal",
 };
 
 export function DisplaySettingsPanel() {
@@ -43,7 +48,7 @@ export function DisplaySettingsPanel() {
 
   const save = (change: Partial<Pick<
     DisplaySettingsWire,
-    "globalBarVisible" | "globalBarPlacement" | "hoverDetailsEnabled" | "locale"
+    "globalBarVisible" | "globalBarPlacement" | "globalBarMode" | "macStatusStoveCount" | "hoverDetailsEnabled" | "locale"
   >>) => {
     if (!settings) return;
     const next = { ...settings, ...change };
@@ -52,6 +57,8 @@ export function DisplaySettingsPanel() {
     void configureDisplaySettings({
       globalBarVisible: next.globalBarVisible,
       globalBarPlacement: next.globalBarPlacement,
+      globalBarMode: next.globalBarMode,
+      macStatusStoveCount: next.macStatusStoveCount,
       hoverDetailsEnabled: next.hoverDetailsEnabled,
       locale: next.locale,
     }).then(setSettings).catch(() => {
@@ -113,7 +120,52 @@ export function DisplaySettingsPanel() {
             {PLACEMENTS.map((placement) => <option key={placement} value={placement}>{t(PLACEMENT_KEYS[placement])}</option>)}
           </select>
         </label>
+        <fieldset className="display-settings__mode" disabled={!settings || !settings.globalBarVisible}>
+          <legend>{t("display.mode")}</legend>
+          <div role="radiogroup" aria-label={t("display.mode")}>
+            {(Object.keys(MODE_KEYS) as GlobalBarMode[]).map((mode) => (
+              <label key={mode} className="display-settings__mode-option">
+                <input
+                  type="radio"
+                  name="global-bar-mode"
+                  checked={(settings?.globalBarMode ?? "full") === mode}
+                  onChange={() => save({ globalBarMode: mode })}
+                />
+                <span aria-hidden="true">{mode === "full" ? "[]" : "o"}</span>
+                <span>{t(MODE_KEYS[mode])}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
       </section>
+      {settings?.macStatusAvailable ? (
+        <section className="display-settings__section" aria-labelledby="mac-status-title">
+          <div>
+            <h3 id="mac-status-title">{t("display.macStatus")}</h3>
+            <p>{t("display.macStatusDescription")}</p>
+          </div>
+          <label className="display-settings__placement" htmlFor="mac-status-stove-count">
+            <span>{t("display.macStatusCount")}</span>
+            <input
+              id="mac-status-stove-count"
+              aria-label={t("display.macStatusCount")}
+              type="number"
+              min={0}
+              max={8}
+              step={1}
+              value={settings.macStatusStoveCount}
+              aria-describedby="mac-status-count-help"
+              onChange={(event) => {
+                const count = Number(event.target.value);
+                if (Number.isInteger(count) && count >= 0 && count <= 8) {
+                  save({ macStatusStoveCount: count });
+                }
+              }}
+            />
+            <small id="mac-status-count-help">{t("display.macStatusOff")}</small>
+          </label>
+        </section>
+      ) : null}
       <section className="display-settings__section" aria-labelledby="language-title">
         <div>
           <h3 id="language-title">{t("language.title")}</h3>
