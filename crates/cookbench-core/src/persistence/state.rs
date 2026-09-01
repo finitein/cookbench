@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::domain::{
@@ -183,7 +185,7 @@ where
 }
 
 impl CookedAttentionCursor {
-    pub fn from_stove(stove: &Stove) -> Option<Self> {
+    pub fn from_stove(stove: &Stove, acknowledged_at_ms: u64) -> Option<Self> {
         if stove.state != StoveState::Cooked {
             return None;
         }
@@ -195,7 +197,7 @@ impl CookedAttentionCursor {
             confidence: event.confidence,
             sequence: event.sequence,
             timestamp_ms: event.timestamp_ms,
-            acknowledged_at_ms: event.timestamp_ms,
+            acknowledged_at_ms,
         })
     }
 
@@ -276,17 +278,23 @@ impl PersistedState {
 
     /// Replaces any acknowledgement for the same native session and retains a
     /// deterministic, bounded set of the newest acknowledgements.
-    pub fn acknowledge_cooked(&mut self, cursor: CookedAttentionCursor) {
+    pub fn acknowledge_cooked(&mut self, stove: &Stove, acknowledged_at_ms: u64) -> bool {
+        let Some(cursor) = CookedAttentionCursor::from_stove(stove, acknowledged_at_ms) else {
+            return false;
+        };
+
         self.cooked_attention_cursors
             .retain(|existing| existing.locator != cursor.locator);
         self.cooked_attention_cursors.push(cursor);
         normalize_cooked_attention_cursors(&mut self.cooked_attention_cursors);
+        true
     }
 }
 
 fn normalize_cooked_attention_cursors(cursors: &mut Vec<CookedAttentionCursor>) {
     cursors.sort_by(compare_cooked_attention_cursor);
-    cursors.dedup_by(|left, right| left.locator == right.locator);
+    let mut retained_locators = HashSet::with_capacity(cursors.len());
+    cursors.retain(|cursor| retained_locators.insert(cursor.locator.clone()));
     cursors.truncate(PersistedState::MAX_COOKED_ATTENTION_CURSORS);
 }
 

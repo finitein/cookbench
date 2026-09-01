@@ -33,8 +33,7 @@ fn attention_orders_statuses_then_recent_events_then_identity() {
     let cooked_older = stove("cooked-older", StoveState::Cooked, 10);
     let cooking = stove("cooking", StoveState::Cooking, 100);
     let acknowledged = stove("acknowledged", StoveState::Cooked, 100);
-    let mut cursor = CookedAttentionCursor::from_stove(&acknowledged).unwrap();
-    cursor.acknowledged_at_ms = 101;
+    let cursor = CookedAttentionCursor::from_stove(&acknowledged, 101).unwrap();
 
     let ordered = ordered_stove_ids(
         &[
@@ -66,7 +65,7 @@ fn attention_orders_statuses_then_recent_events_then_identity() {
 #[test]
 fn acknowledgement_applies_only_to_the_exact_cooked_completion() {
     let completed = stove("same-session", StoveState::Cooked, 100);
-    let cursor = CookedAttentionCursor::from_stove(&completed).unwrap();
+    let cursor = CookedAttentionCursor::from_stove(&completed, 101).unwrap();
     assert!(cursor.acknowledges(&completed));
 
     let relit_and_completed = stove("same-session", StoveState::Cooked, 101);

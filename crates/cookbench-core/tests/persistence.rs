@@ -7,7 +7,10 @@ use std::{
 };
 
 use cookbench_core::{
-    domain::{EventMetadata, EventSource, HarnessId, HostIdentity, StoveIdentity, StoveState},
+    domain::{
+        EventMetadata, EventSource, HarnessId, HostIdentity, ProjectIdentity, Stove, StoveIdentity,
+        StoveState,
+    },
     notifications::NotificationEventKind,
     persistence::{
         AppLocale, ArchiveReason, ArchivedSession, AtomicJsonFile, ClearCursor,
@@ -57,6 +60,22 @@ fn locator_with(native_session_id: impl Into<String>) -> StoveIdentity {
         HarnessId::Codex,
         native_session_id,
     )
+}
+
+fn cooked_stove(native_session_id: impl Into<String>, sequence: u64) -> Stove {
+    Stove {
+        identity: locator_with(native_session_id),
+        project: ProjectIdentity::new(HostIdentity::local("test-machine"), "/synthetic/project"),
+        state: StoveState::Cooked,
+        progress: None,
+        state_before_disconnect: None,
+        last_event: Some(EventMetadata::new(
+            EventSource::Hook,
+            100,
+            sequence,
+            sequence,
+        )),
+    }
 }
 
 fn retained(completed_at_ms: u64) -> RetainedStove {
@@ -344,14 +363,10 @@ fn v2_state_defaults_new_session_collections() {
 fn cooked_attention_cursors_are_bounded_and_keep_the_newest_acknowledgements() {
     let mut state = PersistedState::default();
     for sequence in 0..=PersistedState::MAX_COOKED_ATTENTION_CURSORS as u64 {
-        state.acknowledge_cooked(CookedAttentionCursor {
-            locator: locator_with(format!("native-session-{sequence}")),
-            source: EventSource::Hook,
-            confidence: 100,
+        assert!(state.acknowledge_cooked(
+            &cooked_stove(format!("native-session-{sequence}"), sequence),
             sequence,
-            timestamp_ms: sequence,
-            acknowledged_at_ms: sequence,
-        });
+        ));
     }
 
     assert_eq!(
@@ -380,10 +395,14 @@ fn deserialized_cooked_attention_cursors_are_bounded_deterministically() {
             acknowledged_at_ms: 1,
         })
         .collect();
-    let mut first = PersistedState::default();
-    first.cooked_attention_cursors = cursors.clone();
-    let mut second = PersistedState::default();
-    second.cooked_attention_cursors = cursors.into_iter().rev().collect();
+    let first = PersistedState {
+        cooked_attention_cursors: cursors.clone(),
+        ..PersistedState::default()
+    };
+    let second = PersistedState {
+        cooked_attention_cursors: cursors.into_iter().rev().collect(),
+        ..PersistedState::default()
+    };
 
     let first: PersistedState =
         serde_json::from_value(serde_json::to_value(first).unwrap()).unwrap();
@@ -405,36 +424,47 @@ fn deserialized_cooked_attention_cursors_are_bounded_deterministically() {
 }
 
 #[test]
-fn cooked_attention_cursor_upsert_replaces_the_same_locator() {
-    let mut state = PersistedState::default();
-    let mut first = CookedAttentionCursor {
-        locator: locator(),
+fn deserialized_cursors_deduplicate_nonadjacent_locator_entries() {
+    let cursor = |native_session_id: &str, acknowledged_at_ms| CookedAttentionCursor {
+        locator: locator_with(native_session_id),
         source: EventSource::Hook,
         confidence: 100,
-        sequence: 1,
-        timestamp_ms: 1,
-        acknowledged_at_ms: 1,
+        sequence: acknowledged_at_ms,
+        timestamp_ms: acknowledged_at_ms,
+        acknowledged_at_ms,
     };
-    state.acknowledge_cooked(first.clone());
-    first.sequence = 2;
-    first.timestamp_ms = 2;
-    first.acknowledged_at_ms = 2;
-    state.acknowledge_cooked(first.clone());
+    let state = PersistedState {
+        cooked_attention_cursors: vec![
+            cursor("same-session", 3),
+            cursor("another-session", 2),
+            cursor("same-session", 1),
+        ],
+        ..PersistedState::default()
+    };
 
-    assert_eq!(state.cooked_attention_cursors, vec![first]);
+    let state: PersistedState =
+        serde_json::from_value(serde_json::to_value(state).unwrap()).unwrap();
+    assert_eq!(state.cooked_attention_cursors.len(), 2);
+    assert_eq!(state.cooked_attention_cursors[0].acknowledged_at_ms, 3);
+}
+
+#[test]
+fn cooked_attention_cursor_upsert_replaces_the_same_locator() {
+    let mut state = PersistedState::default();
+    let first = cooked_stove("native-session-1", 1);
+    let replacement = cooked_stove("native-session-1", 2);
+    assert!(state.acknowledge_cooked(&first, 1));
+    assert!(state.acknowledge_cooked(&replacement, 2));
+
+    assert_eq!(state.cooked_attention_cursors.len(), 1);
+    assert!(state.cooked_attention_cursors[0].acknowledges(&replacement));
 }
 
 #[test]
 fn nonempty_cooked_attention_cursor_schema_is_metadata_only() {
     let mut state = PersistedState::default();
-    state.acknowledge_cooked(CookedAttentionCursor {
-        locator: locator(),
-        source: EventSource::Hook,
-        confidence: 100,
-        sequence: 7,
-        timestamp_ms: 8,
-        acknowledged_at_ms: 9,
-    });
+    let cooked = cooked_stove("native-session-1", 7);
+    assert!(state.acknowledge_cooked(&cooked, 9));
 
     let value = serde_json::to_value(state).unwrap();
     let cursor = value["cooked_attention_cursors"][0].as_object().unwrap();
@@ -460,6 +490,39 @@ fn nonempty_cooked_attention_cursor_schema_is_metadata_only() {
     ] {
         assert!(!encoded.contains(forbidden), "cursor exposed {forbidden}");
     }
+}
+
+#[test]
+fn acknowledging_an_old_completion_uses_the_confirmation_time_for_eviction() {
+    let cursors: Vec<_> = (1..=PersistedState::MAX_COOKED_ATTENTION_CURSORS as u64)
+        .map(|index| CookedAttentionCursor {
+            locator: locator_with(format!("newer-completion-{index}")),
+            source: EventSource::Hook,
+            confidence: 100,
+            sequence: index,
+            timestamp_ms: index,
+            acknowledged_at_ms: index,
+        })
+        .collect();
+    let mut state = PersistedState {
+        cooked_attention_cursors: cursors,
+        ..PersistedState::default()
+    };
+    let old_completion = cooked_stove("old-completion", 0);
+
+    assert!(state.acknowledge_cooked(&old_completion, 1_000));
+    assert_eq!(
+        state.cooked_attention_cursors.len(),
+        PersistedState::MAX_COOKED_ATTENTION_CURSORS
+    );
+    assert!(state
+        .cooked_attention_cursors
+        .iter()
+        .any(|cursor| cursor.acknowledges(&old_completion)));
+    assert!(!state
+        .cooked_attention_cursors
+        .iter()
+        .any(|cursor| cursor.locator.native_session_id == "newer-completion-1"));
 }
 
 #[test]
