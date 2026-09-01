@@ -100,7 +100,7 @@ export function GlobalBar({
   };
   const closePriorityMenu = (restoreFocus: boolean) => {
     setPriorityMenuOpen(false);
-    if (restoreFocus) queueMicrotask(() => priorityOpenerRef.current?.focus());
+    if (restoreFocus) priorityOpenerRef.current?.focus();
   };
 
   return (

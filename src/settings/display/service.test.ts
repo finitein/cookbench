@@ -7,6 +7,7 @@ vi.mock("@tauri-apps/api/event", () => ({ listen }));
 import {
   closeDetachedBar,
   configureDisplaySettings,
+  patchDisplaySettings,
   getDisplaySettings,
   syncNativeLocale,
   subscribeToDisplaySettings,
@@ -39,6 +40,12 @@ describe("display settings service", () => {
     });
     expect(invoke).toHaveBeenNthCalledWith(3, "close_detached_bar", { stoveId: "remote-a:session-1" });
     expect(JSON.stringify(invoke.mock.calls)).not.toMatch(/prompt|command|terminal|password|token/i);
+  });
+
+  it("sends only the changed field for an atomic display patch", async () => {
+    invoke.mockResolvedValue({});
+    await patchDisplaySettings({ globalBarMode: "minimal" });
+    expect(invoke).toHaveBeenCalledWith("patch_display_settings", { patch: { globalBarMode: "minimal" } });
   });
 
   it("synchronizes the resolved webview locale to native surfaces", async () => {

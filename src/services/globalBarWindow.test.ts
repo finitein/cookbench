@@ -81,4 +81,18 @@ describe("global bar window sizing", () => {
 
     expect(intrinsicGlobalBarMinimumHeight(bar)).toBe(293);
   });
+
+  it("keeps a long priority menu measurable even from a 92px native viewport", () => {
+    const bar = document.createElement("section");
+    const minimal = document.createElement("div");
+    const menu = document.createElement("div");
+    minimal.className = "global-bar__minimal";
+    menu.className = "stove-priority-menu";
+    bar.append(minimal, menu);
+    vi.spyOn(bar, "getBoundingClientRect").mockReturnValue({ top: 0, height: 92 } as DOMRect);
+    vi.spyOn(minimal, "getBoundingClientRect").mockReturnValue({ bottom: 92 } as DOMRect);
+    vi.spyOn(menu, "getBoundingClientRect").mockReturnValue({ bottom: 352, height: 260 } as DOMRect);
+    expect(menu.getBoundingClientRect().height).toBeGreaterThan(0);
+    expect(intrinsicGlobalBarMinimumHeight(bar)).toBe(363);
+  });
 });

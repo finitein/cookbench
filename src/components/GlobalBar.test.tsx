@@ -76,6 +76,39 @@ describe("GlobalBar", () => {
     expect(onModeChange).toHaveBeenCalledWith("full");
   });
 
+  it("roves menu focus and restores the actual button opener only on Escape", () => {
+    render(<GlobalBar stoves={[makeStove(0), makeStove(1), makeStove(2)]} mode="minimal" />);
+    const trigger = screen.getByRole("button", { name: "Stove priority list" });
+    fireEvent.click(trigger);
+    const items = screen.getAllByRole("menuitem");
+    expect(document.activeElement).toBe(items[0]);
+    fireEvent.keyDown(window, { key: "End" }); expect(document.activeElement).toBe(items[2]);
+    fireEvent.keyDown(window, { key: "Home" }); expect(document.activeElement).toBe(items[0]);
+    fireEvent.keyDown(window, { key: "ArrowUp" }); expect(document.activeElement).toBe(items[2]);
+    fireEvent.keyDown(window, { key: "ArrowDown" }); expect(document.activeElement).toBe(items[0]);
+    fireEvent.keyDown(window, { key: "Escape" }); expect(document.activeElement).toBe(trigger);
+  });
+
+  it("does not steal focus on Tab or outside priority-menu closure", () => {
+    render(<><button type="button">Outside</button><GlobalBar stoves={[makeStove(0), makeStove(1)]} mode="minimal" /></>);
+    const trigger = screen.getByRole("button", { name: "Stove priority list" });
+    fireEvent.click(trigger);
+    fireEvent.keyDown(window, { key: "Tab" });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    const outside = screen.getByRole("button", { name: "Outside" }); outside.focus();
+    fireEvent.click(trigger); outside.focus(); fireEvent.mouseDown(outside);
+    expect(document.activeElement).toBe(outside);
+  });
+
+  it("restores full management actions when expanded from minimal mode", () => {
+    const stove = makeStove(0, { state: "cooked", retainedCompletion: true });
+    const view = render(<GlobalBar stoves={[stove]} mode="minimal" onDetachStove={vi.fn()} onPinStove={vi.fn()} onClearStove={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: "Detach Codex Stove" })).not.toBeInTheDocument();
+    view.rerender(<GlobalBar stoves={[stove]} mode="full" onDetachStove={vi.fn()} onPinStove={vi.fn()} onClearStove={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Detach Codex Stove" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Clear Codex Stove" })).toBeInTheDocument();
+  });
+
   it("exposes lightweight named harness benches only when a harness needs a second row", () => {
     const originalWidth = document.documentElement.clientWidth;
     Object.defineProperty(document.documentElement, "clientWidth", { configurable: true, value: 254 });
