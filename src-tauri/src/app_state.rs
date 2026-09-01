@@ -423,8 +423,11 @@ impl AppState {
                 )),
                 StoveEvent::new(EventKind::TurnCompleted, completion_event.clone()),
             );
-            self.stoves
-                .restore_completion_event(&completion_id, completion_event);
+            self.stoves.restore_completion_event(
+                &completion_id,
+                completion_event,
+                completion.completion_source_event,
+            );
         }
         for pinned_session in pinned {
             if pinned_session.session.is_valid() {
@@ -850,11 +853,11 @@ impl AppState {
         locator_capability: LocatorCapability,
         locator: Option<SessionLocator>,
         mut summary: Option<StoveSummary>,
-        mut event: StoveEvent,
+        event: StoveEvent,
         side_effects: bool,
     ) -> Result<(), AppStateError> {
         let _serial = self.apply_lock.lock().expect("stove apply lock poisoned");
-        {
+        let retained_discovery = {
             let persistence = self
                 .persistence
                 .lock()
@@ -868,25 +871,31 @@ impl AppState {
                 {
                     return Ok(());
                 }
-                if matches!(event.kind, EventKind::SessionDiscovered) {
-                    if let Some(retained) = runtime
+                matches!(event.kind, EventKind::SessionDiscovered)
+                    && runtime
                         .state
                         .retained
                         .iter()
-                        .find(|retained| retained.locator == identity)
-                    {
-                        event = StoveEvent::new(
-                            EventKind::TurnCompleted,
-                            EventMetadata::new(
-                                EventSource::StructuredSession,
-                                100,
-                                event.metadata.sequence,
-                                retained.completed_at_ms,
-                            ),
-                        );
-                    }
-                }
+                        .any(|retained| retained.locator == identity)
+            } else {
+                false
             }
+        };
+
+        // A rediscovered retained session only refreshes display metadata. Its
+        // lifecycle and raw replay cursors still belong to the completion that
+        // Cookbench restored from disk.
+        if retained_discovery {
+            let change = self.stoves.refresh_retained_discovery(
+                &identity,
+                locator_capability,
+                locator,
+                summary,
+            );
+            crate::events::emit_stove_change(app, self.with_attention_order(change))
+                .map_err(AppStateError::Emit)?;
+            crate::platform::publish_optional_gnome_snapshot(&self.snapshot_locked());
+            return Ok(());
         }
 
         // A superseded observation is strictly inert. In particular, it must
@@ -902,7 +911,7 @@ impl AppState {
             .core_stove_for_identity(&identity_for_notification)
             .and_then(|stove| progress_percent(stove.progress.as_ref()));
         let observed_kind = event.kind.clone();
-        let metadata = event.metadata.clone();
+        let source_metadata = event.metadata.clone();
         if summary.is_none() {
             summary = self.stoves.summary_for_identity(&identity_for_persistence);
         }
@@ -942,7 +951,8 @@ impl AppState {
                         &mut runtime.state,
                         identity_for_persistence.clone(),
                         stove.state,
-                        stove.last_event.as_ref().unwrap_or(&metadata),
+                        &source_metadata,
+                        stove.last_event.as_ref().unwrap_or(&source_metadata),
                         presentation.clone(),
                     );
                     if stove.state == StoveState::Cooked {
@@ -1036,13 +1046,10 @@ impl AppState {
                     .into(),
             );
         }
-        let previous = self
-            .stoves
-            .source_cursor(&stove.identity, EventSource::StructuredSession)
-            .or_else(|| {
-                self.stoves
-                    .source_cursor(&stove.identity, EventSource::Hook)
-            })
+        let previous = stove
+            .last_event
+            .as_ref()
+            .and_then(|event| self.stoves.source_cursor(&stove.identity, event.source))
             .or_else(|| stove.last_event.clone())
             .unwrap_or_else(|| EventMetadata::new(EventSource::Inference, 0, 0, current_time_ms()));
         let clear = EventMetadata::new(
@@ -1176,13 +1183,73 @@ impl From<StoreError> for AppStateError {
 }
 
 impl StoveStore {
-    fn restore_completion_event(&self, stove_id: &str, event: EventMetadata) {
+    fn restore_completion_event(
+        &self,
+        stove_id: &str,
+        presentation_event: EventMetadata,
+        source_event: Option<EventMetadata>,
+    ) {
         let mut inner = self.inner.write().expect("stove store lock poisoned");
         if let Some(entry) = inner.entries.get_mut(stove_id) {
             if entry.stove.state == StoveState::Cooked {
-                entry.stove.last_event = Some(event);
+                entry.stove.last_event = Some(presentation_event);
+                inner.source_cursors.remove(stove_id);
+                if let Some(source_event) = source_event {
+                    inner
+                        .source_cursors
+                        .entry(stove_id.to_owned())
+                        .or_default()
+                        .insert(source_event.source, source_event);
+                }
             }
         }
+    }
+
+    fn refresh_retained_discovery(
+        &self,
+        identity: &StoveIdentity,
+        locator_capability: LocatorCapability,
+        locator: Option<SessionLocator>,
+        summary: Option<StoveSummary>,
+    ) -> StoveChange {
+        let id = stove_id(identity);
+        let mut inner = self.inner.write().expect("stove store lock poisoned");
+        let valid_locator = locator
+            .filter(|locator| locator.validate().is_ok())
+            .map(|locator| merge_locator(inner.locators.get(&id), locator));
+        if let Some(locator) = valid_locator {
+            inner.locators.insert(id.clone(), locator);
+        }
+        let locator_available = inner.locators.contains_key(&id)
+            || matches!(locator_capability, LocatorCapability::Available);
+        let (stove, capability, summary) = {
+            let existing = inner
+                .entries
+                .get_mut(&id)
+                .expect("retained Stove must be restored before discovery refresh");
+            if locator_available {
+                existing.locator_capability = LocatorCapability::Available;
+            }
+            if let Some(summary) = summary {
+                existing.summary = summary;
+            }
+            (
+                existing.stove.clone(),
+                existing.locator_capability,
+                existing.summary.clone(),
+            )
+        };
+        inner.revision += 1;
+        StoveChange::upsert(
+            inner.revision,
+            StoveWire::from_stored(
+                &id,
+                &stove,
+                capability,
+                &summary,
+                inner.pinned.contains(&id),
+            ),
+        )
     }
 
     pub fn with_attention_order(

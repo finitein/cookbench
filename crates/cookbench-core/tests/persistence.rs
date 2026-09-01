@@ -165,11 +165,42 @@ fn persisted_schema_contains_only_safe_retained_fields() {
     }
 
     let retained = value["retained"][0].as_object().unwrap();
-    assert_eq!(retained.len(), 4);
+    assert_eq!(retained.len(), 5);
     assert!(retained.contains_key("locator"));
     assert!(retained.contains_key("completed_at_ms"));
     assert!(retained.contains_key("presentation"));
     assert!(retained.contains_key("completion_event"));
+    assert!(retained.contains_key("completion_source_event"));
+}
+
+#[test]
+fn retained_completion_source_event_is_metadata_only_and_backwards_compatible() {
+    let source_event = EventMetadata::new(EventSource::Hook, 100, 900, 42);
+    let presentation_event = EventMetadata::new(EventSource::Hook, 100, 2, 42);
+    let state = PersistedState::with_retained(vec![RetainedStove::new(locator(), 42)
+        .with_completion_events(source_event.clone(), presentation_event)]);
+    let value = serde_json::to_value(&state).unwrap();
+    assert_eq!(
+        value["retained"][0]["completion_source_event"]["sequence"],
+        900
+    );
+    assert!(!value.to_string().contains("prompt"));
+
+    let mut legacy = value;
+    legacy["retained"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("completion_source_event");
+    let decoded: PersistedState = serde_json::from_value(legacy).unwrap();
+    assert_eq!(decoded.retained[0].completion_source_event, None);
+    assert_eq!(
+        decoded.retained[0]
+            .completion_event
+            .as_ref()
+            .unwrap()
+            .sequence,
+        2
+    );
 }
 
 #[test]

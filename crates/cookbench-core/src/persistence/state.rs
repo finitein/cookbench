@@ -15,6 +15,11 @@ pub struct RetainedStove {
     pub completed_at_ms: u64,
     #[serde(default)]
     pub completion_event: Option<EventMetadata>,
+    /// The accepted adapter event that produced this completion. Unlike
+    /// `completion_event`, this remains in the adapter's raw sequence domain
+    /// so clear cursors can safely reject stale replay.
+    #[serde(default)]
+    pub completion_source_event: Option<EventMetadata>,
     /// Display-only metadata required to reconstruct a retained Stove before
     /// its native session is rediscovered. It never contains task text.
     #[serde(default)]
@@ -27,6 +32,7 @@ impl RetainedStove {
             locator,
             completed_at_ms,
             completion_event: None,
+            completion_source_event: None,
             presentation: RetainedStovePresentation::default(),
         }
     }
@@ -40,12 +46,18 @@ impl RetainedStove {
             locator,
             completed_at_ms,
             completion_event: None,
+            completion_source_event: None,
             presentation,
         }
     }
 
-    pub fn with_completion_event(mut self, event: EventMetadata) -> Self {
-        self.completion_event = Some(event);
+    pub fn with_completion_events(
+        mut self,
+        source_event: EventMetadata,
+        presentation_event: EventMetadata,
+    ) -> Self {
+        self.completion_source_event = Some(source_event);
+        self.completion_event = Some(presentation_event);
         self
     }
 }

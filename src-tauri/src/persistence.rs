@@ -391,13 +391,15 @@ impl DesktopPersistence {
         state: &mut PersistedState,
         locator: StoveIdentity,
         stove_state: StoveState,
-        event: &EventMetadata,
+        source_event: &EventMetadata,
+        presentation_event: &EventMetadata,
     ) -> Result<(), PersistenceError> {
         self.persist_transition_with_presentation(
             state,
             locator,
             stove_state,
-            event,
+            source_event,
+            presentation_event,
             RetainedStovePresentation::default(),
         )
     }
@@ -409,10 +411,11 @@ impl DesktopPersistence {
         state: &mut PersistedState,
         locator: StoveIdentity,
         stove_state: StoveState,
-        event: &EventMetadata,
+        source_event: &EventMetadata,
+        presentation_event: &EventMetadata,
         presentation: RetainedStovePresentation,
     ) -> Result<(), PersistenceError> {
-        if state.is_hidden(&locator, event) {
+        if state.is_hidden(&locator, source_event) {
             return Ok(());
         }
 
@@ -422,8 +425,12 @@ impl DesktopPersistence {
             .retain(|retained| retained.locator != locator);
         if stove_state == StoveState::Cooked {
             state.retained.push(
-                RetainedStove::with_presentation(locator, event.timestamp_ms, presentation)
-                    .with_completion_event(event.clone()),
+                RetainedStove::with_presentation(
+                    locator,
+                    presentation_event.timestamp_ms,
+                    presentation,
+                )
+                .with_completion_events(source_event.clone(), presentation_event.clone()),
             );
             cap_retained(state);
         }
