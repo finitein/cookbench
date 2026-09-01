@@ -180,6 +180,7 @@ pub fn run() {
         .manage(ExpiryRuntimeState(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
             commands::stoves::get_stoves_snapshot,
+            commands::stoves::acknowledge_cooked_stove,
             commands::stoves::clear_cooked_stove,
             commands::stoves::set_stove_pinned,
             commands::stoves::archive_stove,
@@ -316,7 +317,7 @@ pub fn run() {
                     .expect("hook runtime lock poisoned") = Some(handle);
             }
 
-            platform::publish_optional_gnome_snapshot(&state.stoves.snapshot());
+            platform::publish_optional_gnome_snapshot(&state.snapshot());
             let layout = state.persisted_config().layout;
             if let Err(error) = commands::display::restore_global_bar_size(
                 &app.handle().clone(),

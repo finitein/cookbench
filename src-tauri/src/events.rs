@@ -13,6 +13,7 @@ pub struct StoveChange {
     pub revision: u64,
     pub stove: Option<StoveWire>,
     pub removed_stove_id: Option<String>,
+    pub attention_order: Vec<String>,
 }
 
 impl StoveChange {
@@ -21,6 +22,7 @@ impl StoveChange {
             revision,
             stove: Some(stove),
             removed_stove_id: None,
+            attention_order: Vec::new(),
         }
     }
 
@@ -29,6 +31,7 @@ impl StoveChange {
             revision,
             stove: None,
             removed_stove_id: Some(stove_id),
+            attention_order: Vec::new(),
         }
     }
 }

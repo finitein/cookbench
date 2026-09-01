@@ -9,7 +9,7 @@ import { useGlobalBarWindow } from "./hooks/useGlobalBarWindow";
 import { useStoves } from "./hooks/useStoves";
 import { detachedStoveTransport } from "./services/detachedStoves";
 import { activateStove, type LocatorActivationResult } from "./services/locator";
-import { archiveStove, clearCookedStove, setStovePinned } from "./services/stoves";
+import { acknowledgeCookedStove, archiveStove, clearCookedStove, setStovePinned } from "./services/stoves";
 import { NotificationSettingsPanel } from "./settings/notifications/NotificationSettingsPanel";
 import { openNotificationSettings } from "./settings/notifications/service";
 import { useLocalAlert } from "./services/localAlerts";
@@ -37,6 +37,9 @@ function CookbenchApp({ displaySettings }: { displaySettings: ReturnType<typeof 
   }, [displaySettings, locale]);
   const activate = (stove: StoveWire) => {
     dismissLocalAlert(stove.id);
+    if (stove.state === "cooked") {
+      void acknowledgeCookedStove(stove.id);
+    }
     void activateStove(stove.id)
       .then(setActivation)
       .catch(() => setActivation({ target: "unavailable", status: "unavailable", resumeSessionId: null }));

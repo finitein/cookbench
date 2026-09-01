@@ -16,6 +16,7 @@ use cookbench_core::{
         ArchiveReason, ArchivedSession, PersistedConfig, PersistedState, RetainedStovePresentation,
         SessionRecord,
     },
+    presentation::ordered_stove_ids,
     state_machine,
 };
 use serde::{Deserialize, Serialize};
@@ -81,6 +82,7 @@ pub enum LocatorCapability {
 pub struct StoveSnapshot {
     pub revision: u64,
     pub stoves: Vec<StoveWire>,
+    pub attention_order: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -254,6 +256,68 @@ impl std::fmt::Display for StoreError {
 impl std::error::Error for StoreError {}
 
 impl AppState {
+    pub fn snapshot(&self) -> StoveSnapshot {
+        let cursors = self
+            .persistence
+            .lock()
+            .expect("desktop persistence lock poisoned")
+            .as_ref()
+            .map(|runtime| runtime.state.cooked_attention_cursors.clone())
+            .unwrap_or_default();
+        self.stoves.snapshot_with_attention(&cursors)
+    }
+
+    fn with_attention_order(&self, mut change: StoveChange) -> StoveChange {
+        change.attention_order = self.snapshot().attention_order;
+        change
+    }
+
+    pub fn acknowledge_cooked_and_emit<R: tauri::Runtime>(
+        &self,
+        app: &tauri::AppHandle<R>,
+        stove_id: &str,
+    ) -> Result<bool, AppStateError> {
+        let _serial = self.apply_lock.lock().expect("stove apply lock poisoned");
+        let Some(stove) = self.stoves.core_stove(stove_id) else {
+            return Ok(false);
+        };
+        if stove.state != StoveState::Cooked {
+            return Ok(false);
+        }
+        {
+            let mut persistence = self
+                .persistence
+                .lock()
+                .expect("desktop persistence lock poisoned");
+            let runtime = persistence
+                .as_mut()
+                .ok_or_else(|| AppStateError::Persistence("persistence is unavailable".into()))?;
+            if runtime
+                .state
+                .cooked_attention_cursors
+                .iter()
+                .any(|cursor| cursor.acknowledges(&stove))
+            {
+                return Ok(false);
+            }
+            if !runtime.state.acknowledge_cooked(&stove, current_time_ms()) {
+                return Ok(false);
+            }
+            runtime
+                .service
+                .save_state(&runtime.state)
+                .map_err(|error| AppStateError::Persistence(error.to_string()))?;
+        }
+        let change = self
+            .stoves
+            .touch(stove_id)
+            .expect("Cooked Stove must remain visible while acknowledging attention");
+        crate::events::emit_stove_change(app, self.with_attention_order(change))
+            .map_err(AppStateError::Emit)?;
+        crate::platform::publish_optional_gnome_snapshot(&self.snapshot());
+        Ok(true)
+    }
+
     pub fn initialize_persistence(&self, app_data_directory: &Path) {
         let service = DesktopPersistence::in_app_data(app_data_directory);
         let mut loaded = service.load();
@@ -419,8 +483,9 @@ impl AppState {
             .stoves
             .set_pinned(requested_stove_id, pinned)
             .ok_or(AppStateError::UnknownStove)?;
-        crate::events::emit_stove_change(app, change).map_err(AppStateError::Emit)?;
-        crate::platform::publish_optional_gnome_snapshot(&self.stoves.snapshot());
+        crate::events::emit_stove_change(app, self.with_attention_order(change))
+            .map_err(AppStateError::Emit)?;
+        crate::platform::publish_optional_gnome_snapshot(&self.snapshot());
         drop(_serial);
         if !pinned {
             self.reconcile_expired_and_emit(app)?;
@@ -520,9 +585,10 @@ impl AppState {
         }
         let change = self.restore_session_record(&archived.session, should_pin);
         if let Some(change) = change {
-            crate::events::emit_stove_change(app, change).map_err(AppStateError::Emit)?;
+            crate::events::emit_stove_change(app, self.with_attention_order(change))
+                .map_err(AppStateError::Emit)?;
         }
-        crate::platform::publish_optional_gnome_snapshot(&self.stoves.snapshot());
+        crate::platform::publish_optional_gnome_snapshot(&self.snapshot());
         Ok(())
     }
 
@@ -574,7 +640,8 @@ impl AppState {
             }
         }
         if let Some(change) = self.stoves.remove_presentation(stove_id) {
-            crate::events::emit_stove_change(app, change).map_err(AppStateError::Emit)?;
+            crate::events::emit_stove_change(app, self.with_attention_order(change))
+                .map_err(AppStateError::Emit)?;
         }
         if let Some(remote) = app.try_state::<crate::remote::runtime::RemoteRuntimeState>() {
             remote.forget(stove.identity);
@@ -585,7 +652,7 @@ impl AppState {
             let _ = windows.clear_stove(stove_id);
             let _ = crate::commands::windows::persist_layouts(self, &windows);
         }
-        crate::platform::publish_optional_gnome_snapshot(&self.stoves.snapshot());
+        crate::platform::publish_optional_gnome_snapshot(&self.snapshot());
         Ok(())
     }
 
@@ -883,8 +950,9 @@ impl AppState {
                 }
             }
         }
-        crate::events::emit_stove_change(app, change).map_err(AppStateError::Emit)?;
-        crate::platform::publish_optional_gnome_snapshot(&self.stoves.snapshot());
+        crate::events::emit_stove_change(app, self.with_attention_order(change))
+            .map_err(AppStateError::Emit)?;
+        crate::platform::publish_optional_gnome_snapshot(&self.snapshot());
         if side_effects {
             if let Some(stove) = self
                 .stoves
@@ -1070,6 +1138,17 @@ impl From<StoreError> for AppStateError {
 }
 
 impl StoveStore {
+    pub fn with_attention_order(
+        &self,
+        mut change: StoveChange,
+        cooked_attention_cursors: &[cookbench_core::persistence::CookedAttentionCursor],
+    ) -> StoveChange {
+        change.attention_order = self
+            .snapshot_with_attention(cooked_attention_cursors)
+            .attention_order;
+        change
+    }
+
     pub fn apply(
         &self,
         identity: StoveIdentity,
@@ -1255,6 +1334,20 @@ impl StoveStore {
         Some(StoveChange::remove(inner.revision, stove_id.to_owned()))
     }
 
+    fn touch(&self, stove_id: &str) -> Option<StoveChange> {
+        let mut inner = self.inner.write().expect("stove store lock poisoned");
+        let entry = inner.entries.get(stove_id)?;
+        let wire = StoveWire::from_stored(
+            stove_id,
+            &entry.stove,
+            entry.locator_capability,
+            &entry.summary,
+            inner.pinned.contains(stove_id),
+        );
+        inner.revision = inner.revision.saturating_add(1);
+        Some(StoveChange::upsert(inner.revision, wire))
+    }
+
     fn expiration_candidates(&self, cutoff_ms: u64) -> Vec<String> {
         let inner = self.inner.read().expect("stove store lock poisoned");
         inner
@@ -1329,23 +1422,46 @@ impl StoveStore {
     }
 
     pub fn snapshot(&self) -> StoveSnapshot {
+        self.snapshot_with_attention(&[])
+    }
+
+    pub fn snapshot_with_attention(
+        &self,
+        cooked_attention_cursors: &[cookbench_core::persistence::CookedAttentionCursor],
+    ) -> StoveSnapshot {
         let inner = self.inner.read().expect("stove store lock poisoned");
         let mut entries = inner.entries.iter().collect::<Vec<_>>();
         entries.sort_by_key(|(_, entry)| entry.order);
-        StoveSnapshot {
-            revision: inner.revision,
-            stoves: entries
-                .into_iter()
-                .map(|(id, entry)| {
+        let core_stoves = entries
+            .iter()
+            .map(|(_, entry)| entry.stove.clone())
+            .collect::<Vec<_>>();
+        let attention_order = ordered_stove_ids(&core_stoves, cooked_attention_cursors)
+            .iter()
+            .map(stove_id)
+            .collect::<Vec<_>>();
+        let mut wires = entries
+            .into_iter()
+            .map(|(id, entry)| {
+                (
+                    id.clone(),
                     StoveWire::from_stored(
                         id,
                         &entry.stove,
                         entry.locator_capability,
                         &entry.summary,
                         inner.pinned.contains(id),
-                    )
-                })
+                    ),
+                )
+            })
+            .collect::<HashMap<_, _>>();
+        StoveSnapshot {
+            revision: inner.revision,
+            stoves: attention_order
+                .iter()
+                .filter_map(|id| wires.remove(id))
                 .collect(),
+            attention_order,
         }
     }
 }

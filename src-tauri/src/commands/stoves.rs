@@ -9,7 +9,20 @@ use crate::app_state::{AppState, ArchivedSessionWire, StoveSnapshot};
 /// incremental-event gap. It contains Cookbench presentation metadata only.
 #[tauri::command]
 pub fn get_stoves_snapshot(state: State<'_, AppState>) -> StoveSnapshot {
-    state.stoves.snapshot()
+    state.snapshot()
+}
+
+/// Marks a currently Cooked Stove as seen without clearing its retained
+/// presentation. Repeated or inapplicable acknowledgements are inert.
+#[tauri::command]
+pub fn acknowledge_cooked_stove(
+    stove_id: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<bool, String> {
+    state
+        .acknowledge_cooked_and_emit(&app, &stove_id)
+        .map_err(|error| error.to_string())
 }
 
 /// Clears Cookbench's retained presentation only. Native session files and

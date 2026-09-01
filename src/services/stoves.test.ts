@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
-import { archiveStove, clearCookedStove, getArchivedSessions, restoreArchivedSession, setStovePinned, StoveSync, subscribeToStoves, type StoveTransport } from "./stoves";
+import { acknowledgeCookedStove, archiveStove, clearCookedStove, getArchivedSessions, restoreArchivedSession, setStovePinned, StoveSync, subscribeToStoves, type StoveTransport } from "./stoves";
 import type { StoveSnapshot, StoveWire } from "../types/stove";
 
 const stove: StoveWire = {
@@ -23,10 +23,33 @@ const stove: StoveWire = {
 };
 
 describe("StoveSync", () => {
+  it("normalizes canonical attention order without losing unknown or duplicate entries", () => {
+    const second = { ...stove, id: "local:machine:codex:session-2" };
+    const sync = new StoveSync();
+
+    sync.replace({
+      revision: 3,
+      stoves: [stove, second],
+      attentionOrder: [second.id, "unknown", second.id],
+    });
+
+    expect(sync.current().attentionOrder).toEqual([second.id, stove.id]);
+    expect(sync.current().stoves.map((entry) => entry.id)).toEqual([second.id, stove.id]);
+  });
+
+  it("uses a deterministic legacy fallback when an old fixture omits attention order", () => {
+    const second = { ...stove, id: "local:machine:codex:session-2" };
+    const sync = new StoveSync();
+
+    sync.replace({ revision: 3, stoves: [stove, second] });
+
+    expect(sync.current().attentionOrder).toEqual([stove.id, second.id]);
+  });
+
   it("keeps only sanitized wire fields and applies ordered changes", () => {
     const sync = new StoveSync();
     sync.replace({ revision: 3, stoves: [stove] });
-    expect(sync.apply({ revision: 4, stove: { ...stove, state: "cooking", retainedCompletion: false }, removedStoveId: null })).toBe("applied");
+    expect(sync.apply({ revision: 4, stove: { ...stove, state: "cooking", retainedCompletion: false }, removedStoveId: null, attentionOrder: [stove.id] })).toBe("applied");
     expect(sync.current().stoves[0]).toMatchObject({ harness: { id: "codex" }, host: { kind: "local" }, state: "cooking" });
     expect(JSON.stringify(sync.current())).not.toMatch(/transcript|prompt|command/i);
   });
@@ -34,12 +57,12 @@ describe("StoveSync", () => {
   it("detects an event revision gap instead of inferring a missing change", () => {
     const sync = new StoveSync();
     sync.replace({ revision: 1, stoves: [] });
-    expect(sync.apply({ revision: 3, stove, removedStoveId: null })).toBe("gap");
-    expect(sync.current()).toEqual({ revision: 1, stoves: [] });
+    expect(sync.apply({ revision: 3, stove, removedStoveId: null, attentionOrder: [stove.id] })).toBe("gap");
+    expect(sync.current()).toEqual({ revision: 1, stoves: [], attentionOrder: [] });
   });
 
   it("fetches another snapshot after a gap", async () => {
-    let handler: ((change: { revision: number; stove: StoveWire | null; removedStoveId: string | null }) => void) | undefined;
+    let handler: ((change: { revision: number; stove: StoveWire | null; removedStoveId: string | null; attentionOrder?: string[] }) => void) | undefined;
     const snapshots: StoveSnapshot[] = [{ revision: 1, stoves: [] }, { revision: 3, stoves: [stove] }];
     const transport: StoveTransport = {
       snapshot: vi.fn(async () => snapshots.shift()!),
@@ -47,9 +70,9 @@ describe("StoveSync", () => {
     };
     const received: StoveSnapshot[] = [];
     await subscribeToStoves((next) => received.push(next), transport);
-    handler?.({ revision: 3, stove, removedStoveId: null });
+    handler?.({ revision: 3, stove, removedStoveId: null, attentionOrder: [stove.id] });
     await vi.waitFor(() => expect(received).toHaveLength(2));
-    expect(received[1]).toEqual({ revision: 3, stoves: [stove] });
+    expect(received[1]).toEqual({ revision: 3, stoves: [stove], attentionOrder: [stove.id] });
   });
 
   it("delivers the authoritative snapshot when live event registration is unavailable", async () => {
@@ -62,7 +85,7 @@ describe("StoveSync", () => {
     const unlisten = await subscribeToStoves((next) => received.push(next), transport);
 
     expect(transport.snapshot).toHaveBeenCalledOnce();
-    expect(received).toEqual([{ revision: 56, stoves: [stove] }]);
+    expect(received).toEqual([{ revision: 56, stoves: [stove], attentionOrder: [stove.id] }]);
     expect(() => unlisten()).not.toThrow();
   });
 });
@@ -75,11 +98,13 @@ describe("stove commands", () => {
     await archiveStove(stove.id);
     await getArchivedSessions();
     await restoreArchivedSession(stove.id);
+    await acknowledgeCookedStove(stove.id);
 
     expect(invoke).toHaveBeenNthCalledWith(1, "clear_cooked_stove", { stoveId: stove.id });
     expect(invoke).toHaveBeenNthCalledWith(2, "set_stove_pinned", { stoveId: stove.id, pinned: true });
     expect(invoke).toHaveBeenNthCalledWith(3, "archive_stove", { stoveId: stove.id });
     expect(invoke).toHaveBeenNthCalledWith(4, "get_archived_sessions");
     expect(invoke).toHaveBeenNthCalledWith(5, "restore_archived_session", { stoveId: stove.id });
+    expect(invoke).toHaveBeenNthCalledWith(6, "acknowledge_cooked_stove", { stoveId: stove.id });
   });
 });
