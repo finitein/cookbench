@@ -28,6 +28,54 @@ describe("GlobalBar", () => {
       .toHaveAttribute("data-layout", "mixed");
   });
 
+  it("keeps the supplied canonical order in full mode", () => {
+    const stoves = [makeStove(0, { state: "failed" }), makeStove(3, { state: "needsHuman" })];
+    render(<GlobalBar stoves={stoves} />);
+    expect(screen.getAllByTestId("stove").map((node) => node.closest("[data-stove-id]")?.getAttribute("data-stove-id"))).toEqual(stoves.map((stove) => stove.id));
+  });
+
+  it("renders only the first canonical Stove as a circular minimal burner and follows reordering", () => {
+    const first = makeStove(0, { state: "needsHuman" });
+    const second = makeStove(1, { state: "failed" });
+    const view = render(<GlobalBar stoves={[first, second]} mode="minimal" />);
+    expect(screen.getAllByTestId("stove")).toHaveLength(1);
+    expect(document.querySelector(".stove-burner-wrap")).toHaveClass("stove-burner-wrap--compact");
+    expect(screen.getByTestId("progress-ring")).toHaveClass("progress-ring--needsHuman");
+    view.rerender(<GlobalBar stoves={[second, first]} mode="minimal" />);
+    expect(document.querySelector("[data-stove-id]")).toHaveAttribute("data-stove-id", second.id);
+  });
+
+  it("uses the Cookbench mark for an empty minimal Bar", () => {
+    render(<GlobalBar stoves={[]} mode="minimal" />);
+    expect(screen.queryByTestId("stove")).not.toBeInTheDocument();
+    expect(document.querySelector(".global-bar__minimal-mark")).toBeInTheDocument();
+  });
+
+  it("opens the ordered priority menu from context menu or keyboard trigger", () => {
+    const first = makeStove(0);
+    const second = makeStove(1);
+    const activated = vi.fn();
+    render(<GlobalBar stoves={[first, second]} mode="minimal" onActivateStove={activated} />);
+    fireEvent.contextMenu(screen.getByTestId("stove"));
+    expect(screen.getByRole("menu")).toBeVisible();
+    const items = screen.getAllByRole("menuitem");
+    expect(items).toHaveLength(2);
+    expect(items[0]).toHaveTextContent("Project 1");
+    fireEvent.click(items[1]);
+    expect(activated).toHaveBeenCalledWith(second);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("closes the priority menu on Escape and changes modes through the compact commands", () => {
+    const onModeChange = vi.fn();
+    render(<GlobalBar stoves={[makeStove(0)]} mode="minimal" onModeChange={onModeChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "Stove priority list" }));
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Use full Bar" }));
+    expect(onModeChange).toHaveBeenCalledWith("full");
+  });
+
   it("exposes lightweight named harness benches only when a harness needs a second row", () => {
     const originalWidth = document.documentElement.clientWidth;
     Object.defineProperty(document.documentElement, "clientWidth", { configurable: true, value: 254 });

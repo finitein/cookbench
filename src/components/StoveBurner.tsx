@@ -20,6 +20,9 @@ export type StoveBurnerProps = {
   tooltipId?: string;
   renderTooltip?: boolean;
   showHarnessMark?: boolean;
+  compact?: boolean;
+  showSession?: boolean;
+  showControls?: boolean;
   flashing?: boolean;
 };
 
@@ -37,6 +40,9 @@ export function StoveBurner({
   tooltipId: suppliedTooltipId,
   renderTooltip = true,
   showHarnessMark = true,
+  compact = false,
+  showSession = true,
+  showControls = true,
   flashing = false,
 }: StoveBurnerProps) {
   const { t } = useI18n();
@@ -52,7 +58,7 @@ export function StoveBurner({
   );
 
   return (
-    <div className={`stove-burner-wrap${flashing ? " stove-burner-wrap--alert" : ""}`} data-stove-id={stove.id}>
+    <div className={`stove-burner-wrap${compact ? " stove-burner-wrap--compact" : ""}${flashing ? " stove-burner-wrap--alert" : ""}`} data-stove-id={stove.id}>
       <button
         className="stove-burner"
         data-testid="stove"
@@ -70,17 +76,17 @@ export function StoveBurner({
       >
         <span className="stove-burner__ring"><ProgressRing stove={stove} /></span>
         {showHarnessMark ? <span className="stove-burner__identity"><HarnessMark harness={stove.harness} /></span> : null}
-        <span
+        {showSession ? <span
           className="stove-burner__session"
           data-testid="stove-session-identity"
           title={stoveDisplayIdentity(stove, t("stove.session"))}
         >
           <span>{projectLabel}</span><b>{sessionIdentity}</b>
-        </span>
+        </span> : null}
         <HostBadge stove={stove} />
       </button>
       {renderTooltip ? <StoveTooltip stove={stove} id={tooltipId} /> : null}
-      {onDetach ? (
+      {showControls && onDetach ? (
         <button
           className="stove-burner__control stove-burner__control--detach"
           type="button"
@@ -91,7 +97,7 @@ export function StoveBurner({
           <span aria-hidden="true" />
         </button>
       ) : null}
-      {onPin ? (
+      {showControls && onPin ? (
         <button
           className="stove-burner__control stove-burner__control--pin"
           type="button"
@@ -103,7 +109,7 @@ export function StoveBurner({
           <span aria-hidden="true" />
         </button>
       ) : null}
-      {onClear && stove.retainedCompletion ? (
+      {showControls && onClear && stove.retainedCompletion ? (
         <button
           className="stove-burner__control stove-burner__control--clear"
           type="button"
@@ -114,7 +120,7 @@ export function StoveBurner({
           <span aria-hidden="true" />
         </button>
       ) : null}
-      {onArchive && !stove.retainedCompletion ? (
+      {showControls && onArchive && !stove.retainedCompletion ? (
         <button
           className="stove-burner__control stove-burner__control--archive"
           type="button"

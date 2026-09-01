@@ -15,7 +15,7 @@ import { openNotificationSettings } from "./settings/notifications/service";
 import { useLocalAlert } from "./services/localAlerts";
 import type { StoveWire } from "./types/stove";
 import { I18nProvider, useI18n } from "./i18n/i18n";
-import { syncNativeLocale } from "./settings/display/service";
+import { configureDisplaySettings, syncNativeLocale } from "./settings/display/service";
 
 export default function App() {
   const displaySettings = useDisplaySettings();
@@ -44,6 +44,19 @@ function CookbenchApp({ displaySettings }: { displaySettings: ReturnType<typeof 
       .then(setActivation)
       .catch(() => setActivation({ target: "unavailable", status: "unavailable", resumeSessionId: null }));
   };
+  const setGlobalBarMode = (globalBarMode: "full" | "minimal") => {
+    if (!displaySettings || displaySettings.globalBarMode === globalBarMode) return;
+    void configureDisplaySettings({
+      globalBarVisible: displaySettings.globalBarVisible,
+      globalBarPlacement: displaySettings.globalBarPlacement,
+      globalBarMode,
+      macStatusStoveCount: displaySettings.macStatusStoveCount,
+      hoverDetailsEnabled: displaySettings.hoverDetailsEnabled,
+      locale: displaySettings.locale,
+    }).catch(() => {
+      // Native settings events remain the source of truth on a failed save.
+    });
+  };
 
   if (detached.isSettings) {
     return <NotificationSettingsPanel />;
@@ -65,6 +78,8 @@ function CookbenchApp({ displaySettings }: { displaySettings: ReturnType<typeof 
         onPinStove={(stove) => { void setStovePinned(stove.id, !stove.pinned); }}
         onArchiveStove={(stove) => { void archiveStove(stove.id); }}
         onOpenSettings={() => { void openNotificationSettings(); }}
+        mode={displaySettings?.globalBarMode ?? "full"}
+        onModeChange={setGlobalBarMode}
         hoverDetailsEnabled={displaySettings?.hoverDetailsEnabled ?? false}
         activeAlertStoveId={activeAlertStoveId}
       />

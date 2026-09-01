@@ -47,7 +47,7 @@ describe("arrangeBenches", () => {
     ]);
   });
 
-  it("sorts each bench by attention, active work, then terminal states without reshuffling peers", () => {
+  it("preserves canonical input order rather than inventing a local state ranking", () => {
     const layout = arrangeBenches([
       makeStove(0, { state: "cooked" }),
       makeStove(3, { state: "needsHuman" }),
@@ -58,10 +58,10 @@ describe("arrangeBenches", () => {
     ], 2);
 
     expect(layout.benches[0].stoves.map((stove) => stove.id)).toEqual([
+      "fixture:codex:0",
       "fixture:codex:3",
       "fixture:codex:6",
       "fixture:codex:9",
-      "fixture:codex:0",
       "fixture:codex:12",
       "fixture:codex:15",
     ]);
