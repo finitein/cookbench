@@ -15,7 +15,7 @@ import { openNotificationSettings } from "./settings/notifications/service";
 import { useLocalAlert } from "./services/localAlerts";
 import type { StoveWire } from "./types/stove";
 import { I18nProvider, useI18n } from "./i18n/i18n";
-import { configureDisplaySettings, syncNativeLocale } from "./settings/display/service";
+import { patchDisplaySettings, syncNativeLocale } from "./settings/display/service";
 
 export default function App() {
   const displaySettings = useDisplaySettings();
@@ -46,14 +46,7 @@ function CookbenchApp({ displaySettings }: { displaySettings: ReturnType<typeof 
   };
   const setGlobalBarMode = (globalBarMode: "full" | "minimal") => {
     if (!displaySettings || displaySettings.globalBarMode === globalBarMode) return;
-    void configureDisplaySettings({
-      globalBarVisible: displaySettings.globalBarVisible,
-      globalBarPlacement: displaySettings.globalBarPlacement,
-      globalBarMode,
-      macStatusStoveCount: displaySettings.macStatusStoveCount,
-      hoverDetailsEnabled: displaySettings.hoverDetailsEnabled,
-      locale: displaySettings.locale,
-    }).catch(() => {
+    void patchDisplaySettings({ globalBarMode }).catch(() => {
       // Native settings events remain the source of truth on a failed save.
     });
   };

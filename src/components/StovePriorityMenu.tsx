@@ -15,11 +15,35 @@ export function StovePriorityMenu({ stoves, onActivate, onClose }: StovePriority
   const { t } = useI18n();
   const menuRef = useRef<HTMLDivElement>(null);
 
+  const moveFocus = (index: number) => {
+    const items = [...(menuRef.current?.querySelectorAll<HTMLButtonElement>("[role='menuitem']") ?? [])];
+    items.at((index + items.length) % items.length)?.focus();
+  };
+
   useEffect(() => {
     const firstItem = menuRef.current?.querySelector<HTMLButtonElement>("[role='menuitem']");
     firstItem?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      const items = [...(menuRef.current?.querySelectorAll<HTMLButtonElement>("[role='menuitem']") ?? [])];
+      const index = items.indexOf(document.activeElement as HTMLButtonElement);
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+      } else if (event.key === "ArrowDown") {
+        event.preventDefault();
+        moveFocus(index < 0 ? 0 : index + 1);
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        moveFocus(index < 0 ? items.length - 1 : index - 1);
+      } else if (event.key === "Home") {
+        event.preventDefault();
+        moveFocus(0);
+      } else if (event.key === "End") {
+        event.preventDefault();
+        moveFocus(items.length - 1);
+      } else if (event.key === "Tab") {
+        onClose();
+      }
     };
     const onPointerDown = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) onClose();
@@ -34,7 +58,7 @@ export function StovePriorityMenu({ stoves, onActivate, onClose }: StovePriority
 
   return (
     <div className="stove-priority-menu" ref={menuRef} role="menu" aria-label={t("bar.priorityList")}>
-      <p className="stove-priority-menu__title">{t("bar.priorityList")}</p>
+      <p className="stove-priority-menu__title" aria-hidden="true">{t("bar.priorityList")}</p>
       {stoves.map((stove, index) => (
         <button
           className="stove-priority-menu__item"

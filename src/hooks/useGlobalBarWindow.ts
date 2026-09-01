@@ -94,8 +94,12 @@ export function useGlobalBarWindow() {
     const observer = new ResizeObserver(updateMinimum);
     const brand = bar.querySelector<HTMLElement>(".global-bar__brand");
     const benches = bar.querySelector<HTMLElement>(".global-bar__benches");
+    const minimal = bar.querySelector<HTMLElement>(".global-bar__minimal");
+    const priorityMenu = bar.querySelector<HTMLElement>(".stove-priority-menu");
     if (brand) observer.observe(brand);
     if (benches) observer.observe(benches);
+    if (minimal) observer.observe(minimal);
+    if (priorityMenu) observer.observe(priorityMenu);
     const mutations = new MutationObserver(updateMinimum);
     mutations.observe(bar, { childList: true, subtree: true });
     void Promise.all([getCurrentWindow().outerSize(), getCurrentWindow().scaleFactor()])

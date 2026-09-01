@@ -7,13 +7,13 @@ import { I18nProvider } from "../../i18n/i18n";
 
 const {
   getDisplaySettings,
-  configureDisplaySettings,
+  patchDisplaySettings,
   closeDetachedBar,
   getLaunchAtLogin,
   setLaunchAtLogin,
 } = vi.hoisted(() => ({
   getDisplaySettings: vi.fn(),
-  configureDisplaySettings: vi.fn(),
+  patchDisplaySettings: vi.fn(),
   closeDetachedBar: vi.fn(),
   getLaunchAtLogin: vi.fn(),
   setLaunchAtLogin: vi.fn(),
@@ -21,7 +21,7 @@ const {
 
 vi.mock("./service", () => ({
   getDisplaySettings,
-  configureDisplaySettings,
+  patchDisplaySettings,
   closeDetachedBar,
   getLaunchAtLogin,
   setLaunchAtLogin,
@@ -40,7 +40,8 @@ describe("DisplaySettingsPanel", () => {
       locale: "system",
       detachedBars: [{ stoveId: "host-a:session-1" }],
     });
-    configureDisplaySettings.mockImplementation(async (input) => ({
+    patchDisplaySettings.mockImplementation(async (input) => ({
+      globalBarVisible: true, globalBarPlacement: "topCenter", globalBarMode: "full", macStatusStoveCount: 3, hoverDetailsEnabled: false, locale: "system",
       ...input,
       macStatusAvailable: false,
       detachedBars: [{ stoveId: "host-a:session-1" }],
@@ -67,14 +68,7 @@ describe("DisplaySettingsPanel", () => {
     fireEvent.click(globalBar);
 
     await waitFor(() => {
-      expect(configureDisplaySettings).toHaveBeenCalledWith({
-        globalBarVisible: false,
-        globalBarPlacement: "topCenter",
-        globalBarMode: "full",
-        macStatusStoveCount: 3,
-        hoverDetailsEnabled: false,
-        locale: "system",
-      });
+      expect(patchDisplaySettings).toHaveBeenCalledWith({ globalBarVisible: false });
     });
     expect(screen.getByRole("button", { name: "Close independent Bar host-a:session-1" })).toBeInTheDocument();
   });
@@ -87,14 +81,7 @@ describe("DisplaySettingsPanel", () => {
     fireEvent.click(hoverDetails);
 
     await waitFor(() => {
-      expect(configureDisplaySettings).toHaveBeenCalledWith({
-        globalBarVisible: true,
-        globalBarPlacement: "topCenter",
-        globalBarMode: "full",
-        macStatusStoveCount: 3,
-        hoverDetailsEnabled: true,
-        locale: "system",
-      });
+      expect(patchDisplaySettings).toHaveBeenCalledWith({ hoverDetailsEnabled: true });
     });
   });
 
@@ -104,28 +91,14 @@ describe("DisplaySettingsPanel", () => {
     const language = await screen.findByRole("combobox", { name: "Language" });
     fireEvent.change(language, { target: { value: "zh-CN" } });
 
-    await waitFor(() => expect(configureDisplaySettings).toHaveBeenCalledWith({
-      globalBarVisible: true,
-      globalBarPlacement: "topCenter",
-      globalBarMode: "full",
-      macStatusStoveCount: 3,
-      hoverDetailsEnabled: false,
-      locale: "zh-CN",
-    }));
+    await waitFor(() => expect(patchDisplaySettings).toHaveBeenCalledWith({ locale: "zh-CN" }));
   });
 
   it("persists the selected global Bar mode", async () => {
     render(<DisplaySettingsPanel />);
     fireEvent.click(await screen.findByRole("radio", { name: "Minimal" }));
 
-    await waitFor(() => expect(configureDisplaySettings).toHaveBeenCalledWith({
-      globalBarVisible: true,
-      globalBarPlacement: "topCenter",
-      globalBarMode: "minimal",
-      macStatusStoveCount: 3,
-      hoverDetailsEnabled: false,
-      locale: "system",
-    }));
+    await waitFor(() => expect(patchDisplaySettings).toHaveBeenCalledWith({ globalBarMode: "minimal" }));
   });
 
   it("uses the native capability rather than browser detection for macOS status settings", async () => {
@@ -150,7 +123,7 @@ describe("DisplaySettingsPanel", () => {
     expect(count).toHaveValue(3);
     fireEvent.change(count, { target: { value: "5" } });
 
-    await waitFor(() => expect(configureDisplaySettings).toHaveBeenCalledWith(expect.objectContaining({
+    await waitFor(() => expect(patchDisplaySettings).toHaveBeenCalledWith(expect.objectContaining({
       macStatusStoveCount: 5,
     })));
   });
@@ -158,7 +131,7 @@ describe("DisplaySettingsPanel", () => {
   it("serializes rapid display edits and sends each complete preference tuple", async () => {
     let resolveFirst: ((value: unknown) => void) | undefined;
     let resolveSecond: ((value: unknown) => void) | undefined;
-    configureDisplaySettings
+    patchDisplaySettings
       .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
       .mockImplementationOnce(() => new Promise((resolve) => { resolveSecond = resolve; }));
     render(<DisplaySettingsPanel />);
@@ -166,16 +139,14 @@ describe("DisplaySettingsPanel", () => {
     fireEvent.click(await screen.findByRole("radio", { name: "Minimal" }));
     await waitFor(() => expect(screen.getByRole("radio", { name: "Minimal" })).toBeChecked());
     fireEvent.click(screen.getByRole("checkbox", { name: "Show details on hover" }));
-    await waitFor(() => expect(configureDisplaySettings).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(patchDisplaySettings).toHaveBeenCalledTimes(1));
     resolveFirst?.({
       globalBarVisible: true, globalBarPlacement: "topCenter", globalBarMode: "minimal",
       macStatusStoveCount: 3, macStatusAvailable: false, hoverDetailsEnabled: false,
       locale: "system", detachedBars: [],
     });
-    await waitFor(() => expect(configureDisplaySettings).toHaveBeenCalledTimes(2));
-    expect(configureDisplaySettings).toHaveBeenLastCalledWith(expect.objectContaining({
-      globalBarMode: "minimal", hoverDetailsEnabled: true,
-    }));
+    await waitFor(() => expect(patchDisplaySettings).toHaveBeenCalledTimes(2));
+    expect(patchDisplaySettings).toHaveBeenLastCalledWith({ hoverDetailsEnabled: true });
     resolveSecond?.({
       globalBarVisible: true, globalBarPlacement: "topCenter", globalBarMode: "minimal",
       macStatusStoveCount: 3, macStatusAvailable: false, hoverDetailsEnabled: true,
@@ -187,7 +158,7 @@ describe("DisplaySettingsPanel", () => {
   it("lets a failed older save yield to a newer desired preference", async () => {
     let rejectFirst: ((reason?: unknown) => void) | undefined;
     let resolveSecond: ((value: unknown) => void) | undefined;
-    configureDisplaySettings
+    patchDisplaySettings
       .mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectFirst = reject; }))
       .mockImplementationOnce(() => new Promise((resolve) => { resolveSecond = resolve; }));
     render(<DisplaySettingsPanel />);
@@ -197,7 +168,7 @@ describe("DisplaySettingsPanel", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "Show details on hover" }));
     rejectFirst?.(new Error("first save failed"));
 
-    await waitFor(() => expect(configureDisplaySettings).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(patchDisplaySettings).toHaveBeenCalledTimes(2));
     resolveSecond?.({
       globalBarVisible: true, globalBarPlacement: "topCenter", globalBarMode: "minimal",
       macStatusStoveCount: 3, macStatusAvailable: false, hoverDetailsEnabled: true,
@@ -210,7 +181,7 @@ describe("DisplaySettingsPanel", () => {
   });
 
   it("reloads native settings and reports a latest save failure", async () => {
-    configureDisplaySettings.mockRejectedValueOnce(new Error("save failed"));
+    patchDisplaySettings.mockRejectedValueOnce(new Error("save failed"));
     render(<DisplaySettingsPanel />);
 
     fireEvent.click(await screen.findByRole("radio", { name: "Minimal" }));

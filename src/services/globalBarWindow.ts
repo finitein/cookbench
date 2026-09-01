@@ -68,6 +68,8 @@ export function intrinsicGlobalBarMinimumHeight(bar: HTMLElement): number {
   const contentBottom = [
     bar.querySelector<HTMLElement>(".global-bar__brand"),
     bar.querySelector<HTMLElement>(".global-bar__benches"),
+    bar.querySelector<HTMLElement>(".global-bar__minimal"),
+    bar.querySelector<HTMLElement>(".stove-priority-menu"),
     bar.querySelector<HTMLElement>(".global-bar__tooltip"),
   ].reduce((bottom, element) => {
     if (!element) return bottom;

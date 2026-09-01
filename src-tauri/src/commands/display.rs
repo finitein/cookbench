@@ -47,6 +47,17 @@ pub struct DisplaySettingsInput {
     pub locale: AppLocale,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DisplaySettingsPatch {
+    pub global_bar_visible: Option<bool>,
+    pub global_bar_placement: Option<GlobalBarPlacement>,
+    pub global_bar_mode: Option<GlobalBarMode>,
+    pub mac_status_stove_count: Option<u8>,
+    pub hover_details_enabled: Option<bool>,
+    pub locale: Option<AppLocale>,
+}
+
 pub const DISPLAY_SETTINGS_CHANGED_EVENT: &str = "cookbench://display-settings-changed";
 
 pub fn settings_wire(config: &PersistedConfig) -> DisplaySettingsWire {
@@ -82,17 +93,57 @@ pub fn configure_display_settings(
     native_locale: State<'_, NativeLocaleState>,
     windows: State<'_, TauriWindowCommandService>,
 ) -> Result<DisplaySettingsWire, String> {
-    validate_mac_status_stove_count(input.mac_status_stove_count)?;
+    patch_display_settings(
+        DisplaySettingsPatch {
+            global_bar_visible: Some(input.global_bar_visible),
+            global_bar_placement: Some(input.global_bar_placement),
+            global_bar_mode: Some(input.global_bar_mode),
+            mac_status_stove_count: Some(input.mac_status_stove_count),
+            hover_details_enabled: Some(input.hover_details_enabled),
+            locale: Some(input.locale),
+        },
+        app,
+        state,
+        native_locale,
+        windows,
+    )
+}
+
+#[tauri::command]
+pub fn patch_display_settings(
+    patch: DisplaySettingsPatch,
+    app: AppHandle,
+    state: State<'_, AppState>,
+    native_locale: State<'_, NativeLocaleState>,
+    windows: State<'_, TauriWindowCommandService>,
+) -> Result<DisplaySettingsWire, String> {
+    if let Some(count) = patch.mac_status_stove_count {
+        validate_mac_status_stove_count(count)?;
+    }
     let previous = state.persisted_config().layout;
     let previous_locale = state.persisted_config().preferences.locale;
-    let placement_changed = previous.global_bar_placement != input.global_bar_placement;
+    let placement_changed = patch
+        .global_bar_placement
+        .is_some_and(|placement| previous.global_bar_placement != placement);
     state.update_persisted_config(|config| {
-        config.layout.global_bar_visible = input.global_bar_visible;
-        config.layout.global_bar_placement = input.global_bar_placement;
-        config.layout.global_bar_mode = input.global_bar_mode;
-        config.layout.mac_status_stove_count = input.mac_status_stove_count;
-        config.layout.hover_details_enabled = input.hover_details_enabled;
-        config.preferences.locale = input.locale;
+        if let Some(value) = patch.global_bar_visible {
+            config.layout.global_bar_visible = value;
+        }
+        if let Some(value) = patch.global_bar_placement {
+            config.layout.global_bar_placement = value;
+        }
+        if let Some(value) = patch.global_bar_mode {
+            config.layout.global_bar_mode = value;
+        }
+        if let Some(value) = patch.mac_status_stove_count {
+            config.layout.mac_status_stove_count = value;
+        }
+        if let Some(value) = patch.hover_details_enabled {
+            config.layout.hover_details_enabled = value;
+        }
+        if let Some(value) = patch.locale {
+            config.preferences.locale = value;
+        }
         if placement_changed {
             // Choosing a screen anchor is an explicit request to leave the
             // last free-form drag position behind.
@@ -101,8 +152,8 @@ pub fn configure_display_settings(
     })?;
     apply_global_bar_preferences(
         &app,
-        input.global_bar_visible,
-        input.global_bar_placement,
+        state.persisted_config().layout.global_bar_visible,
+        state.persisted_config().layout.global_bar_placement,
         if placement_changed {
             None
         } else {
@@ -110,11 +161,11 @@ pub fn configure_display_settings(
         },
     )?;
     windows
-        .set_global_bar_visible(input.global_bar_visible)
+        .set_global_bar_visible(state.persisted_config().layout.global_bar_visible)
         .map_err(|error| error.to_string())?;
     let wire = settings_wire(&state.persisted_config());
-    if previous_locale != input.locale {
-        let locale = native_locale.set_preference(input.locale);
+    if previous_locale != state.persisted_config().preferences.locale {
+        let locale = native_locale.set_preference(state.persisted_config().preferences.locale);
         apply_native_locale(&app, locale);
     }
     app.emit(DISPLAY_SETTINGS_CHANGED_EVENT, &wire)

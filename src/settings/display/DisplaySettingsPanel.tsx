@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import {
   closeDetachedBar,
-  configureDisplaySettings,
+  patchDisplaySettings,
   getDisplaySettings,
   getLaunchAtLogin,
   setLaunchAtLogin,
@@ -63,17 +63,9 @@ export function DisplaySettingsPanel() {
     setSettings(next);
     setStatus(null);
     const generation = ++saveGeneration.current;
-    const input = {
-      globalBarVisible: next.globalBarVisible,
-      globalBarPlacement: next.globalBarPlacement,
-      globalBarMode: next.globalBarMode,
-      macStatusStoveCount: next.macStatusStoveCount,
-      hoverDetailsEnabled: next.hoverDetailsEnabled,
-      locale: next.locale,
-    };
     saveQueue.current = saveQueue.current.then(async () => {
       try {
-        const saved = await configureDisplaySettings(input);
+        const saved = await patchDisplaySettings(change);
         if (generation === saveGeneration.current) {
           desiredSettings.current = saved;
           setSettings(saved);

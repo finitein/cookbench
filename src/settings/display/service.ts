@@ -33,6 +33,7 @@ export type DisplaySettingsInput = Pick<
   DisplaySettingsWire,
   "globalBarVisible" | "globalBarPlacement" | "globalBarMode" | "macStatusStoveCount" | "hoverDetailsEnabled" | "locale"
 >;
+export type DisplaySettingsPatch = Partial<DisplaySettingsInput>;
 
 export function getDisplaySettings(): Promise<DisplaySettingsWire> {
   return invoke<DisplaySettingsWire>("get_display_settings");
@@ -40,6 +41,11 @@ export function getDisplaySettings(): Promise<DisplaySettingsWire> {
 
 export function configureDisplaySettings(input: DisplaySettingsInput): Promise<DisplaySettingsWire> {
   return invoke<DisplaySettingsWire>("configure_display_settings", { input });
+}
+
+/** Changes only the named preference, avoiding stale cross-window snapshots. */
+export function patchDisplaySettings(patch: DisplaySettingsPatch): Promise<DisplaySettingsWire> {
+  return invoke<DisplaySettingsWire>("patch_display_settings", { patch });
 }
 
 /** Keeps tray, native window titles, and system notifications in step with the webview locale. */

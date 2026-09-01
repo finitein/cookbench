@@ -194,6 +194,7 @@ pub fn run() {
             commands::windows::set_global_bar_minimum_size,
             commands::display::get_display_settings,
             commands::display::configure_display_settings,
+            commands::display::patch_display_settings,
             commands::display::sync_native_locale,
             commands::display::record_global_bar_position,
             commands::locator::activate_stove_locator,
