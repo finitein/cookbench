@@ -936,3 +936,42 @@ fn failed_config_write_keeps_the_in_memory_preference_unchanged() {
         .config_path()
         .exists());
 }
+
+#[test]
+fn failed_generic_config_transaction_returns_no_effect_and_keeps_config_unchanged() {
+    let directory = TestDirectory::new();
+    let blocked_parent = directory.0.join("not-a-directory");
+    fs::write(&blocked_parent, b"block config writes").unwrap();
+    let state = AppState::default();
+    state.initialize_persistence(&blocked_parent);
+    let before = state.persisted_config();
+
+    let result = state.update_persisted_config_with(|config| {
+        config.layout.global_bar_visible = false;
+        Ok::<_, String>("sentinel-effect")
+    });
+
+    assert!(result.is_err());
+    assert_eq!(state.persisted_config(), before);
+}
+
+#[test]
+fn generic_config_transaction_returns_effect_and_exact_saved_candidate() {
+    let directory = TestDirectory::new();
+    let state = AppState::default();
+    state.initialize_persistence(&directory.0);
+
+    let (effect, committed) = state
+        .update_persisted_config_with(|config| {
+            config.layout.global_bar_visible = false;
+            Ok::<_, String>("visibility-changed")
+        })
+        .unwrap();
+
+    assert_eq!(effect, "visibility-changed");
+    assert!(!committed.layout.global_bar_visible);
+    assert_eq!(state.persisted_config(), committed);
+    assert!(DesktopPersistence::in_app_data(&directory.0)
+        .config_path()
+        .exists());
+}
