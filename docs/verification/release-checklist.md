@@ -39,6 +39,24 @@ and builds, TypeScript checking, 156 Vitest tests in 25 files, three GNOME
 protocol tests, 23 Playwright flows, production build isolation, and the
 source-package audit. Rust compilation was limited to one job.
 
+The
+[`v0.4.1` pull-request CI](https://github.com/finitein/cookbench/actions/runs/33571524340)
+passed on macOS 14, Windows 2022, Ubuntu 22.04, Ubuntu 24.04, and the dedicated
+Playwright job. The
+[`v0.4.1` release workflow](https://github.com/finitein/cookbench/actions/runs/33572168933)
+resolved tag `v0.4.1` to merge commit `1bdd238`, passed the prerelease channel
+gate, built and audited every declared platform package, generated checksums,
+manifest, installers, and SPDX SBOM, then published the unsigned
+[`v0.4.1` prerelease](https://github.com/finitein/cookbench/releases/tag/v0.4.1).
+
+The downloaded universal macOS App ZIP matched its published SHA-256 digest
+`aaa8552af5ab5371c6fbf8b6e06081fd178637171b2330df779b3a4b3cf82d1b`.
+Its bundle reports version `0.4.1`, identifier `app.cookbench.desktop`, and both
+arm64 and x86_64 executable slices. It was installed offline at
+`/Applications/Cookbench.app` after confirming that no Cookbench process was
+running; the installed bundle was inspected again as version `0.4.1` and was
+not launched.
+
 Verification on the affected Mac is deliberately non-launching: no Cookbench
 process, native UI smoke test, login-window restart, reboot, or display-mode
 change is permitted. Release evidence may include formatting, linting, unit and
