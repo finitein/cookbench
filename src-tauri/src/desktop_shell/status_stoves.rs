@@ -497,7 +497,7 @@ mod tests {
         assert_eq!(accessibility_label(&snapshot(&[]), 3), "Cookbench");
         assert_eq!(
             accessibility_label(&snapshot(&["a", "b"]), 1),
-            "Cookbench: 1 Stoves, Cooking"
+            "Cookbench: 1 Stove, Cooking"
         );
     }
 
