@@ -843,6 +843,14 @@ pub fn finish_global_bar_drag(
     finish_global_bar_drag_inner(token, &app, state.inner(), runtime.inner())
 }
 
+#[tauri::command]
+pub async fn wait_for_global_bar_pointer_release() -> bool {
+    matches!(
+        tauri::async_runtime::spawn_blocking(crate::platform::wait_for_local_drag_release).await,
+        Ok(crate::platform::DragReleaseEvidence::Released)
+    )
+}
+
 fn finish_global_bar_drag_inner(
     token: u64,
     app: &AppHandle,

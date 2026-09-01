@@ -105,6 +105,7 @@ describe("global bar dock controller", () => {
       startDrag: vi.fn().mockResolvedValue({ token: 7, completed: false }), finishDrag: vi.fn().mockResolvedValue(expanded),
       setGuards: vi.fn().mockResolvedValue(expanded), collapse: vi.fn().mockResolvedValue({ ...expanded, phase: "dockedCollapsed", collapsed: true }),
       reveal: vi.fn().mockResolvedValue(expanded), refreshGeometry: vi.fn().mockResolvedValue(expanded),
+      waitForPointerRelease: vi.fn().mockResolvedValue(false),
     };
   }
 

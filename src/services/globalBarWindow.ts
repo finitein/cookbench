@@ -34,6 +34,7 @@ export type GlobalBarDockTransport = {
   collapse(): Promise<GlobalBarDockState>;
   reveal(): Promise<GlobalBarDockState>;
   refreshGeometry(): Promise<GlobalBarDockState>;
+  waitForPointerRelease(): Promise<boolean>;
 };
 
 const EMPTY_DOCK_GUARDS: GlobalBarDockGuards = { pointerInside: false, focused: false, menuOpen: false, resizing: false };
@@ -51,6 +52,7 @@ export function createGlobalBarDockTransport(): GlobalBarDockTransport {
     collapse: () => invoke<GlobalBarDockState>("request_global_bar_dock_collapse"),
     reveal: () => invoke<GlobalBarDockState>("reveal_global_bar_dock_command"),
     refreshGeometry: () => invoke<GlobalBarDockState>("refresh_global_bar_dock_geometry"),
+    waitForPointerRelease: () => invoke<boolean>("wait_for_global_bar_pointer_release"),
   };
 }
 
@@ -138,6 +140,15 @@ export function createGlobalBarDockController(
     canRefresh: () => !disposed && !pendingStart && activeToken == null && !pendingFinish && !guards.resizing,
     refresh() { if (!disposed && !pendingStart && activeToken == null && !pendingFinish && !guards.resizing) safe(transport.refreshGeometry()); },
     reveal() { if (!disposed) safe(transport.reveal()); },
+    waitForResizeRelease() {
+      if (disposed || !guards.resizing) return;
+      void transport.waitForPointerRelease().then((released) => {
+        if (!disposed && released) {
+          setGuards({ resizing: false });
+          safe(transport.refreshGeometry());
+        }
+      }).catch(() => undefined);
+    },
     async initialize() {
       await transport.getState().then(apply).catch(() => undefined);
       if (disposed) return () => {};

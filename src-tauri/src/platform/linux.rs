@@ -17,12 +17,12 @@ pub(super) fn wait_for_left_release() -> DragReleaseEvidence {
     unsafe extern "C" {
         fn XOpenDisplay(name: *const std::ffi::c_char) -> *mut Display;
         fn XCloseDisplay(display: *mut Display) -> i32;
-        fn XDefaultRootWindow(display: *mut Display) -> u64;
+        fn XDefaultRootWindow(display: *mut Display) -> std::ffi::c_ulong;
         fn XQueryPointer(
             display: *mut Display,
-            window: u64,
-            root: *mut u64,
-            child: *mut u64,
+            window: std::ffi::c_ulong,
+            root: *mut std::ffi::c_ulong,
+            child: *mut std::ffi::c_ulong,
             root_x: *mut i32,
             root_y: *mut i32,
             win_x: *mut i32,
@@ -43,7 +43,7 @@ pub(super) fn wait_for_left_release() -> DragReleaseEvidence {
     let mut win_x = 0;
     let mut win_y = 0;
     let mut query = || unsafe {
-        XQueryPointer(
+        let succeeded = XQueryPointer(
             display,
             XDefaultRootWindow(display),
             &mut root,
@@ -53,10 +53,16 @@ pub(super) fn wait_for_left_release() -> DragReleaseEvidence {
             &mut win_x,
             &mut win_y,
             &mut mask,
-        ) != 0
+        );
+        (succeeded != 0).then_some(mask & BUTTON1_MASK != 0)
     };
     const BUTTON1_MASK: u32 = 1 << 8;
-    let was_down = query() && mask & BUTTON1_MASK != 0;
+    let Some(was_down) = query() else {
+        unsafe {
+            XCloseDisplay(display);
+        }
+        return DragReleaseEvidence::Unavailable;
+    };
     let started = Instant::now();
     let result = if !was_down {
         // The X11 query succeeded after our local drag began; a released
@@ -64,8 +70,10 @@ pub(super) fn wait_for_left_release() -> DragReleaseEvidence {
         super::classify_drag_release(false, false, false)
     } else {
         loop {
-            if !query() || mask & BUTTON1_MASK == 0 {
-                break super::classify_drag_release(true, true, false);
+            match query() {
+                Some(false) => break super::classify_drag_release(true, true, false),
+                None => break DragReleaseEvidence::Unavailable,
+                Some(true) => {}
             }
             if started.elapsed() >= Duration::from_secs(5) {
                 break super::classify_drag_release(true, false, true);

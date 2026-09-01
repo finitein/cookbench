@@ -197,6 +197,7 @@ pub fn run() {
             commands::windows::get_global_bar_dock_state,
             commands::windows::start_global_bar_drag,
             commands::windows::finish_global_bar_drag,
+            commands::windows::wait_for_global_bar_pointer_release,
             commands::windows::set_global_bar_dock_guards,
             commands::windows::request_global_bar_dock_collapse,
             commands::windows::reveal_global_bar_dock_command,

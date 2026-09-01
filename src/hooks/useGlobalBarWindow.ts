@@ -41,7 +41,10 @@ export function useGlobalBarWindow() {
     const resizeHandles = ["North", "South", "East", "West", "NorthEast", "NorthWest", "SouthEast", "SouthWest"] as const;
     const resizeCleanups = resizeHandles.map((direction) => {
       const handle = document.createElement("div"); handle.className = "global-bar__resize-handle"; bar.append(handle);
-      const detachResize = attachGlobalBarResizeHandle(handle, direction, () => dock.setGuards({ resizing: true }));
+      const detachResize = attachGlobalBarResizeHandle(handle, direction, () => {
+        dock.setGuards({ resizing: true });
+        dock.waitForResizeRelease();
+      });
       return () => { detachResize(); handle.remove(); };
     });
     let stopResizing: (() => void) | undefined;
