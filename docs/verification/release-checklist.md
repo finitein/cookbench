@@ -15,7 +15,7 @@ pnpm build
 pnpm test:e2e
 ```
 
-On the macOS development runner, `pnpm test:e2e` passes all fourteen Chromium flows.
+On the macOS development runner, `pnpm test:e2e` passes all 23 Chromium flows.
 The test-only driver supplies sanitized snapshots, restart, detached placement,
 clear, and outbound-notification observations in Vite `e2e` mode. A production
 build scan confirms that the driver name, storage keys, and implementation are
@@ -28,11 +28,12 @@ run completed `./scripts/verify.sh`: Rust formatting, workspace Clippy with
 warnings denied, all Rust unit/integration/doc tests, workspace build,
 TypeScript, 155 Vitest tests in 25 files, three GNOME protocol tests, 23
 Playwright product flows, production build isolation, and the source-only
-package inventory passed. The GitHub Actions run, public artifacts, checksums,
-manifest, and publication evidence are still pending; do not treat this
-source-tree checklist as proof that a public release exists. A signed stable
-release remains gated on stable Apple and Windows signing eligibility,
-notarization where applicable, and the corresponding release verification.
+package inventory passed. The
+[`v0.4.0` pull-request CI](https://github.com/finitein/cookbench/actions/runs/33561773745)
+also passed on macOS 14, Windows 2022, Ubuntu 22.04, Ubuntu 24.04, and the
+dedicated Playwright job. A signed stable release remains gated on stable Apple
+and Windows signing eligibility, notarization where applicable, and the
+corresponding release verification.
 
 The candidate synchronizes version `0.4.0` across the Cargo workspace, npm,
 Tauri, current preview installation documentation, and the rendered
@@ -58,6 +59,18 @@ smoke confirmed universal app, bridge, and hook binaries. The installed app
 launched, and its Retina status item rendered three priority slots in a 78x24
 logical-point item with a localized three-Stove accessibility description:
 [`macos-status-stoves-v0.4.0.png`](evidence/macos-status-stoves-v0.4.0.png).
+
+The
+[`v0.4.0` release workflow](https://github.com/finitein/cookbench/actions/runs/33562617720)
+resolved the immutable tag to merge commit `0d19bd8`, passed the release-channel
+gate, built and audited macOS universal, Windows x64, and Ubuntu x64 packages,
+generated release metadata, and published the unsigned
+[`v0.4.0` prerelease](https://github.com/finitein/cookbench/releases/tag/v0.4.0).
+All seven files listed by `SHA256SUMS` were downloaded and verified locally.
+The manifest reports version `0.4.0`, channel `prerelease`, signing
+`unsigned-prerelease`, and five native artifacts. The public installer selected
+and checksum-verified the universal DMG, installed it in `/Applications`, and
+the resulting app bundle reports version `0.4.0`.
 
 Native residual checks remain pending: Windows/X11/Wayland live dock behavior;
 macOS VoiceOver navigation, light/dark, fullscreen, multi-monitor and
