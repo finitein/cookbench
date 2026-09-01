@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::domain::{
     EventMetadata, EventSource, HarnessId, HostKind, Stove, StoveIdentity, StoveState,
@@ -171,6 +171,17 @@ pub struct CookedAttentionCursor {
     pub acknowledged_at_ms: u64,
 }
 
+fn deserialize_cooked_attention_cursors<'de, D>(
+    deserializer: D,
+) -> Result<Vec<CookedAttentionCursor>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let mut cursors = Vec::<CookedAttentionCursor>::deserialize(deserializer)?;
+    normalize_cooked_attention_cursors(&mut cursors);
+    Ok(cursors)
+}
+
 impl CookedAttentionCursor {
     pub fn from_stove(stove: &Stove) -> Option<Self> {
         if stove.state != StoveState::Cooked {
@@ -229,7 +240,7 @@ pub struct PersistedState {
     pub retained: Vec<RetainedStove>,
     #[serde(default)]
     pub clear_cursors: Vec<ClearCursor>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_cooked_attention_cursors")]
     pub cooked_attention_cursors: Vec<CookedAttentionCursor>,
     #[serde(default)]
     pub pinned: Vec<PinnedSession>,
@@ -269,19 +280,28 @@ impl PersistedState {
         self.cooked_attention_cursors
             .retain(|existing| existing.locator != cursor.locator);
         self.cooked_attention_cursors.push(cursor);
-        self.cooked_attention_cursors.sort_by(|left, right| {
-            right
-                .acknowledged_at_ms
-                .cmp(&left.acknowledged_at_ms)
-                .then_with(|| right.timestamp_ms.cmp(&left.timestamp_ms))
-                .then_with(|| right.sequence.cmp(&left.sequence))
-                .then_with(|| right.source.cmp(&left.source))
-                .then_with(|| right.confidence.cmp(&left.confidence))
-                .then_with(|| compare_stove_identity(&right.locator, &left.locator))
-        });
-        self.cooked_attention_cursors
-            .truncate(Self::MAX_COOKED_ATTENTION_CURSORS);
+        normalize_cooked_attention_cursors(&mut self.cooked_attention_cursors);
     }
+}
+
+fn normalize_cooked_attention_cursors(cursors: &mut Vec<CookedAttentionCursor>) {
+    cursors.sort_by(compare_cooked_attention_cursor);
+    cursors.dedup_by(|left, right| left.locator == right.locator);
+    cursors.truncate(PersistedState::MAX_COOKED_ATTENTION_CURSORS);
+}
+
+fn compare_cooked_attention_cursor(
+    left: &CookedAttentionCursor,
+    right: &CookedAttentionCursor,
+) -> std::cmp::Ordering {
+    right
+        .acknowledged_at_ms
+        .cmp(&left.acknowledged_at_ms)
+        .then_with(|| right.timestamp_ms.cmp(&left.timestamp_ms))
+        .then_with(|| right.sequence.cmp(&left.sequence))
+        .then_with(|| right.source.cmp(&left.source))
+        .then_with(|| right.confidence.cmp(&left.confidence))
+        .then_with(|| compare_stove_identity(&right.locator, &left.locator))
 }
 
 fn compare_stove_identity(left: &StoveIdentity, right: &StoveIdentity) -> std::cmp::Ordering {

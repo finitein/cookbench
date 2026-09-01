@@ -369,6 +369,100 @@ fn cooked_attention_cursors_are_bounded_and_keep_the_newest_acknowledgements() {
 }
 
 #[test]
+fn deserialized_cooked_attention_cursors_are_bounded_deterministically() {
+    let cursors: Vec<_> = (0..=PersistedState::MAX_COOKED_ATTENTION_CURSORS as u64)
+        .map(|index| CookedAttentionCursor {
+            locator: locator_with(format!("cursor-{index:03}")),
+            source: EventSource::Hook,
+            confidence: 100,
+            sequence: 1,
+            timestamp_ms: 1,
+            acknowledged_at_ms: 1,
+        })
+        .collect();
+    let mut first = PersistedState::default();
+    first.cooked_attention_cursors = cursors.clone();
+    let mut second = PersistedState::default();
+    second.cooked_attention_cursors = cursors.into_iter().rev().collect();
+
+    let first: PersistedState =
+        serde_json::from_value(serde_json::to_value(first).unwrap()).unwrap();
+    let second: PersistedState =
+        serde_json::from_value(serde_json::to_value(second).unwrap()).unwrap();
+
+    assert_eq!(
+        first.cooked_attention_cursors.len(),
+        PersistedState::MAX_COOKED_ATTENTION_CURSORS
+    );
+    assert_eq!(
+        first.cooked_attention_cursors,
+        second.cooked_attention_cursors
+    );
+    assert!(!first
+        .cooked_attention_cursors
+        .iter()
+        .any(|cursor| cursor.locator.native_session_id == "cursor-000"));
+}
+
+#[test]
+fn cooked_attention_cursor_upsert_replaces_the_same_locator() {
+    let mut state = PersistedState::default();
+    let mut first = CookedAttentionCursor {
+        locator: locator(),
+        source: EventSource::Hook,
+        confidence: 100,
+        sequence: 1,
+        timestamp_ms: 1,
+        acknowledged_at_ms: 1,
+    };
+    state.acknowledge_cooked(first.clone());
+    first.sequence = 2;
+    first.timestamp_ms = 2;
+    first.acknowledged_at_ms = 2;
+    state.acknowledge_cooked(first.clone());
+
+    assert_eq!(state.cooked_attention_cursors, vec![first]);
+}
+
+#[test]
+fn nonempty_cooked_attention_cursor_schema_is_metadata_only() {
+    let mut state = PersistedState::default();
+    state.acknowledge_cooked(CookedAttentionCursor {
+        locator: locator(),
+        source: EventSource::Hook,
+        confidence: 100,
+        sequence: 7,
+        timestamp_ms: 8,
+        acknowledged_at_ms: 9,
+    });
+
+    let value = serde_json::to_value(state).unwrap();
+    let cursor = value["cooked_attention_cursors"][0].as_object().unwrap();
+    assert_eq!(cursor.len(), 6);
+    for expected in [
+        "locator",
+        "source",
+        "confidence",
+        "sequence",
+        "timestamp_ms",
+        "acknowledged_at_ms",
+    ] {
+        assert!(cursor.contains_key(expected));
+    }
+    let encoded = value.to_string();
+    for forbidden in [
+        "prompt",
+        "transcript",
+        "command",
+        "output",
+        "task",
+        "activity",
+    ] {
+        assert!(!encoded.contains(forbidden), "cursor exposed {forbidden}");
+    }
+}
+
+#[test]
 fn session_records_keep_only_safe_metadata() {
     let record = session_record();
     let state = PersistedState {
