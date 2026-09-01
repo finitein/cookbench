@@ -102,7 +102,7 @@ describe("global bar dock controller", () => {
   function transport(): GlobalBarDockTransport {
     return {
       getState: vi.fn().mockResolvedValue(expanded), listen: vi.fn().mockResolvedValue(() => {}),
-      startDrag: vi.fn().mockResolvedValue({ token: 7, completed: false }), finishDrag: vi.fn().mockResolvedValue(expanded),
+      startDrag: vi.fn().mockResolvedValue({ token: 7, completed: false, releaseConfirmed: false }), finishDrag: vi.fn().mockResolvedValue(expanded),
       setGuards: vi.fn().mockResolvedValue(expanded), collapse: vi.fn().mockResolvedValue({ ...expanded, phase: "dockedCollapsed", collapsed: true }),
       reveal: vi.fn().mockResolvedValue(expanded), refreshGeometry: vi.fn().mockResolvedValue(expanded),
       waitForPointerRelease: vi.fn().mockResolvedValue(false),
@@ -118,17 +118,17 @@ describe("global bar dock controller", () => {
   });
 
   it("finishes a token exactly once when pointerup comes before native start resolves", async () => {
-    let resolve!: (result: { token: number; completed: boolean }) => void;
-    const native = transport(); native.startDrag = vi.fn(() => new Promise<{ token: number; completed: boolean }>((done) => { resolve = done; }));
+    let resolve!: (result: { token: number; completed: boolean; releaseConfirmed: boolean }) => void;
+    const native = transport(); native.startDrag = vi.fn(() => new Promise<{ token: number; completed: boolean; releaseConfirmed: boolean }>((done) => { resolve = done; }));
     const controller = createGlobalBarDockController(native);
-    controller.start(); controller.endDrag(); resolve({ token: 9, completed: false }); await Promise.resolve(); await Promise.resolve();
+    controller.start(); controller.endDrag(); resolve({ token: 9, completed: false, releaseConfirmed: false }); await Promise.resolve(); await Promise.resolve();
     expect(native.finishDrag).toHaveBeenCalledTimes(1); expect(native.finishDrag).toHaveBeenCalledWith(9);
     controller.dispose();
   });
 
   it("does not finish a platform-completed drag or accept duplicate starts", async () => {
     const native = transport();
-    native.startDrag = vi.fn().mockResolvedValue({ token: 4, completed: true, state: expanded });
+    native.startDrag = vi.fn().mockResolvedValue({ token: 4, completed: true, releaseConfirmed: true, state: expanded });
     const controller = createGlobalBarDockController(native);
     controller.start(); controller.start(); controller.endDrag();
     await Promise.resolve(); await Promise.resolve();
@@ -138,13 +138,13 @@ describe("global bar dock controller", () => {
   });
 
   it("does not refresh while a start or finish is pending", async () => {
-    let resolveStart!: (result: { token: number; completed: boolean }) => void;
+    let resolveStart!: (result: { token: number; completed: boolean; releaseConfirmed: boolean }) => void;
     const native = transport();
-    native.startDrag = vi.fn(() => new Promise<{ token: number; completed: boolean }>((done) => { resolveStart = done; }));
+    native.startDrag = vi.fn(() => new Promise<{ token: number; completed: boolean; releaseConfirmed: boolean }>((done) => { resolveStart = done; }));
     const controller = createGlobalBarDockController(native);
     controller.start(); controller.refresh();
     expect(native.refreshGeometry).not.toHaveBeenCalled();
-    resolveStart({ token: 3, completed: false }); await Promise.resolve();
+    resolveStart({ token: 3, completed: false, releaseConfirmed: false }); await Promise.resolve();
     controller.endDrag(); controller.refresh();
     expect(native.refreshGeometry).not.toHaveBeenCalled();
     await Promise.resolve(); controller.dispose();

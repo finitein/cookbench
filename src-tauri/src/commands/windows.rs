@@ -176,6 +176,7 @@ pub struct GlobalBarDockStateWire {
 pub struct GlobalBarDragStartWire {
     pub token: u64,
     pub completed: bool,
+    pub release_confirmed: bool,
     pub state: Option<GlobalBarDockStateWire>,
 }
 
@@ -801,6 +802,7 @@ pub fn start_global_bar_drag(
     Ok(GlobalBarDragStartWire {
         token,
         completed: true,
+        release_confirmed: true,
         state: Some(state),
     })
 }
@@ -822,13 +824,16 @@ pub async fn start_global_bar_drag(
         Ok(GlobalBarDragStartWire {
             token,
             completed: true,
+            release_confirmed: true,
             state: Some(state),
         })
     } else {
+        runtime.cancel_drag(token);
         Ok(GlobalBarDragStartWire {
             token,
-            completed: false,
-            state: None,
+            completed: true,
+            release_confirmed: false,
+            state: Some(runtime.state()),
         })
     }
 }

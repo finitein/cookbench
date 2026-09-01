@@ -23,7 +23,7 @@ export function clampGlobalBarSize({ width, height }: GlobalBarSize): GlobalBarS
 
 export type GlobalBarDockPhase = "undocked" | "dockedExpanded" | "dockedCollapsed";
 export type GlobalBarDockState = { phase: GlobalBarDockPhase; docked: boolean; collapsed: boolean; bestEffort: boolean };
-export type GlobalBarDragStart = { token: number; completed: boolean; state?: GlobalBarDockState };
+export type GlobalBarDragStart = { token: number; completed: boolean; releaseConfirmed: boolean; state?: GlobalBarDockState };
 export type GlobalBarDockGuards = { pointerInside: boolean; focused: boolean; menuOpen: boolean; resizing: boolean };
 export type GlobalBarDockTransport = {
   getState(): Promise<GlobalBarDockState>;
@@ -69,6 +69,7 @@ export function createGlobalBarDockController(
   let pendingStart = false;
   let pendingFinish = false;
   let resizePending = false;
+  let releaseUnconfirmed = false;
   let pointerEnded = false;
   let disposed = false;
   const apply = (next: GlobalBarDockState) => {
@@ -87,10 +88,10 @@ export function createGlobalBarDockController(
   });
   const scheduleCollapse = () => {
     clearCollapse();
-    if (disposed || hasGuard() || state.phase !== "dockedExpanded" || state.bestEffort || activeToken != null || pendingStart || pendingFinish) return;
+    if (disposed || hasGuard() || releaseUnconfirmed || state.phase !== "dockedExpanded" || state.bestEffort || activeToken != null || pendingStart || pendingFinish) return;
     collapseTimer = setTimeout(() => {
       collapseTimer = undefined;
-      if (!disposed && !hasGuard() && state.phase === "dockedExpanded" && !state.bestEffort && activeToken == null && !pendingStart && !pendingFinish) safe(transport.collapse());
+      if (!disposed && !hasGuard() && !releaseUnconfirmed && state.phase === "dockedExpanded" && !state.bestEffort && activeToken == null && !pendingStart && !pendingFinish) safe(transport.collapse());
     }, 600);
   };
   const setGuards = (next: Partial<GlobalBarDockGuards>) => {
@@ -125,6 +126,7 @@ export function createGlobalBarDockController(
   };
   return {
     start() {
+      releaseUnconfirmed = false;
       if (activeToken != null || pendingStart || pendingFinish || disposed) return;
       pendingStart = true;
       pointerEnded = false;
@@ -136,23 +138,25 @@ export function createGlobalBarDockController(
           return;
         }
         if (result.state) apply(result.state);
-        if (result.completed) { pointerEnded = false; onInteractionSettled?.(); scheduleCollapse(); return; }
+        if (result.completed) { pointerEnded = false; releaseUnconfirmed = !result.releaseConfirmed; onInteractionSettled?.(); scheduleCollapse(); return; }
         activeToken = result.token;
         if (pointerEnded) finish();
       }).catch(() => { pendingStart = false; pointerEnded = false; if (!disposed) onInteractionSettled?.(); scheduleCollapse(); });
     },
-    endDrag() { pointerEnded = true; finish(); },
+    endDrag() { pointerEnded = true; releaseUnconfirmed = false; finish(); scheduleCollapse(); },
     setGuards,
-    interactionActive: () => pendingStart || activeToken != null || pendingFinish || resizePending,
-    canRefresh: () => !disposed && !pendingStart && activeToken == null && !pendingFinish && !guards.resizing,
-    refresh() { if (!disposed && !pendingStart && activeToken == null && !pendingFinish && !guards.resizing) safe(transport.refreshGeometry()); },
+    interactionActive: () => pendingStart || activeToken != null || pendingFinish || resizePending || releaseUnconfirmed,
+    canRefresh: () => !disposed && !releaseUnconfirmed && !pendingStart && activeToken == null && !pendingFinish && !guards.resizing,
+    refresh() { if (!disposed && !releaseUnconfirmed && !pendingStart && activeToken == null && !pendingFinish && !guards.resizing) safe(transport.refreshGeometry()); },
     reveal() { if (!disposed) safe(transport.reveal()); },
     startResize() {
+      releaseUnconfirmed = false;
       if (disposed || resizePending) return;
       resizePending = true;
       setGuards({ resizing: true });
       void transport.waitForPointerRelease().then((released) => {
         if (!disposed && released) settleResize();
+        else if (!disposed) releaseUnconfirmed = true;
       }).catch(() => undefined);
     },
     settleResize,
