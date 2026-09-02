@@ -502,7 +502,9 @@ fn a_restored_old_session_can_join_the_running_observer() {
     };
     let handle = start(config, sink.clone(), LocalSourceStatusState::default());
     assert!(handle.add_pinned_path(pinned));
-    let deadline = Instant::now() + Duration::from_secs(2);
+    // The observer thread can share a saturated CI runner with the rest of the
+    // Rust suite. Keep the assertion event-driven, but allow startup headroom.
+    let deadline = Instant::now() + Duration::from_secs(5);
     while Instant::now() < deadline
         && !sink
             .0
@@ -515,12 +517,14 @@ fn a_restored_old_session_can_join_the_running_observer() {
     }
     handle.cancel();
 
-    assert!(sink
-        .0
-        .lock()
-        .unwrap()
-        .iter()
-        .any(|(identity, _, _, _)| { identity.native_session_id == "restored-session" }));
+    assert!(
+        sink.0
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(identity, _, _, _)| { identity.native_session_id == "restored-session" }),
+        "restored session was not observed before the startup deadline"
+    );
     fs::remove_dir_all(root).unwrap();
 }
 

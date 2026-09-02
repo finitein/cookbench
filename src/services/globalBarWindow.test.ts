@@ -109,6 +109,7 @@ describe("global bar window sizing", () => {
 
 describe("global bar dock controller", () => {
   const expanded = { phase: "dockedExpanded" as const, docked: true, collapsed: false, bestEffort: false };
+  const collapsed = { ...expanded, phase: "dockedCollapsed" as const, collapsed: true };
   function transport(): GlobalBarDockTransport {
     return {
       getState: vi.fn().mockResolvedValue(expanded), listen: vi.fn().mockResolvedValue(() => {}),
@@ -125,6 +126,45 @@ describe("global bar dock controller", () => {
     await vi.advanceTimersByTimeAsync(599); expect(native.collapse).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1); expect(native.collapse).toHaveBeenCalledOnce();
     controller.dispose(); vi.useRealTimers();
+  });
+
+  it("does not let the collapse move immediately reveal the trigger under the pointer", async () => {
+    vi.useFakeTimers();
+    const native = transport();
+    native.setGuards = vi.fn().mockResolvedValue(collapsed);
+    const controller = createGlobalBarDockController(native);
+    await controller.initialize();
+    await vi.advanceTimersByTimeAsync(600);
+
+    controller.setGuards({ pointerInside: true });
+    controller.reveal();
+    await Promise.resolve();
+    expect(native.reveal).not.toHaveBeenCalled();
+
+    controller.setGuards({ pointerInside: false });
+    controller.setGuards({ pointerInside: true });
+    controller.reveal();
+    await Promise.resolve();
+    expect(native.reveal).toHaveBeenCalledOnce();
+    controller.dispose();
+    vi.useRealTimers();
+  });
+
+  it("arms the collapsed trigger when the pointer stays outside", async () => {
+    vi.useFakeTimers();
+    const native = transport();
+    native.setGuards = vi.fn().mockResolvedValue(collapsed);
+    const controller = createGlobalBarDockController(native);
+    await controller.initialize();
+    await vi.advanceTimersByTimeAsync(600);
+    await vi.advanceTimersByTimeAsync(150);
+
+    controller.setGuards({ pointerInside: true });
+    controller.reveal();
+    await Promise.resolve();
+    expect(native.reveal).toHaveBeenCalledOnce();
+    controller.dispose();
+    vi.useRealTimers();
   });
 
   it("finishes a token exactly once when pointerup comes before native start resolves", async () => {

@@ -86,13 +86,14 @@ Drag the global Bar to the top of its current monitor to dock it. A drop within
 12 px docks; after 600 ms it auto-hides and the top 3 px reveals it again.
 Pulling the Bar 24 px away undocks it. Detached Stoves keep their usual movable
 behavior. Wayland docking is best effort because the compositor owns that
-interaction.
+interaction. v0.4.2 fixes macOS auto-hide by using a native three-pixel trigger
+instead of asking AppKit to move a visible window beyond the top screen edge.
 
-The v0.4.1 safety hotfix temporarily suspends dynamic macOS status-bar Stove
-rendering after a WindowServer crash was reproduced on mirrored dual displays.
-The proven static Cookbench tray and menu remain available. A saved 0-to-8
-Stove count (default 3) is retained for a later, separately verified return;
-Minimal mode and top docking are unaffected.
+The v0.4.1 safety hotfix, retained in v0.4.2, temporarily suspends dynamic macOS
+status-bar Stove rendering after a WindowServer crash was reproduced on
+mirrored dual displays. The proven static Cookbench tray and menu remain
+available. A saved 0-to-8 Stove count (default 3) is retained for a later,
+separately verified return; Minimal mode and top docking are unaffected.
 
 ## Built for Observability, Not Orchestration
 
@@ -111,20 +112,20 @@ the exact [privacy](docs/privacy.md), [security](docs/security.md), and
 
 ## Install in One Command
 
-Cookbench v0.4.1 is an unsigned preview. The first-party bootstrap downloads
+Cookbench v0.4.2 is an unsigned preview. The first-party bootstrap downloads
 `release-manifest.json`, selects the native package for this machine, verifies
 its SHA-256 digest, and only then installs it.
 
 macOS universal or graphical Ubuntu/Linux x86_64:
 
 ```bash
-curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.4.1/install.sh | COOKBENCH_VERSION=v0.4.1 COOKBENCH_ALLOW_PRERELEASE=1 bash
+curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.4.2/install.sh | COOKBENCH_VERSION=v0.4.2 COOKBENCH_ALLOW_PRERELEASE=1 bash
 ```
 
 Windows x64 PowerShell:
 
 ```powershell
-$env:COOKBENCH_VERSION='v0.4.1'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.4.1/install.ps1 | iex
+$env:COOKBENCH_VERSION='v0.4.2'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.4.2/install.ps1 | iex
 ```
 
 Use `--dry-run` on macOS/Linux or `COOKBENCH_DRY_RUN=1` on any platform to
@@ -146,7 +147,7 @@ commands that do not work yet.
    Codex Desktop task navigation, or an explicit application/project fallback.
 5. Tune language, Full or Minimal display, top docking, optional hover details,
    two-day freshness, Archive, sound, system banners, Bar flash, and desktop
-   attention from Settings. v0.4.1 retains but temporarily hides the suspended
+   attention from Settings. v0.4.2 retains but temporarily hides the suspended
    macOS status-bar Stove count preference.
 
 Local notifications default to sound only. A Cooked Stove may keep flashing
@@ -345,8 +346,8 @@ system fonts, and CSS only. The source and deterministic renderer live in
 </details>
 
 The 23.5-second vertical [v0.4.0 focus-surface film](videos/cookbench-focus-surfaces/renders/cookbench-focus-surfaces-vertical.mp4)
-is retained as a release archive. Its dynamic macOS status Stove segment is
-suspended in v0.4.1; Minimal mode and top docking remain current.
+is retained as a release archive. Its dynamic macOS status Stove segment has
+remained suspended since v0.4.1; Minimal mode and top docking remain current.
 
 ## Evidence, Not Vibes
 

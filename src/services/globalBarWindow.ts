@@ -49,6 +49,7 @@ export type GlobalBarDockTransport = {
 };
 
 const EMPTY_DOCK_GUARDS: GlobalBarDockGuards = { pointerInside: false, focused: false, menuOpen: false, resizing: false };
+const TOP_DOCK_REVEAL_ARM_DELAY_MS = 150;
 
 export function createGlobalBarDockTransport(): GlobalBarDockTransport {
   return {
@@ -76,6 +77,8 @@ export function createGlobalBarDockController(
   let state: GlobalBarDockState = { phase: "undocked", docked: false, collapsed: false, bestEffort: false };
   let guards = { ...EMPTY_DOCK_GUARDS };
   let collapseTimer: ReturnType<typeof setTimeout> | undefined;
+  let revealArmTimer: ReturnType<typeof setTimeout> | undefined;
+  let revealArmed = false;
   let activeToken: number | undefined;
   let pendingStart = false;
   let pendingFinish = false;
@@ -84,9 +87,25 @@ export function createGlobalBarDockController(
   let releaseUnconfirmed = false;
   let pointerEnded = false;
   let disposed = false;
+  const clearRevealArm = () => {
+    if (revealArmTimer) clearTimeout(revealArmTimer);
+    revealArmTimer = undefined;
+  };
   const apply = (next: GlobalBarDockState) => {
     if (disposed) return;
+    const enteredCollapsed = next.collapsed && !state.collapsed;
     state = next;
+    if (enteredCollapsed) {
+      clearRevealArm();
+      revealArmed = false;
+      revealArmTimer = setTimeout(() => {
+        revealArmTimer = undefined;
+        if (!disposed && state.collapsed && !guards.pointerInside) revealArmed = true;
+      }, TOP_DOCK_REVEAL_ARM_DELAY_MS);
+    } else if (!next.collapsed) {
+      clearRevealArm();
+      revealArmed = false;
+    }
     onState?.(next);
     scheduleCollapse();
   };
@@ -107,7 +126,12 @@ export function createGlobalBarDockController(
     }, 600);
   };
   const setGuards = (next: Partial<GlobalBarDockGuards>) => {
+    const pointerWasInside = guards.pointerInside;
     guards = { ...guards, ...next };
+    if (state.collapsed && pointerWasInside && !guards.pointerInside) {
+      clearRevealArm();
+      revealArmed = true;
+    }
     clearCollapse();
     if (!disposed) safe(transport.setGuards(guards));
     scheduleCollapse();
@@ -176,7 +200,13 @@ export function createGlobalBarDockController(
     interactionActive: () => pendingStart || activeToken != null || pendingFinish || resizePending || releaseUnconfirmed,
     canRefresh: () => !disposed && !releaseUnconfirmed && !pendingStart && activeToken == null && !pendingFinish && !guards.resizing,
     refresh() { if (!disposed && !releaseUnconfirmed && !pendingStart && activeToken == null && !pendingFinish && !guards.resizing) safe(transport.refreshGeometry()); },
-    reveal() { if (!disposed) safe(transport.reveal()); },
+    reveal() {
+      if (!disposed && state.collapsed && revealArmed) {
+        revealArmed = false;
+        clearRevealArm();
+        safe(transport.reveal());
+      }
+    },
     startResize() {
       if (disposed) return;
       if (resizePending) settleResize();
@@ -202,7 +232,7 @@ export function createGlobalBarDockController(
     },
     state: () => state,
     dispose(unlisten?: () => void) {
-      disposed = true; clearCollapse(); unlisten?.();
+      disposed = true; clearCollapse(); clearRevealArm(); unlisten?.();
       void transport.setGuards(EMPTY_DOCK_GUARDS).catch(() => undefined);
       if (activeToken != null && !pendingFinish) { const token = activeToken; activeToken = undefined; pendingFinish = true; void transport.finishDrag(token).catch(() => undefined); }
     },

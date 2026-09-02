@@ -13,8 +13,16 @@ export function useGlobalBarWindow() {
     const bar = document.querySelector<HTMLElement>(".global-bar");
     if (!bar) return;
     let disposed = false;
+    let lastMinimumRequest: string | undefined;
+    let updateMinimum = () => {};
+    let wasCollapsed = false;
     const dock = createGlobalBarDockController(createGlobalBarDockTransport(), (state) => {
       document.documentElement.dataset.cookbenchDockState = state.phase;
+      if (wasCollapsed && !state.collapsed) {
+        lastMinimumRequest = undefined;
+        updateMinimum();
+      }
+      wasCollapsed = state.collapsed;
     }, () => updateMinimum());
     dock.setGuards({
       pointerInside: bar.matches(":hover"),
@@ -54,6 +62,7 @@ export function useGlobalBarWindow() {
     const persistNativeSize = () => {
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
+        if (dock.state().collapsed) return;
         // A resize event is not release evidence. Keep its guard active until
         // the local pointer lifecycle ends, then refresh through the settled
         // interaction callback.
@@ -67,10 +76,10 @@ export function useGlobalBarWindow() {
     };
     try { void getCurrentWindow().onResized(persistNativeSize).then((unlisten) => { if (disposed) unlisten(); else stopResizing = unlisten; }); } catch { /* browser fixture */ }
     let minimumTimer: ReturnType<typeof setTimeout> | undefined;
-    let lastMinimumRequest: string | undefined;
-    const updateMinimum = () => {
+    updateMinimum = () => {
       if (minimumTimer) clearTimeout(minimumTimer);
       minimumTimer = setTimeout(() => {
+        if (dock.state().collapsed) return;
         const minimum = { width: 280, height: intrinsicGlobalBarMinimumHeight(bar) };
         const request = globalBarMinimumRequestKey(minimum, preferredHeight);
         if (request === lastMinimumRequest) return;
