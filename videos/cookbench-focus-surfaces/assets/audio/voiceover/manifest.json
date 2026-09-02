@@ -1,0 +1,22 @@
+{
+  "model": "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+  "speaker": "Dylan",
+  "generationEnvironment": "remote-gpu",
+  "instruction": "自然、克制、清晰的中文科技产品旁白，像独立开发者分享真实使用体验。语速比常规科技旁白稍快，大约快一成，节奏紧凑但不赶，不吞字。短句间保留轻微呼吸，中英文品牌词发音自然。避免播音腔、销售腔、夸张情绪和拖长尾音。",
+  "text": "Agent 一多，我就得来回切终端看进度。Cookbench 把状态放到桌面，极简模式只留最重要的 Stove。拖到顶边，空闲时自动收起，鼠标触顶再出现。运行、等待、完成，一眼分清。它不复制完整对话，也不接管 Agent。看清状态，继续专注。",
+  "raw": {
+    "path": "cookbench-focus-surfaces-vertical-vo.raw.wav",
+    "sampleRate": 24000,
+    "channels": 1,
+    "durationSeconds": 23.76
+  },
+  "delivery": {
+    "path": "cookbench-focus-surfaces-vertical-vo.wav",
+    "sampleRate": 48000,
+    "channels": 1,
+    "speedFactor": 1.06,
+    "durationSeconds": 22.404583,
+    "integratedLoudnessLufs": -14.38,
+    "truePeakDbtp": -1.5
+  }
+}
