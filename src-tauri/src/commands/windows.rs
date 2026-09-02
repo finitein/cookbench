@@ -688,6 +688,59 @@ fn emit_dock_state<R: Runtime>(app: &AppHandle<R>, runtime: &GlobalBarDockRuntim
     let _ = app.emit(GLOBAL_BAR_DOCK_STATE_CHANGED_EVENT, runtime.state());
 }
 
+#[cfg(target_os = "macos")]
+fn macos_trigger_frame(
+    frame: (f64, f64, f64, f64),
+    trigger_height: u32,
+    scale_factor: f64,
+) -> (f64, f64, f64, f64) {
+    let scale = if scale_factor.is_finite() && scale_factor > 0.0 {
+        scale_factor
+    } else {
+        1.0
+    };
+    let logical_trigger = (f64::from(trigger_height) / scale).clamp(1.0, frame.3);
+    (
+        frame.0,
+        frame.1 + frame.3 - logical_trigger,
+        frame.2,
+        logical_trigger,
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn collapse_macos_window_to_trigger<R: Runtime>(
+    window: &tauri::WebviewWindow<R>,
+    trigger_height: u32,
+) -> Result<(), String> {
+    use objc2_app_kit::NSWindow;
+    use objc2_foundation::{NSPoint, NSRect, NSSize};
+
+    let scale_factor = window.scale_factor().map_err(|error| error.to_string())?;
+    let ns_window = window.ns_window().map_err(|error| error.to_string())? as usize;
+    window
+        .run_on_main_thread(move || unsafe {
+            let native_window = &*(ns_window as *const NSWindow);
+            let frame = NSWindow::frame(native_window);
+            let target = macos_trigger_frame(
+                (
+                    frame.origin.x,
+                    frame.origin.y,
+                    frame.size.width,
+                    frame.size.height,
+                ),
+                trigger_height,
+                scale_factor,
+            );
+            let target_frame = NSRect::new(
+                NSPoint::new(target.0, target.1),
+                NSSize::new(target.2, target.3),
+            );
+            native_window.setFrame_display(target_frame, true);
+        })
+        .map_err(|error| error.to_string())
+}
+
 fn move_to_dock_geometry<R: Runtime>(
     window: &tauri::WebviewWindow<R>,
     dock: &GlobalBarTopDock,
@@ -708,6 +761,16 @@ fn move_to_dock_geometry<R: Runtime>(
     } else {
         geometry.expanded_position
     };
+    #[cfg(target_os = "macos")]
+    if collapsed {
+        // AppKit constrains a visible window back on-screen, so a negative-y
+        // move is a no-op. Shrinking in place preserves the same 3px trigger.
+        let trigger_height = i64::from(geometry.collapsed_position.y)
+            .saturating_sub(i64::from(geometry.expanded_position.y))
+            .saturating_add(i64::from(size.height))
+            .clamp(1, i64::from(u32::MAX)) as u32;
+        return collapse_macos_window_to_trigger(window, trigger_height);
+    }
     window
         .set_position(PhysicalPosition::new(position.x, position.y))
         .map_err(|error| error.to_string())
@@ -994,12 +1057,13 @@ pub fn set_global_bar_dock_guards(
     app: AppHandle,
     runtime: State<'_, GlobalBarDockRuntime>,
 ) -> Result<GlobalBarDockStateWire, String> {
-    if runtime.set_guards(GlobalBarDockGuards {
+    let should_reveal = runtime.set_guards(GlobalBarDockGuards {
         pointer_inside: input.pointer_inside,
         focused: input.focused,
         menu_open: input.menu_open,
         resizing: input.resizing,
-    }) {
+    });
+    if should_reveal && (input.focused || input.menu_open || input.resizing) {
         reveal_global_bar_dock(&app, runtime.inner())?;
     }
     emit_dock_state(&app, &runtime);
@@ -1594,5 +1658,14 @@ mod dock_tests {
             "Main"
         );
         assert_eq!(native_monitor_identity(None, 3, None).id, "monitor-3");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_collapse_keeps_the_top_edge_and_only_the_trigger_visible() {
+        assert_eq!(
+            macos_trigger_frame((650.0, 772.0, 281.0, 98.0), 6, 2.0),
+            (650.0, 867.0, 281.0, 3.0)
+        );
     }
 }

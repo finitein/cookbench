@@ -21,6 +21,36 @@ clear, and outbound-notification observations in Vite `e2e` mode. A production
 build scan confirms that the driver name, storage keys, and implementation are
 absent from `dist`.
 
+## v0.4.2 macOS Top-Dock Fix Gate
+
+v0.4.2 fixes top docking on macOS without reconnecting the dynamic status-Stove
+runtime disabled by v0.4.1. AppKit constrains a visible window back inside its
+screen instead of honoring the previous negative-y collapsed position. The
+macOS path therefore preserves the top edge and shrinks the native window to a
+three-pixel trigger; Windows and Linux keep their existing off-screen path.
+The trigger is armed only after the pointer leaves or remains outside briefly,
+so the resize-generated pointer entry cannot immediately reopen the Bar.
+
+On the affected Apple-silicon Mac with the same mirrored dual-display setup,
+the development app was measured through native window bounds at 281x98 points
+expanded, 281x3 points collapsed after 600 ms, and 281x98 points again after
+moving the pointer to the trigger. The app and WindowServer remained running;
+the computer was not restarted and its display mode was not changed.
+
+The 2026-09-02 local `./scripts/verify.sh` run passed Rust formatting, workspace
+Clippy with warnings denied, every Rust unit, integration, and doc test, the
+workspace build, TypeScript checking, 158 Vitest tests in 25 files, three GNOME
+protocol tests, 23 Playwright flows, production build isolation, and the
+source-package audit. Rust compilation was limited to one job. A timing-sensitive
+observer test initially exhausted its two-second startup deadline under the
+full suite, passed in isolation, and passed in the full gate after its existing
+event-driven wait received five seconds of CI startup headroom.
+
+Release CI, public artifact checksums, universal bundle inspection, and the
+installed v0.4.2 smoke test are pending publication. Native Windows, X11, and
+Wayland top-dock interaction remains pending; browser protocol coverage passes
+and Wayland remains explicitly best effort.
+
 ## v0.4.1 WindowServer Safety Hotfix Gate
 
 v0.4.1 restores the static macOS tray path that v0.3.0 used successfully on the
