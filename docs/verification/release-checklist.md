@@ -46,10 +46,26 @@ observer test initially exhausted its two-second startup deadline under the
 full suite, passed in isolation, and passed in the full gate after its existing
 event-driven wait received five seconds of CI startup headroom.
 
-Release CI, public artifact checksums, universal bundle inspection, and the
-installed v0.4.2 smoke test are pending publication. Native Windows, X11, and
-Wayland top-dock interaction remains pending; browser protocol coverage passes
-and Wayland remains explicitly best effort.
+The
+[`v0.4.2` pull-request CI](https://github.com/finitein/cookbench/actions/runs/33595821851)
+passed on macOS 14, Windows 2022, Ubuntu 22.04, Ubuntu 24.04, and the dedicated
+Playwright job. The
+[`v0.4.2` release workflow](https://github.com/finitein/cookbench/actions/runs/33596555383)
+resolved tag `v0.4.2` to merge commit `390601e`, built and audited macOS
+universal, Windows x64, and Ubuntu x64 packages, generated checksums, manifest,
+installers, and SPDX SBOM, then published the unsigned
+[`v0.4.2` prerelease](https://github.com/finitein/cookbench/releases/tag/v0.4.2).
+
+The downloaded universal macOS App ZIP matched its published SHA-256 digest
+`744c47184a251d904b664147066a8321a84c10657d1e956931118b634a4cd3f7`.
+Its bundle reports version `0.4.2`, identifier `app.cookbench.desktop`, and both
+arm64 and x86_64 executable slices. It replaced v0.4.1 at
+`/Applications/Cookbench.app` and remained running through an installed-app
+281x98 to 281x3 to 281x98 to 281x3 dock cycle. The Cookbench and WindowServer
+process identifiers remained stable throughout.
+
+Native Windows, X11, and Wayland top-dock interaction remains pending; browser
+protocol coverage passes and Wayland remains explicitly best effort.
 
 ## v0.4.1 WindowServer Safety Hotfix Gate
 
