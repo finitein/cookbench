@@ -345,9 +345,12 @@ system fonts, and CSS only. The source and deterministic renderer live in
 
 </details>
 
-The 23.5-second vertical [v0.4.0 focus-surface film](videos/cookbench-focus-surfaces/renders/cookbench-focus-surfaces-vertical.mp4)
-is retained as a release archive. Its dynamic macOS status Stove segment has
-remained suspended since v0.4.1; Minimal mode and top docking remain current.
+The 23.5-second vertical [focus-surface film with Mandarin voiceover](videos/cookbench-focus-surfaces/renders/cookbench-focus-surfaces-vertical-narrated.mp4)
+uses a restrained, slightly brisk Qwen3-TTS delivery. Its dynamic macOS status
+Stove segment remains a release archive while that runtime has been suspended
+since v0.4.1; Minimal mode and top docking remain current. The original
+[silent-first cut](videos/cookbench-focus-surfaces/renders/cookbench-focus-surfaces-vertical.mp4)
+is retained too.
 
 ## Evidence, Not Vibes
 

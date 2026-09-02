@@ -2,9 +2,10 @@
 format: 1080x1920
 duration: 23.5s
 language: zh-CN
-mode: silent-first
+mode: narrated
 captions: burned-in
 music: none
+voiceover: Qwen3-TTS CustomVoice / Dylan / 22.40s
 ---
 
 # Cookbench Focus Surfaces
@@ -18,4 +19,4 @@ music: none
 
 ## Visual Direction
 
-Use the local Cookbench mark and `assets/showcase/14-focus-surfaces-social.png` only. The product surface is never graded, filtered, or remotely loaded. Use the light Cookbench canvas, near-black copy, restrained orange accent, safe portrait margins, and no music, third-party media, transcript content, or control-plane language.
+Use the local Cookbench mark and `assets/showcase/14-focus-surfaces-social.png` only. The product surface is never graded, filtered, or remotely loaded. Use the light Cookbench canvas, near-black copy, restrained orange accent, safe portrait margins, and no music, third-party visual media, transcript content, or control-plane language. A single restrained Mandarin voiceover follows the six visual beats without reading every caption verbatim.

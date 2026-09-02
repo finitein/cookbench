@@ -4,6 +4,6 @@
   "type": "module",
   "scripts": {
     "check": "npx --yes hyperframes@0.8.23 check --strict --snapshots",
-    "render": "npx --yes hyperframes@0.8.23 render -c index.html -o renders/cookbench-focus-surfaces-vertical.mp4 -q high --strict-all --skill=product-launch-video"
+    "render": "npx --yes hyperframes@0.8.23 render -c index.html -o renders/cookbench-focus-surfaces-vertical-narrated.mp4 -q high --strict-all --skill=product-launch-video"
   }
 }
