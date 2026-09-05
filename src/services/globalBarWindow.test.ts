@@ -82,7 +82,13 @@ describe("global bar window sizing", () => {
     expect(preferredHeightForGlobalBarMode("minimal", 92.4)).toBe(93);
     expect(preferredHeightForGlobalBarMode("full", 120, 180)).toBe(180);
     expect(preferredHeightForGlobalBarMode("full", 200, 180)).toBe(200);
-    expect(preferredHeightForGlobalBarMode("full", 120)).toBeUndefined();
+    expect(preferredHeightForGlobalBarMode("full", 120)).toBe(120);
+  });
+
+  it("lifts Full mode above a persisted Minimal height so content is not clipped", () => {
+    expect(preferredHeightForGlobalBarMode("full", 97, 97)).toBe(104);
+    expect(preferredHeightForGlobalBarMode("full", 90)).toBe(104);
+    expect(preferredHeightForGlobalBarMode("full", 97, 180)).toBe(180);
   });
 
   it("measures content rather than locking the current native window height", () => {

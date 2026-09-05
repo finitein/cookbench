@@ -23,7 +23,15 @@ export function clampGlobalBarSize({ width, height }: GlobalBarSize): GlobalBarS
 
 export type GlobalBarChromeMode = "full" | "minimal";
 
-/** Minimal mode must shrink to content; Full may keep a remembered user height. */
+/** Matches `.global-bar { min-height: 104px }`. */
+export const FULL_GLOBAL_BAR_MIN_HEIGHT = 104;
+
+/**
+ * Minimal mode must shrink to content; Full may keep a remembered user height.
+ * Full always respects the CSS floor so a persisted Minimal size (~92–97px)
+ * cannot stick after restart or a Minimal→Full toggle when the native window
+ * still clips content (measurements cannot climb out of that clip alone).
+ */
 export function preferredHeightForGlobalBarMode(
   mode: GlobalBarChromeMode,
   contentHeight: number,
@@ -33,10 +41,11 @@ export function preferredHeightForGlobalBarMode(
   if (mode === "minimal") {
     return content;
   }
-  if (fullPreferredHeight != null && Number.isFinite(fullPreferredHeight)) {
-    return Math.max(content, Math.ceil(fullPreferredHeight));
-  }
-  return undefined;
+  const remembered =
+    fullPreferredHeight != null && Number.isFinite(fullPreferredHeight)
+      ? Math.ceil(fullPreferredHeight)
+      : 0;
+  return Math.max(content, remembered, FULL_GLOBAL_BAR_MIN_HEIGHT);
 }
 
 export function globalBarMinimumRequestKey(
