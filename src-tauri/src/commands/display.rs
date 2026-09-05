@@ -4,8 +4,9 @@
 //! or manage a harness session.
 
 use cookbench_core::persistence::{
-    AppLocale, GlobalBarMode, GlobalBarPlacement, GlobalBarPosition, MonitorWorkArea,
-    PersistedConfig, RelativePosition, WindowPosition, MAX_MAC_STATUS_STOVE_COUNT,
+    clamp_window_position_to_work_area, AppLocale, GlobalBarMode, GlobalBarPlacement,
+    GlobalBarPosition, MonitorWorkArea, PersistedConfig, RelativePosition, WindowPosition,
+    WindowSize, MAX_MAC_STATUS_STOVE_COUNT,
 };
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, State};
@@ -197,6 +198,7 @@ pub fn patch_display_settings(
             } else {
                 current.global_bar_position.as_ref()
             },
+            current.global_bar_size,
         )?;
         if current.global_bar_visible {
             if let Some(runtime) = app.try_state::<crate::commands::windows::GlobalBarDockRuntime>()
@@ -292,6 +294,7 @@ pub fn apply_global_bar_preferences(
     visible: bool,
     placement: GlobalBarPlacement,
     position: Option<&GlobalBarPosition>,
+    preferred_size: Option<WindowSize>,
 ) -> Result<(), String> {
     let window = app
         .get_webview_window("main")
@@ -306,7 +309,7 @@ pub fn apply_global_bar_preferences(
         Err(error) => return Err(error.to_string()),
     }
     if let Some(position) = position {
-        return restore_global_bar_position(&window, position);
+        return restore_global_bar_position(&window, position, preferred_size);
     }
     position_global_bar(&window, placement)
 }
@@ -347,8 +350,36 @@ fn capture_global_bar_position_at(
 fn restore_global_bar_position(
     window: &tauri::WebviewWindow,
     saved: &GlobalBarPosition,
+    preferred_size: Option<WindowSize>,
 ) -> Result<(), String> {
-    let size = window.outer_size().map_err(|error| error.to_string())?;
+    let outer = window.outer_size().map_err(|error| error.to_string())?;
+    let scale = window.scale_factor().map_err(|error| error.to_string())?;
+    let scale = if scale.is_finite() && scale > 0.0 {
+        scale
+    } else {
+        1.0
+    };
+    // Prefer the larger of the live outer size and the persisted logical size
+    // converted to physical pixels. set_size can lag behind outer_size on X11,
+    // which previously let a right-edge restore land near x≈display_width.
+    let preferred_physical = preferred_size.map(|logical| WindowSize {
+        width: (f64::from(logical.width) * scale).ceil().max(1.0) as u32,
+        height: (f64::from(logical.height) * scale).ceil().max(1.0) as u32,
+    });
+    let size = WindowSize {
+        width: outer.width.max(
+            preferred_physical
+                .as_ref()
+                .map(|size| size.width)
+                .unwrap_or(0),
+        ),
+        height: outer.height.max(
+            preferred_physical
+                .as_ref()
+                .map(|size| size.height)
+                .unwrap_or(0),
+        ),
+    };
     let monitors = monitors_for_window(window)?;
     let monitor = monitors
         .iter()
@@ -356,12 +387,10 @@ fn restore_global_bar_position(
         .or_else(|| monitors.iter().find(|monitor| monitor.primary))
         .or_else(|| monitors.first())
         .ok_or_else(|| "no display is available for the Cookbench global Bar".to_owned())?;
-    let position = saved.relative_position.resolve(
+    let position = clamp_window_position_to_work_area(
+        saved.relative_position.resolve(monitor, size),
+        size,
         monitor,
-        cookbench_core::persistence::WindowSize {
-            width: size.width,
-            height: size.height,
-        },
     );
     window
         .set_position(PhysicalPosition::new(position.x, position.y))

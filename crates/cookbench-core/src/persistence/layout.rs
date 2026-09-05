@@ -45,10 +45,14 @@ impl RelativePosition {
     }
 
     pub fn resolve(self, monitor: &MonitorWorkArea, size: WindowSize) -> WindowPosition {
-        WindowPosition {
-            x: resolve_axis(self.x, monitor.x, monitor.width, size.width),
-            y: resolve_axis(self.y, monitor.y, monitor.height, size.height),
-        }
+        clamp_window_position_to_work_area(
+            WindowPosition {
+                x: resolve_axis(self.x, monitor.x, monitor.width, size.width),
+                y: resolve_axis(self.y, monitor.y, monitor.height, size.height),
+            },
+            size,
+            monitor,
+        )
     }
 }
 
@@ -146,6 +150,34 @@ impl DetachedStoveLayout {
     }
 }
 
+/// Keeps a window's top-left inside the work area so the full frame stays
+/// on-screen when it fits, and pinned to the origin when it is larger than
+/// the display. Used when restoring freeform Global Bar / detached positions.
+pub fn clamp_window_position_to_work_area(
+    position: WindowPosition,
+    size: WindowSize,
+    monitor: &MonitorWorkArea,
+) -> WindowPosition {
+    let max_x = if size.width >= monitor.width {
+        monitor.x
+    } else {
+        monitor
+            .x
+            .saturating_add((monitor.width - size.width) as i32)
+    };
+    let max_y = if size.height >= monitor.height {
+        monitor.y
+    } else {
+        monitor
+            .y
+            .saturating_add((monitor.height - size.height) as i32)
+    };
+    WindowPosition {
+        x: position.x.clamp(monitor.x.min(max_x), monitor.x.max(max_x)),
+        y: position.y.clamp(monitor.y.min(max_y), monitor.y.max(max_y)),
+    }
+}
+
 fn relative_axis(position: i32, origin: i32, available: u32, window: u32) -> u16 {
     let travel = available.saturating_sub(window) as i64;
     if travel == 0 {
@@ -221,5 +253,76 @@ mod tests {
         assert_eq!(restored.layout.monitor.id, "primary");
         assert_eq!(restored.position.x, 832);
         assert_eq!(restored.position.y, 796);
+    }
+
+    #[test]
+    fn clamps_freeform_restore_that_would_spill_past_the_right_edge() {
+        // Dogfood D16: a near-right relative restore with a usable Bar width
+        // must not land at x≈1251 on a 1280-wide display.
+        let monitor = monitor("primary", 0, 1280, true);
+        let size = WindowSize {
+            width: 280,
+            height: 104,
+        };
+        let spilled = WindowPosition { x: 1251, y: 40 };
+        let clamped = clamp_window_position_to_work_area(spilled, size, &monitor);
+        assert_eq!(clamped, WindowPosition { x: 1000, y: 40 });
+    }
+
+    #[test]
+    fn clamps_all_four_edges_and_pins_oversized_windows() {
+        let monitor = MonitorWorkArea {
+            identity: MonitorIdentity {
+                id: "primary".into(),
+                name: None,
+            },
+            x: 100,
+            y: 50,
+            width: 1280,
+            height: 800,
+            primary: true,
+        };
+        let size = WindowSize {
+            width: 320,
+            height: 120,
+        };
+        assert_eq!(
+            clamp_window_position_to_work_area(WindowPosition { x: -40, y: -10 }, size, &monitor),
+            WindowPosition { x: 100, y: 50 }
+        );
+        assert_eq!(
+            clamp_window_position_to_work_area(WindowPosition { x: 5000, y: 5000 }, size, &monitor),
+            WindowPosition { x: 1060, y: 730 }
+        );
+        let oversized = WindowSize {
+            width: 2000,
+            height: 1200,
+        };
+        assert_eq!(
+            clamp_window_position_to_work_area(
+                WindowPosition { x: 400, y: 300 },
+                oversized,
+                &monitor
+            ),
+            WindowPosition { x: 100, y: 50 }
+        );
+    }
+
+    #[test]
+    fn resolve_clamps_corrupted_far_right_relative_units() {
+        let monitor = monitor("primary", 0, 1280, true);
+        let size = WindowSize {
+            width: 280,
+            height: 104,
+        };
+        // Relative units past the scale still resolve on-screen.
+        let position = RelativePosition {
+            x: 10_000,
+            y: 10_000,
+        }
+        .resolve(&monitor, size);
+        assert_eq!(position, WindowPosition { x: 1000, y: 796 });
+        assert!(position.x + size.width as i32 <= monitor.width as i32);
+        assert!(position.y + size.height as i32 <= monitor.height as i32);
     }
 }

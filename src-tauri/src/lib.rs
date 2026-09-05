@@ -353,6 +353,7 @@ pub fn run() {
                     layout.global_bar_visible,
                     layout.global_bar_placement,
                     layout.global_bar_position.as_ref(),
+                    layout.global_bar_size,
                 ) {
                     eprintln!(
                         "Cookbench could not restore global Bar display preferences: {error}"
