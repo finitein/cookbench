@@ -83,7 +83,7 @@ export interface StoveChange {
 export function stoveSessionIdentity(stove: Pick<StoveWire, "id">): string {
   const nativeSessionId = stove.id.split(":").at(-1) ?? "";
   if (/^[A-Za-z0-9_-]{4,}$/.test(nativeSessionId)) {
-    return `#${nativeSessionId.slice(-8)}`;
+    return `#${compactSessionIdentity(nativeSessionId)}`;
   }
 
   // Keep malformed or future adapter ids recognizable without echoing them.
@@ -93,6 +93,30 @@ export function stoveSessionIdentity(stove: Pick<StoveWire, "id">): string {
     hash = Math.imul(hash, 16_777_619);
   }
   return `#${(hash >>> 0).toString(36).padStart(6, "0").slice(-6)}`;
+}
+
+/**
+ * Prefer a readable prefix for short or UUID-like session ids. Suffix-only
+ * truncation turned `session-001` into `#sion-001` and UUID tails into
+ * `#eeeeffff`, which are hard to recognize on the Bar.
+ */
+export function compactSessionIdentity(nativeSessionId: string): string {
+  if (nativeSessionId.length <= 8) {
+    return nativeSessionId;
+  }
+
+  const uuidLike =
+    /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+  if (uuidLike.test(nativeSessionId)) {
+    return nativeSessionId.replace(/-/g, "").slice(0, 8);
+  }
+
+  const trailing = nativeSessionId.split(/[-_]/).at(-1) ?? "";
+  if (/^[A-Za-z0-9]{4,8}$/.test(trailing) && trailing.length < nativeSessionId.length) {
+    return trailing;
+  }
+
+  return nativeSessionId.slice(0, 8);
 }
 
 export function stoveDisplayIdentity(
