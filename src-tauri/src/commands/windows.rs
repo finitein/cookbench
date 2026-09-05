@@ -526,6 +526,11 @@ impl<R: Runtime> DetachedWindowHost for TauriDetachedWindowHost<R> {
             return Ok(());
         }
 
+        let width = f64::from(record.layout.size.width.max(1));
+        let height = f64::from(record.layout.size.height.max(1));
+        // Keep resizable until after the first set_size: on Linux/X11 + WebKitGTK,
+        // a non-resizable window created below the toolkit floor (~200²) sticks at
+        // that floor and leaves blank chrome around the detached burner.
         let window = WebviewWindowBuilder::new(
             &self.app,
             &record.label,
@@ -533,13 +538,14 @@ impl<R: Runtime> DetachedWindowHost for TauriDetachedWindowHost<R> {
         )
         .title("Cookbench Stove")
         .decorations(false)
-        .resizable(false)
+        .resizable(true)
         .skip_taskbar(true)
-        .inner_size(
-            record.layout.size.width as f64,
-            record.layout.size.height as f64,
-        )
+        .inner_size(width, height)
+        .min_inner_size(width, height)
         .build()?;
+        window.set_size(LogicalSize::new(width, height))?;
+        // Leave resizable so the webview can re-assert size after first paint;
+        // locking non-resizable too early freezes Linux/X11 at the toolkit floor.
         window.set_position(PhysicalPosition::new(position.x, position.y))?;
         window.show()?;
         // Detached bars are the same floating Cookbench surface as the global

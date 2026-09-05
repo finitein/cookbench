@@ -35,7 +35,7 @@ body {
   padding: 0;
   overflow: hidden;
   background: transparent;
-  place-items: stretch;
+  place-items: center;
 }
 
 .bar {

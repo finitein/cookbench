@@ -1,8 +1,26 @@
 import { invoke } from "@tauri-apps/api/core";
+import { LogicalSize } from "@tauri-apps/api/dpi";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { StoveWire } from "../types/stove";
 
 const DETACHED_LABEL_PREFIX = "stove-";
+
+/** Matches Rust detach_stove_key default; keep content-tight on Linux/X11. */
+export const DETACHED_STOVE_WINDOW_SIZE = { width: 164, height: 104 } as const;
+
+/** Re-assert size after WebKit/GTK may inflate the first frame past inner_size. */
+export async function applyDetachedWindowSize(
+  size: { width: number; height: number } = DETACHED_STOVE_WINDOW_SIZE,
+) {
+  const window = getCurrentWindow();
+  // WebKitGTK may ignore setSize while the window is locked non-resizable.
+  try {
+    await window.setResizable(true);
+  } catch {
+    // Some hosts reject setResizable; still attempt setSize below.
+  }
+  await window.setSize(new LogicalSize(size.width, size.height));
+}
 
 export type DetachedWindowResponse = { stoveId: string; label: string };
 
