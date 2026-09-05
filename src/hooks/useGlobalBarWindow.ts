@@ -3,7 +3,8 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   attachGlobalBarDragHandle, attachGlobalBarResizeHandle, createGlobalBarDockController,
   createGlobalBarDockTransport, prepareNativeGlobalBarDocument, intrinsicGlobalBarMinimumHeight,
-  globalBarMinimumRequestKey, preferredHeightForGlobalBarMode, recordGlobalBarSize, setGlobalBarMinimumSize,
+  intrinsicGlobalBarMinimumWidth, globalBarMinimumRequestKey, preferredHeightForGlobalBarMode,
+  preferredWidthForGlobalBarMode, recordGlobalBarSize, setGlobalBarMinimumSize,
 } from "../services/globalBarWindow";
 
 /** Keeps native Global Bar actions tied to local pointer, focus, and resize gestures. */
@@ -48,7 +49,9 @@ export function useGlobalBarWindow() {
     menuObserver.observe(bar, { attributes: true, attributeFilter: ["data-menu-open"] });
     let suppressResizeUntil = 0;
     let fullPreferredHeight: number | undefined;
+    let fullPreferredWidth: number | undefined;
     let lastKnownWidth: number | undefined;
+    let lastKnownHeight: number | undefined;
     let lastChromeMode: "full" | "minimal" | undefined;
     const chromeMode = (): "full" | "minimal" => (
       bar.classList.contains("global-bar--minimal") ? "minimal" : "full"
@@ -72,12 +75,19 @@ export function useGlobalBarWindow() {
         // interaction callback.
         void Promise.all([getCurrentWindow().outerSize(), getCurrentWindow().scaleFactor()]).then(([{ width, height }, scaleFactor]) => {
           const size = { width: width / scaleFactor, height: height / scaleFactor };
-          const programmaticHeightOnly = Date.now() < suppressResizeUntil && lastKnownWidth != null && Math.abs(lastKnownWidth - size.width) < 1;
+          // Mode flips programmatically change height and/or width; skip persist so
+          // Minimal collapse cannot overwrite remembered Full chrome. User drags
+          // settle after the suppress window expires.
+          const programmaticResize = Date.now() < suppressResizeUntil;
           lastKnownWidth = size.width;
-          if (!programmaticHeightOnly) {
-            // Remember Full-mode height separately so Minimal collapse cannot
+          lastKnownHeight = size.height;
+          if (!programmaticResize) {
+            // Remember Full-mode size separately so Minimal collapse cannot
             // permanently shrink the restored Full chrome.
-            if (chromeMode() === "full") fullPreferredHeight = size.height;
+            if (chromeMode() === "full") {
+              fullPreferredHeight = size.height;
+              fullPreferredWidth = size.width;
+            }
             return recordGlobalBarSize(size);
           }
         }).catch(() => undefined);
@@ -91,17 +101,20 @@ export function useGlobalBarWindow() {
         if (dock.state().collapsed) return;
         const mode = chromeMode();
         if (lastChromeMode != null && lastChromeMode !== mode) {
-          // Mode flips must re-apply height even when content metrics match.
+          // Mode flips must re-apply size even when content metrics match.
           lastMinimumRequest = undefined;
         }
         lastChromeMode = mode;
+        // Keep native min width at the usable floor; preferredWidth drives shrink/restore.
         const minimum = { width: 280, height: intrinsicGlobalBarMinimumHeight(bar) };
+        const contentWidth = intrinsicGlobalBarMinimumWidth(bar);
         const preferredHeight = preferredHeightForGlobalBarMode(mode, minimum.height, fullPreferredHeight);
-        const request = globalBarMinimumRequestKey(minimum, preferredHeight);
+        const preferredWidth = preferredWidthForGlobalBarMode(mode, contentWidth, fullPreferredWidth);
+        const request = globalBarMinimumRequestKey(minimum, preferredHeight, preferredWidth);
         if (request === lastMinimumRequest) return;
         lastMinimumRequest = request;
         suppressResizeUntil = Date.now() + 500;
-        void setGlobalBarMinimumSize(minimum, preferredHeight).then(() => {
+        void setGlobalBarMinimumSize(minimum, preferredHeight, preferredWidth).then(() => {
           if (dock.state().docked) dock.refresh();
         }).catch(() => {
           if (lastMinimumRequest === request) lastMinimumRequest = undefined;
@@ -115,12 +128,17 @@ export function useGlobalBarWindow() {
     const mutations = new MutationObserver(updateMinimum);
     mutations.observe(bar, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
     void Promise.all([getCurrentWindow().outerSize(), getCurrentWindow().scaleFactor()]).then(([size, scaleFactor]) => {
-      const restored = size.height / scaleFactor;
-      lastKnownWidth = size.width / scaleFactor;
+      const restoredHeight = size.height / scaleFactor;
+      const restoredWidth = size.width / scaleFactor;
+      lastKnownWidth = restoredWidth;
+      lastKnownHeight = restoredHeight;
       // Seed Full preference from the restored window only when launching in Full
       // mode. Minimal launches must shrink to content instead of keeping blank
       // chrome from a prior Full session.
-      if (chromeMode() === "full") fullPreferredHeight = restored;
+      if (chromeMode() === "full") {
+        fullPreferredHeight = restoredHeight;
+        fullPreferredWidth = restoredWidth;
+      }
     }).catch(() => undefined).finally(updateMinimum);
     return () => {
       disposed = true; if (resizeTimer) clearTimeout(resizeTimer); if (minimumTimer) clearTimeout(minimumTimer);

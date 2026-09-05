@@ -1274,15 +1274,17 @@ pub fn record_global_bar_size(
     state.update_persisted_config(|config| config.layout.global_bar_size = Some(size))
 }
 
-/// Raises the native lower bound as wrapped Stove content grows. Width stays
-/// freely resizable above a small usable floor; only an undersized current
-/// height is expanded so no Stove is clipped and no scrollbar is required.
+/// Raises the native lower bound as wrapped Stove content grows. Preferred
+/// height/width (when provided) resize the current window so Minimal can shrink
+/// to compact chrome and Full can restore remembered size; otherwise only an
+/// undersized current edge is expanded so no Stove is clipped.
 #[tauri::command]
 pub fn set_global_bar_minimum_size(
     app: AppHandle,
     width: f64,
     height: f64,
     preferred_height: Option<f64>,
+    preferred_width: Option<f64>,
 ) -> Result<(), String> {
     let minimum = normalized_global_bar_size(width, height)?;
     let window = app
@@ -1301,16 +1303,34 @@ pub fn set_global_bar_minimum_size(
     let preferred_height = preferred_height
         .filter(|height| height.is_finite())
         .map(|height| height.ceil().max(f64::from(minimum.height)));
+    let preferred_width = preferred_width
+        .filter(|width| width.is_finite())
+        .map(|width| width.ceil().max(f64::from(minimum.width)));
     let target_height = preferred_height
         .map(|height| (height * scale).ceil() as u32)
         .unwrap_or(minimum_height);
-    if current.height < minimum_height
-        || preferred_height.is_some_and(|_| current.height.abs_diff(target_height) > 1)
-    {
+    let target_width = preferred_width
+        .map(|width| (width * scale).ceil() as u32)
+        .unwrap_or_else(|| current.width.max(minimum_width));
+    let need_height = current.height < minimum_height
+        || preferred_height.is_some_and(|_| current.height.abs_diff(target_height) > 1);
+    let need_width = current.width < minimum_width
+        || preferred_width.is_some_and(|_| current.width.abs_diff(target_width) > 1);
+    if need_height || need_width {
+        let next_width = if need_width {
+            target_width
+        } else {
+            current.width.max(minimum_width)
+        };
+        let next_height = if need_height {
+            target_height
+        } else {
+            current.height.max(minimum_height)
+        };
         window
             .set_size(LogicalSize::new(
-                f64::from(current.width.max(minimum_width)) / scale,
-                f64::from(target_height) / scale,
+                f64::from(next_width) / scale,
+                f64::from(next_height) / scale,
             ))
             .map_err(|error| error.to_string())?;
     }

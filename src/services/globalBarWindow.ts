@@ -27,6 +27,14 @@ export type GlobalBarChromeMode = "full" | "minimal";
 export const FULL_GLOBAL_BAR_MIN_HEIGHT = 104;
 
 /**
+ * Compact Minimal width floor: brand (52) + burner (74) + mode/priority
+ * controls + paddings, clamped to the native usable floor (280).
+ * Measuring `.global-bar__minimal` itself is useless — it stretches with
+ * `minmax(0, 1fr)` to the current (often Full) window width.
+ */
+export const MINIMAL_GLOBAL_BAR_COMPACT_WIDTH = 280;
+
+/**
  * Minimal mode must shrink to content; Full may keep a remembered user height.
  * Full always respects the CSS floor so a persisted Minimal size (~92–97px)
  * cannot stick after restart or a Minimal→Full toggle when the native window
@@ -48,15 +56,40 @@ export function preferredHeightForGlobalBarMode(
   return Math.max(content, remembered, FULL_GLOBAL_BAR_MIN_HEIGHT);
 }
 
+/**
+ * Minimal mode must shrink to a compact width; Full may keep a remembered user
+ * width so Full↔Minimal toggles restore the wide chrome instead of sticking at
+ * the Minimal compact size (mirror of preferredHeightForGlobalBarMode).
+ */
+export function preferredWidthForGlobalBarMode(
+  mode: GlobalBarChromeMode,
+  contentWidth: number,
+  fullPreferredWidth?: number,
+): number | undefined {
+  const content = Math.max(MINIMAL_GLOBAL_BAR_COMPACT_WIDTH, Math.ceil(contentWidth));
+  if (mode === "minimal") {
+    return content;
+  }
+  const remembered =
+    fullPreferredWidth != null && Number.isFinite(fullPreferredWidth)
+      ? Math.ceil(fullPreferredWidth)
+      : 0;
+  return Math.max(content, remembered);
+}
+
 export function globalBarMinimumRequestKey(
   size: GlobalBarSize,
   preferredHeight?: number,
+  preferredWidth?: number,
 ): string {
   const minimum = clampGlobalBarSize(size);
   const preferred = preferredHeight != null && Number.isFinite(preferredHeight)
     ? Math.max(minimum.height, Math.ceil(preferredHeight))
     : "auto";
-  return `${minimum.width}:${minimum.height}:${preferred}`;
+  const preferredW = preferredWidth != null && Number.isFinite(preferredWidth)
+    ? Math.max(minimum.width, Math.ceil(preferredWidth))
+    : "auto";
+  return `${minimum.width}:${minimum.height}:${preferred}:${preferredW}`;
 }
 
 export type GlobalBarDockPhase = "undocked" | "dockedExpanded" | "dockedCollapsed";
@@ -308,10 +341,15 @@ export function recordGlobalBarSize(size: GlobalBarSize) {
   return invoke<void>("record_global_bar_size", clampGlobalBarSize(size));
 }
 
-export function setGlobalBarMinimumSize(size: GlobalBarSize, preferredHeight?: number) {
+export function setGlobalBarMinimumSize(
+  size: GlobalBarSize,
+  preferredHeight?: number,
+  preferredWidth?: number,
+) {
   return invoke<void>("set_global_bar_minimum_size", {
     ...clampGlobalBarSize(size),
     preferredHeight,
+    preferredWidth,
   });
 }
 
@@ -329,6 +367,30 @@ export function intrinsicGlobalBarMinimumHeight(bar: HTMLElement): number {
     return Math.max(bottom, element.getBoundingClientRect().bottom - barTop);
   }, 0);
   return Math.max(80, Math.ceil(contentBottom + 11));
+}
+
+/**
+ * Compact width from fixed chrome pieces — not the stretched Minimal column,
+ * which tracks the current native window and cannot shrink itself.
+ */
+export function intrinsicGlobalBarMinimumWidth(bar: HTMLElement): number {
+  if (bar.classList.contains("global-bar--minimal")) {
+    const brand = bar.querySelector<HTMLElement>(".global-bar__brand");
+    const cluster = bar.querySelector<HTMLElement>(
+      ".global-bar__minimal-burner, .global-bar__minimal-empty, .stove-burner-wrap--compact, .global-bar__minimal-mark",
+    );
+    const menu = bar.querySelector<HTMLElement>(".stove-priority-menu");
+    const brandW = brand?.offsetWidth || 52;
+    const clusterW = cluster?.offsetWidth || 74;
+    // mode toggle + priority trigger sit beside the burner once the window is compact
+    const controls = 24 + 5 + 24;
+    const chrome = 12 + brandW + 8 + clusterW + 12 + controls + 10;
+    const menuW = menu ? Math.ceil(menu.getBoundingClientRect().width) + 24 : 0;
+    return Math.max(MINIMAL_GLOBAL_BAR_COMPACT_WIDTH, Math.ceil(chrome), menuW);
+  }
+  // Full benches stretch with the window; do not treat that as a content floor.
+  // Preferred Full width comes from remembered size (see preferredWidthForGlobalBarMode).
+  return MINIMAL_GLOBAL_BAR_COMPACT_WIDTH;
 }
 
 export function recordGlobalBarPosition(x: number, y: number) {

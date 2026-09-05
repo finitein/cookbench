@@ -6,7 +6,10 @@ import {
   type GlobalBarDockTransport,
   globalBarMinimumRequestKey,
   intrinsicGlobalBarMinimumHeight,
+  intrinsicGlobalBarMinimumWidth,
+  MINIMAL_GLOBAL_BAR_COMPACT_WIDTH,
   preferredHeightForGlobalBarMode,
+  preferredWidthForGlobalBarMode,
   prepareNativeGlobalBarDocument,
   recordGlobalBarPosition,
   recordGlobalBarSize,
@@ -64,15 +67,30 @@ describe("global bar window sizing", () => {
       width: 280,
       height: 248,
       preferredHeight: undefined,
+      preferredWidth: undefined,
+    });
+  });
+
+  it("passes preferred width alongside preferred height for Minimal shrink", async () => {
+    invoke.mockResolvedValue(undefined);
+    await setGlobalBarMinimumSize({ width: 280, height: 92 }, 92, 280);
+    expect(invoke).toHaveBeenCalledWith("set_global_bar_minimum_size", {
+      width: 280,
+      height: 92,
+      preferredHeight: 92,
+      preferredWidth: 280,
     });
   });
 
   it("deduplicates unchanged native minimum-size requests", () => {
-    expect(globalBarMinimumRequestKey({ width: 280, height: 248.1 }, 567.1)).toBe(
-      globalBarMinimumRequestKey({ width: 279, height: 249 }, 568),
+    expect(globalBarMinimumRequestKey({ width: 280, height: 248.1 }, 567.1, 680)).toBe(
+      globalBarMinimumRequestKey({ width: 279, height: 249 }, 568, 680),
     );
-    expect(globalBarMinimumRequestKey({ width: 280, height: 250 }, 568)).not.toBe(
-      globalBarMinimumRequestKey({ width: 280, height: 249 }, 568),
+    expect(globalBarMinimumRequestKey({ width: 280, height: 250 }, 568, 680)).not.toBe(
+      globalBarMinimumRequestKey({ width: 280, height: 249 }, 568, 680),
+    );
+    expect(globalBarMinimumRequestKey({ width: 280, height: 250 }, 568, 680)).not.toBe(
+      globalBarMinimumRequestKey({ width: 280, height: 250 }, 568, 281),
     );
   });
 
@@ -89,6 +107,32 @@ describe("global bar window sizing", () => {
     expect(preferredHeightForGlobalBarMode("full", 97, 97)).toBe(104);
     expect(preferredHeightForGlobalBarMode("full", 90)).toBe(104);
     expect(preferredHeightForGlobalBarMode("full", 97, 180)).toBe(180);
+  });
+
+  it("shrinks Minimal mode to compact width while Full keeps a remembered width", () => {
+    expect(preferredWidthForGlobalBarMode("minimal", 200, 674)).toBe(MINIMAL_GLOBAL_BAR_COMPACT_WIDTH);
+    expect(preferredWidthForGlobalBarMode("minimal", 300.2, 674)).toBe(301);
+    expect(preferredWidthForGlobalBarMode("full", 280, 674)).toBe(674);
+    expect(preferredWidthForGlobalBarMode("full", 700, 674)).toBe(700);
+    expect(preferredWidthForGlobalBarMode("full", 280)).toBe(280);
+  });
+
+  it("measures Minimal compact width from fixed chrome, not the stretched column", () => {
+    const bar = document.createElement("section");
+    bar.className = "global-bar global-bar--minimal";
+    const brand = document.createElement("div");
+    brand.className = "global-bar__brand";
+    Object.defineProperty(brand, "offsetWidth", { value: 52 });
+    const minimal = document.createElement("div");
+    minimal.className = "global-bar__minimal";
+    // Stretched column would report Full width — ignore it.
+    Object.defineProperty(minimal, "offsetWidth", { value: 674 });
+    const burner = document.createElement("div");
+    burner.className = "global-bar__minimal-burner";
+    Object.defineProperty(burner, "offsetWidth", { value: 74 });
+    minimal.append(burner);
+    bar.append(brand, minimal);
+    expect(intrinsicGlobalBarMinimumWidth(bar)).toBe(MINIMAL_GLOBAL_BAR_COMPACT_WIDTH);
   });
 
   it("measures content rather than locking the current native window height", () => {
