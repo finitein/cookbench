@@ -308,7 +308,6 @@ fn replaying_the_same_raw_completion_after_restart_keeps_it_acknowledged() {
     );
 }
 
-
 #[test]
 #[cfg(not(target_os = "windows"))]
 fn replay_tracks_needs_human_and_failed_without_retaining_cooked() {
@@ -417,12 +416,7 @@ fn replay_tracks_needs_human_and_failed_without_retaining_cooked() {
     let tracked_ids: Vec<_> = persisted
         .tracked
         .iter()
-        .map(|record| {
-            (
-                record.locator.native_session_id.clone(),
-                record.last_state,
-            )
-        })
+        .map(|record| (record.locator.native_session_id.clone(), record.last_state))
         .collect();
     assert!(
         tracked_ids.contains(&("d28-needs-human".into(), StoveState::NeedsHuman)),
@@ -433,9 +427,7 @@ fn replay_tracks_needs_human_and_failed_without_retaining_cooked() {
         "replay Failed must enter tracked for expiry/missing-native: {tracked_ids:?}"
     );
     assert!(
-        !tracked_ids
-            .iter()
-            .any(|(id, _)| id == "d28-cooked-replay"),
+        !tracked_ids.iter().any(|(id, _)| id == "d28-cooked-replay"),
         "Cooked must not remain tracked after replay completion: {tracked_ids:?}"
     );
     assert!(

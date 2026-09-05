@@ -1123,8 +1123,7 @@ impl AppState {
                     .stoves
                     .summary_for_identity(&identity_for_persistence)
                     .unwrap_or_else(|| StoveSummary::for_project(&stove.project));
-                let observed_at_ms =
-                    latest_observed_at(&summary).unwrap_or_else(current_time_ms);
+                let observed_at_ms = latest_observed_at(&summary).unwrap_or_else(current_time_ms);
                 let presentation = RetainedStovePresentation::new(
                     summary.project_label,
                     summary.project_root_display,
@@ -1156,10 +1155,11 @@ impl AppState {
                         .service
                         .is_pinned(&runtime.state, &identity_for_persistence)
                     {
-                        if let Some(pinned) =
-                            runtime.state.pinned.iter_mut().find(|pinned| {
-                                pinned.session.locator == identity_for_persistence
-                            })
+                        if let Some(pinned) = runtime
+                            .state
+                            .pinned
+                            .iter_mut()
+                            .find(|pinned| pinned.session.locator == identity_for_persistence)
                         {
                             let same_metadata = pinned.session.native_locator
                                 == record.native_locator

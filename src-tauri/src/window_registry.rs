@@ -256,18 +256,16 @@ mod identity_filter_tests {
 
     #[test]
     fn accepts_cookbench_stove_identities_and_rejects_garbage() {
-        assert!(stove_key_identity_is_valid(
-            "local:local:codex:rollout-abc"
-        ));
-        assert!(stove_key_identity_is_valid(
-            "ssh:jump:claudeCode:session-1"
-        ));
+        assert!(stove_key_identity_is_valid("local:local:codex:rollout-abc"));
+        assert!(stove_key_identity_is_valid("ssh:jump:claudeCode:session-1"));
         assert!(stove_key_identity_is_valid("local:local:grok:thread-9"));
         assert!(!stove_key_identity_is_valid(""));
         assert!(!stove_key_identity_is_valid("session-a"));
         assert!(!stove_key_identity_is_valid("local:local:codex:"));
         assert!(!stove_key_identity_is_valid("ftp:local:codex:x"));
-        assert!(!stove_key_identity_is_valid("local:local:codex:bad\u{0001}"));
+        assert!(!stove_key_identity_is_valid(
+            "local:local:codex:bad\u{0001}"
+        ));
     }
 
     #[test]
@@ -286,14 +284,10 @@ mod identity_filter_tests {
             &known,
         );
         assert_eq!(
-            kept
-                .iter()
+            kept.iter()
                 .map(|layout| layout.stove_key.as_str())
                 .collect::<Vec<_>>(),
-            vec![
-                "local:local:codex:live-1",
-                "local:local:amp:archived-2"
-            ]
+            vec!["local:local:codex:live-1", "local:local:amp:archived-2"]
         );
     }
 }

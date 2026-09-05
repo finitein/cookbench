@@ -764,11 +764,7 @@ pub(crate) fn collapsed_needs_shrink_in_place(
     collapsed_visible_strip_px(expanded_y, applied_y, height) > trigger_height.saturating_add(1)
 }
 
-fn dock_trigger_height(
-    collapsed_y: i32,
-    expanded_y: i32,
-    bar_height: u32,
-) -> u32 {
+fn dock_trigger_height(collapsed_y: i32, expanded_y: i32, bar_height: u32) -> u32 {
     i64::from(collapsed_y)
         .saturating_sub(i64::from(expanded_y))
         .saturating_add(i64::from(bar_height))
@@ -855,9 +851,7 @@ fn move_to_dock_geometry<R: Runtime>(
                 geometry.collapsed_position.y,
             ))
             .map_err(|error| error.to_string())?;
-        let applied = window
-            .outer_position()
-            .map_err(|error| error.to_string())?;
+        let applied = window.outer_position().map_err(|error| error.to_string())?;
         let applied_size = window.outer_size().map_err(|error| error.to_string())?;
         if collapsed_needs_shrink_in_place(
             geometry.expanded_position.y,
@@ -1471,10 +1465,7 @@ pub(crate) fn fit_global_bar_outer_size_to_work_area(
     work_width: u32,
     work_height: u32,
 ) -> (u32, u32) {
-    (
-        width.min(work_width.max(1)),
-        height.min(work_height.max(1)),
-    )
+    (width.min(work_width.max(1)), height.min(work_height.max(1)))
 }
 
 fn current_global_bar_work_area<R: Runtime>(

@@ -214,13 +214,15 @@ fn skips_stale_layouts_when_filtering_before_restore() {
         &display,
         WindowPosition { x: 200, y: 200 },
     );
-    let garbage = layout("not-a-stove-identity", &display, WindowPosition { x: 300, y: 300 });
+    let garbage = layout(
+        "not-a-stove-identity",
+        &display,
+        WindowPosition { x: 300, y: 300 },
+    );
     let mut known = BTreeSet::new();
     known.insert("local:local:codex:live-session".into());
-    let kept = filter_detached_layouts_for_known_sessions(
-        vec![live.clone(), stale, garbage],
-        &known,
-    );
+    let kept =
+        filter_detached_layouts_for_known_sessions(vec![live.clone(), stale, garbage], &known);
     assert_eq!(kept.len(), 1);
     assert_eq!(kept[0].stove_key, "local:local:codex:live-session");
 
@@ -231,5 +233,7 @@ fn skips_stale_layouts_when_filtering_before_restore() {
         .unwrap();
     assert_eq!(restored.len(), 1);
     assert_eq!(windows.created.len(), 1);
-    assert!(registry.detached("local:local:codex:gone-session").is_none());
+    assert!(registry
+        .detached("local:local:codex:gone-session")
+        .is_none());
 }
