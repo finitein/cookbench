@@ -70,24 +70,26 @@
 }
 .global-bar__settings {
   position: absolute;
+  left: 0;
   right: 0;
   bottom: 0;
   display: grid;
-  width: 36px;
-  height: 36px;
+  width: 100%;
+  height: 44px;
+  min-height: 44px;
   padding: 0;
   border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: #5f6875;
+  border-radius: 0 0 4px 0;
+  background: rgb(255 255 255 / 42%);
+  color: #3f4a57;
   cursor: pointer;
   place-items: center;
 }
 .global-bar__settings:hover,
-.global-bar__settings:focus-visible { background: rgb(255 255 255 / 76%); outline: 2px solid #316f98; }
-.global-bar__settings > span { display: grid; width: 13px; gap: 3px; }
-.global-bar__settings i { position: relative; display: block; height: 1px; background: currentColor; }
-.global-bar__settings i::after { position: absolute; top: -2px; width: 5px; height: 5px; border-radius: 50%; background: currentColor; content: ""; }
+.global-bar__settings:focus-visible { background: rgb(255 255 255 / 88%); outline: 2px solid #316f98; outline-offset: -2px; }
+.global-bar__settings > span { display: grid; width: 16px; gap: 3px; }
+.global-bar__settings i { position: relative; display: block; height: 2px; background: currentColor; }
+.global-bar__settings i::after { position: absolute; top: -2px; width: 6px; height: 6px; border-radius: 50%; background: currentColor; content: ""; }
 .global-bar__settings i:nth-child(1)::after,
 .global-bar__settings i:nth-child(3)::after { left: 2px; }
 .global-bar__settings i:nth-child(2)::after { right: 2px; }
@@ -575,7 +577,7 @@
 
 @media (max-width: 420px) {
   .global-bar { align-items: start; }
-  .global-bar__brand { width: 38px; min-width: 38px; }
+  .global-bar__brand { width: 52px; min-width: 52px; }
   .global-bar__brand img { width: 24px; height: 24px; }
   .global-bar__stoves { grid-template-columns: repeat(auto-fit, minmax(76px, 82px)); }
   .stove-tooltip { width: min(260px, calc(100vw - 16px)); }
