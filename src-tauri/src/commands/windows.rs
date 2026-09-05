@@ -747,6 +747,65 @@ fn collapse_macos_window_to_trigger<R: Runtime>(
         .map_err(|error| error.to_string())
 }
 
+/// Physical pixels of a docked bar still inside the work-area top after a move.
+pub(crate) fn collapsed_visible_strip_px(expanded_y: i32, applied_y: i32, height: u32) -> u32 {
+    (i64::from(applied_y) + i64::from(height) - i64::from(expanded_y))
+        .max(0)
+        .min(i64::from(u32::MAX)) as u32
+}
+
+/// True when a collapse move left more than the trigger strip visible (WM clamp).
+pub(crate) fn collapsed_needs_shrink_in_place(
+    expanded_y: i32,
+    applied_y: i32,
+    height: u32,
+    trigger_height: u32,
+) -> bool {
+    collapsed_visible_strip_px(expanded_y, applied_y, height) > trigger_height.saturating_add(1)
+}
+
+fn dock_trigger_height(
+    collapsed_y: i32,
+    expanded_y: i32,
+    bar_height: u32,
+) -> u32 {
+    i64::from(collapsed_y)
+        .saturating_sub(i64::from(expanded_y))
+        .saturating_add(i64::from(bar_height))
+        .clamp(1, i64::from(u32::MAX)) as u32
+}
+
+#[cfg(target_os = "linux")]
+fn collapse_linux_window_to_trigger<R: Runtime>(
+    window: &tauri::WebviewWindow<R>,
+    expanded_position: WindowPosition,
+    width: u32,
+    trigger_height: u32,
+) -> Result<(), String> {
+    let scale = window.scale_factor().map_err(|error| error.to_string())?;
+    let scale = if scale.is_finite() && scale > 0.0 {
+        scale
+    } else {
+        1.0
+    };
+    let logical_width = f64::from(width.max(1)) / scale;
+    let logical_height = f64::from(trigger_height.max(1)) / scale;
+    // Expanded chrome installs a tall min-size; drop it so the trigger can apply.
+    window
+        .set_min_size(Some(LogicalSize::new(1.0, logical_height)))
+        .map_err(|error| error.to_string())?;
+    window
+        .set_size(LogicalSize::new(logical_width, logical_height))
+        .map_err(|error| error.to_string())?;
+    window
+        .set_position(PhysicalPosition::new(
+            expanded_position.x,
+            expanded_position.y,
+        ))
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
 fn move_to_dock_geometry<R: Runtime>(
     window: &tauri::WebviewWindow<R>,
     dock: &GlobalBarTopDock,
@@ -771,11 +830,49 @@ fn move_to_dock_geometry<R: Runtime>(
     if collapsed {
         // AppKit constrains a visible window back on-screen, so a negative-y
         // move is a no-op. Shrinking in place preserves the same 3px trigger.
-        let trigger_height = i64::from(geometry.collapsed_position.y)
-            .saturating_sub(i64::from(geometry.expanded_position.y))
-            .saturating_add(i64::from(size.height))
-            .clamp(1, i64::from(u32::MAX)) as u32;
+        let trigger_height = dock_trigger_height(
+            geometry.collapsed_position.y,
+            geometry.expanded_position.y,
+            size.height,
+        );
         return collapse_macos_window_to_trigger(window, trigger_height);
+    }
+    #[cfg(target_os = "linux")]
+    if collapsed {
+        // Prefer the shared negative-Y collapse. Some X11 WMs (observed: xfwm4)
+        // clamp off-screen placement so a large strip stays visible and break
+        // the 3px trigger contract. Detect that clamp and shrink in place at the
+        // expanded dock edge — same end state as macOS. Wayland never reaches
+        // here: collapse_candidate requires reliable_top_dock_positioning().
+        let trigger_height = dock_trigger_height(
+            geometry.collapsed_position.y,
+            geometry.expanded_position.y,
+            size.height,
+        );
+        window
+            .set_position(PhysicalPosition::new(
+                geometry.collapsed_position.x,
+                geometry.collapsed_position.y,
+            ))
+            .map_err(|error| error.to_string())?;
+        let applied = window
+            .outer_position()
+            .map_err(|error| error.to_string())?;
+        let applied_size = window.outer_size().map_err(|error| error.to_string())?;
+        if collapsed_needs_shrink_in_place(
+            geometry.expanded_position.y,
+            applied.y,
+            applied_size.height,
+            trigger_height,
+        ) {
+            return collapse_linux_window_to_trigger(
+                window,
+                geometry.expanded_position,
+                applied_size.width,
+                trigger_height,
+            );
+        }
+        return Ok(());
     }
     window
         .set_position(PhysicalPosition::new(position.x, position.y))
@@ -1289,7 +1386,14 @@ pub fn set_global_bar_minimum_size(
     height: f64,
     preferred_height: Option<f64>,
     preferred_width: Option<f64>,
+    runtime: State<'_, GlobalBarDockRuntime>,
 ) -> Result<(), String> {
+    // Collapse shrinks the native window to the trigger strip. Ignore content
+    // min-size updates until reveal restores DockedExpanded, or a resize race
+    // will immediately inflate the trigger back to Full chrome.
+    if runtime.state().collapsed {
+        return Ok(());
+    }
     let minimum = normalized_global_bar_size(width, height)?;
     let window = app
         .get_webview_window("main")
@@ -1779,6 +1883,28 @@ mod dock_tests {
             "Main"
         );
         assert_eq!(native_monitor_identity(None, 3, None).id, "monitor-3");
+    }
+
+    #[test]
+    fn collapsed_visible_strip_counts_pixels_inside_the_work_area_top() {
+        assert_eq!(collapsed_visible_strip_px(0, -177, 180), 3);
+        assert_eq!(collapsed_visible_strip_px(0, -151, 180), 29);
+        assert_eq!(collapsed_visible_strip_px(10, -167, 180), 3);
+    }
+
+    #[test]
+    fn x11_wm_clamp_that_leaves_a_fat_strip_needs_shrink_in_place() {
+        // Observed xfwm4 floor: ~29px still on-screen despite requesting 3px.
+        assert!(collapsed_needs_shrink_in_place(0, -151, 180, 3));
+        assert!(!collapsed_needs_shrink_in_place(0, -177, 180, 3));
+        // Already at trigger height parked on the expanded edge.
+        assert!(!collapsed_needs_shrink_in_place(0, 0, 3, 3));
+    }
+
+    #[test]
+    fn dock_trigger_height_matches_resolve_top_dock_contract() {
+        assert_eq!(dock_trigger_height(-177, 0, 180), 3);
+        assert_eq!(dock_trigger_height(-740, 0, 743), 3);
     }
 
     #[cfg(target_os = "macos")]
