@@ -177,16 +177,16 @@ export function NotificationSettingsPanel() {
           </div>
         </header>
         <div className="notification-settings__tabs" role="tablist" aria-label={t("settings.title")}>
-          <button type="button" role="tab" aria-selected={tab === "general"} onClick={() => setTab("general")}>{t("settings.general")}</button>
-          <button type="button" role="tab" aria-selected={tab === "sources"} onClick={() => setTab("sources")}>{t("sources.title")}</button>
-          <button type="button" role="tab" aria-selected={tab === "hooks"} onClick={() => setTab("hooks")}>{t("hooks.title")}</button>
-          <button type="button" role="tab" aria-selected={tab === "notifications"} onClick={() => setTab("notifications")}>{t("notifications.title")}</button>
-          <button type="button" role="tab" aria-selected={tab === "archive"} onClick={() => setTab("archive")}>{t("settings.archive")}</button>
+          <button type="button" role="tab" id="cookbench-settings-tab-general" aria-controls="cookbench-settings-panel-general" aria-selected={tab === "general"} onClick={() => setTab("general")}>{t("settings.general")}</button>
+          <button type="button" role="tab" id="cookbench-settings-tab-sources" aria-controls="cookbench-settings-panel-sources" aria-selected={tab === "sources"} onClick={() => setTab("sources")}>{t("sources.title")}</button>
+          <button type="button" role="tab" id="cookbench-settings-tab-hooks" aria-controls="cookbench-settings-panel-hooks" aria-selected={tab === "hooks"} onClick={() => setTab("hooks")}>{t("hooks.title")}</button>
+          <button type="button" role="tab" id="cookbench-settings-tab-notifications" aria-controls="cookbench-settings-panel-notifications" aria-selected={tab === "notifications"} onClick={() => setTab("notifications")}>{t("notifications.title")}</button>
+          <button type="button" role="tab" id="cookbench-settings-tab-archive" aria-controls="cookbench-settings-panel-archive" aria-selected={tab === "archive"} onClick={() => setTab("archive")}>{t("settings.archive")}</button>
         </div>
-        {tab === "archive" ? <ArchiveSettingsPanel /> : null}
-        {tab === "sources" ? <><SourcesStatusPanel /><RemoteSourcesPanel /></> : null}
-        {tab === "hooks" ? <HookHealthPanel /> : null}
-        {tab === "general" ? <>
+        {tab === "archive" ? <div id="cookbench-settings-panel-archive" role="tabpanel" aria-labelledby="cookbench-settings-tab-archive"><ArchiveSettingsPanel /></div> : null}
+        {tab === "sources" ? <div id="cookbench-settings-panel-sources" role="tabpanel" aria-labelledby="cookbench-settings-tab-sources"><SourcesStatusPanel /><RemoteSourcesPanel /></div> : null}
+        {tab === "hooks" ? <div id="cookbench-settings-panel-hooks" role="tabpanel" aria-labelledby="cookbench-settings-tab-hooks"><HookHealthPanel /></div> : null}
+        {tab === "general" ? <div id="cookbench-settings-panel-general" role="tabpanel" aria-labelledby="cookbench-settings-tab-general">
         <DisplaySettingsPanel />
         <section aria-labelledby="local-alerts-title">
           <div className="notification-settings__section-heading">
@@ -235,8 +235,8 @@ export function NotificationSettingsPanel() {
             </div>
           </div>
         </section>
-        </> : null}
-        {tab === "notifications" ? <>
+        </div> : null}
+        {tab === "notifications" ? <div id="cookbench-settings-panel-notifications" role="tabpanel" aria-labelledby="cookbench-settings-tab-notifications">
         <section aria-labelledby="notification-settings-title">
           <div className="notification-settings__section-heading">
             <h2 id="notification-settings-title">{t("notifications.title")}</h2>
@@ -321,7 +321,7 @@ export function NotificationSettingsPanel() {
         ))}
           </div>
         </section>
-        </> : null}
+        </div> : null}
         <output className="notification-settings__status" role="status" aria-live="polite">
           {status
             ? t(status.key, status.name || status.nameKey
