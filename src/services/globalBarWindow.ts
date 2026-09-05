@@ -21,6 +21,24 @@ export function clampGlobalBarSize({ width, height }: GlobalBarSize): GlobalBarS
   };
 }
 
+export type GlobalBarChromeMode = "full" | "minimal";
+
+/** Minimal mode must shrink to content; Full may keep a remembered user height. */
+export function preferredHeightForGlobalBarMode(
+  mode: GlobalBarChromeMode,
+  contentHeight: number,
+  fullPreferredHeight?: number,
+): number | undefined {
+  const content = Math.max(80, Math.ceil(contentHeight));
+  if (mode === "minimal") {
+    return content;
+  }
+  if (fullPreferredHeight != null && Number.isFinite(fullPreferredHeight)) {
+    return Math.max(content, Math.ceil(fullPreferredHeight));
+  }
+  return undefined;
+}
+
 export function globalBarMinimumRequestKey(
   size: GlobalBarSize,
   preferredHeight?: number,

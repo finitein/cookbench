@@ -6,6 +6,7 @@ import {
   type GlobalBarDockTransport,
   globalBarMinimumRequestKey,
   intrinsicGlobalBarMinimumHeight,
+  preferredHeightForGlobalBarMode,
   prepareNativeGlobalBarDocument,
   recordGlobalBarPosition,
   recordGlobalBarSize,
@@ -73,6 +74,15 @@ describe("global bar window sizing", () => {
     expect(globalBarMinimumRequestKey({ width: 280, height: 250 }, 568)).not.toBe(
       globalBarMinimumRequestKey({ width: 280, height: 249 }, 568),
     );
+  });
+
+
+  it("shrinks Minimal mode to content while Full keeps a remembered height", () => {
+    expect(preferredHeightForGlobalBarMode("minimal", 92, 180)).toBe(92);
+    expect(preferredHeightForGlobalBarMode("minimal", 92.4)).toBe(93);
+    expect(preferredHeightForGlobalBarMode("full", 120, 180)).toBe(180);
+    expect(preferredHeightForGlobalBarMode("full", 200, 180)).toBe(200);
+    expect(preferredHeightForGlobalBarMode("full", 120)).toBeUndefined();
   });
 
   it("measures content rather than locking the current native window height", () => {
