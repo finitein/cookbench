@@ -254,7 +254,7 @@ static CATALOG: [HarnessProfile; 27] = [
         ApplicationOrTerminal,
         true,
         ["goose"],
-        ["~/.local/share/goose", "~/.config/goose"],
+        ["~/.local/share/goose/sessions", "~/.config/goose"],
         "https://block.github.io/goose/"
     ),
     profile!(

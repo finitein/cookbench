@@ -93,3 +93,16 @@ fn grok_build_profile_points_at_sessions_root() {
     assert!(profile.executables.contains(&"grok"));
     assert!(profile.reference.contains("xai-org/grok-build"));
 }
+
+#[test]
+fn goose_profile_points_at_legacy_sessions_root() {
+    let profile = harness_profile("goose").expect("goose profile");
+    assert_eq!(profile.label, "Goose");
+    assert_eq!(profile.tier, SupportTier::Standard);
+    assert_eq!(profile.hook_dialect, HookDialect::GenericStructured);
+    assert_eq!(
+        profile.default_roots,
+        &["~/.local/share/goose/sessions", "~/.config/goose"]
+    );
+    assert!(profile.executables.contains(&"goose"));
+}

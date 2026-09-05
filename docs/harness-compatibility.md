@@ -37,7 +37,7 @@ configuration yet.
 | `cline` | Cline | Full | Structured task hooks | Manual | Guarded IDE target |
 | `trae` | Trae / Trae CLI | Standard | Allowlisted structured metadata | Manual | Guarded IDE or terminal |
 | `grok_cli` | Grok Build | Standard | Allowlisted structured metadata (`~/.grok/sessions`) | Manual | Verified terminal when uniquely correlated |
-| `goose` | Goose | Standard | Allowlisted structured metadata | Manual | Guarded app or terminal |
+| `goose` | Goose | Standard | Allowlisted structured metadata (`~/.local/share/goose/sessions` legacy JSONL) | Manual | Guarded app or terminal |
 | `aider` | Aider | Standard | Allowlisted structured metadata | Manual | Verified terminal when uniquely correlated |
 | `kiro` | Kiro | Standard | Allowlisted structured metadata | Manual | Guarded IDE target |
 | `amazon_q` | Amazon Q Developer | Standard | Allowlisted structured metadata | Manual | Verified terminal when uniquely correlated |

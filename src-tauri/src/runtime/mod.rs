@@ -23,6 +23,7 @@ use cookbench_adapters::{
     catalog,
     claude::{self, ClaudeAdapter},
     codex::{self, CodexAdapter},
+    goose::{self, GooseAdapter},
     grok::{self, GrokAdapter},
     io::{DirectoryWatch, JsonlTailer, TailLimits, TailRecord},
     pi::{self, PiAdapter},
@@ -117,6 +118,7 @@ pub struct LocalObservationConfig {
     pub claude_root: PathBuf,
     pub pi_roots: Vec<PathBuf>,
     pub grok_root: PathBuf,
+    pub goose_root: PathBuf,
     pub startup_min_modified: SystemTime,
     pub startup_candidate_limit: usize,
     /// Explicit local session files that remain observable after the normal
@@ -133,12 +135,15 @@ impl LocalObservationConfig {
         let pi = PiAdapter::new();
         let grok = GrokAdapter::from_environment()
             .unwrap_or_else(|_| GrokAdapter::new(PathBuf::from(".grok/sessions")));
+        let goose = GooseAdapter::from_environment()
+            .unwrap_or_else(|_| GooseAdapter::new(PathBuf::from(".local/share/goose/sessions")));
         Self {
             host,
             codex_root: codex.root().to_owned(),
             claude_root: claude.projects_root().to_owned(),
             pi_roots: pi.roots().to_vec(),
             grok_root: grok.sessions_root().to_owned(),
+            goose_root: goose.sessions_root().to_owned(),
             startup_min_modified: SystemTime::now()
                 .checked_sub(STARTUP_DISCOVERY_AGE)
                 .unwrap_or(SystemTime::UNIX_EPOCH),
@@ -174,6 +179,7 @@ enum ParserKind {
     Claude,
     Pi,
     Grok,
+    Goose,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -257,6 +263,10 @@ impl LocalSourceStatusState {
                         .into_iter()
                         .map(Path::to_path_buf)
                         .collect::<Vec<_>>(),
+                    "goose" => roots_for_kind(ParserKind::Goose, config)
+                        .into_iter()
+                        .map(Path::to_path_buf)
+                        .collect::<Vec<_>>(),
                     _ => profile
                         .default_roots
                         .iter()
@@ -274,7 +284,7 @@ impl LocalSourceStatusState {
                     label: profile.label,
                     tier: LocalSourceSupportTier::from(profile.tier),
                     observation: match profile.id {
-                        "codex" | "claude_code" | "pi" | "grok_cli" => {
+                        "codex" | "claude_code" | "pi" | "grok_cli" | "goose" => {
                             LocalSourceObservation::NativeSessions
                         }
                         _ if profile.structured_lifecycle => LocalSourceObservation::StructuredHook,
@@ -336,6 +346,7 @@ const fn harness_for(kind: ParserKind) -> &'static str {
         ParserKind::Claude => "claudeCode",
         ParserKind::Pi => "pi",
         ParserKind::Grok => "grok_cli",
+        ParserKind::Goose => "goose",
     }
 }
 
@@ -514,6 +525,7 @@ impl<S: ObservationSink> LocalObservationRuntime<S> {
             ParserKind::Claude,
             ParserKind::Pi,
             ParserKind::Grok,
+            ParserKind::Goose,
         ] {
             self.refresh_kind(kind);
         }
@@ -590,6 +602,7 @@ impl<S: ObservationSink> LocalObservationRuntime<S> {
             ParserKind::Claude,
             ParserKind::Pi,
             ParserKind::Grok,
+            ParserKind::Goose,
         ] {
             let Some(path) = validated_pinned_path(kind, &self.config, path) else {
                 continue;
@@ -749,6 +762,7 @@ fn roots(config: &LocalObservationConfig) -> Vec<(ParserKind, &Path)> {
         (ParserKind::Codex, config.codex_root.as_path()),
         (ParserKind::Claude, config.claude_root.as_path()),
         (ParserKind::Grok, config.grok_root.as_path()),
+        (ParserKind::Goose, config.goose_root.as_path()),
     ];
     values.extend(
         config
@@ -763,6 +777,7 @@ fn root_for(kind: ParserKind, config: &LocalObservationConfig, path: &Path) -> P
         ParserKind::Codex => config.codex_root.clone(),
         ParserKind::Claude => config.claude_root.clone(),
         ParserKind::Grok => config.grok_root.clone(),
+        ParserKind::Goose => config.goose_root.clone(),
         ParserKind::Pi => config
             .pi_roots
             .iter()
@@ -868,6 +883,15 @@ fn session_from_path_with_source_result(
             }
             grok::session_from_path(&path, source).map_err(|_| ())
         }
+        ParserKind::Goose => {
+            let root =
+                fs::canonicalize(&config.goose_root).unwrap_or_else(|_| config.goose_root.clone());
+            let path = fs::canonicalize(path).unwrap_or_else(|_| path.to_owned());
+            if !path.starts_with(&root) {
+                return Ok(None);
+            }
+            goose::session_from_path(&path, source).map_err(|_| ())
+        }
     }
 }
 
@@ -917,6 +941,7 @@ fn roots_for_kind(kind: ParserKind, config: &LocalObservationConfig) -> Vec<&Pat
         ParserKind::Claude => vec![config.claude_root.as_path()],
         ParserKind::Pi => config.pi_roots.iter().map(PathBuf::as_path).collect(),
         ParserKind::Grok => vec![config.grok_root.as_path()],
+        ParserKind::Goose => vec![config.goose_root.as_path()],
     }
 }
 fn parse(kind: ParserKind, line: &str, sequence: u64) -> Vec<StoveEvent> {
@@ -935,6 +960,7 @@ fn parse(kind: ParserKind, line: &str, sequence: u64) -> Vec<StoveEvent> {
             .unwrap_or_default(),
         ParserKind::Pi => pi::parse_record(line, sequence),
         ParserKind::Grok => grok::parse_record(line, sequence),
+        ParserKind::Goose => goose::parse_record(line, sequence),
     }
 }
 

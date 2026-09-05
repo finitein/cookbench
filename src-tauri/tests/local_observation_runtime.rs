@@ -122,6 +122,7 @@ fn reconstructs_three_native_harnesses_then_observes_appended_lifecycle_records(
         claude_root: claude_root.clone(),
         pi_roots: vec![pi_root.clone()],
         grok_root: root.join("grok"),
+        goose_root: root.join("goose"),
         startup_min_modified: SystemTime::UNIX_EPOCH,
         startup_candidate_limit: 16,
         pinned_local_paths: Vec::new(),
@@ -223,6 +224,7 @@ fn runtime_does_not_register_codex_subagent_session_files() {
         claude_root: root.join("claude"),
         pi_roots: vec![root.join("pi")],
         grok_root: root.join("grok"),
+        goose_root: root.join("goose"),
         startup_min_modified: SystemTime::UNIX_EPOCH,
         startup_candidate_limit: 16,
         pinned_local_paths: vec![subagent_session],
@@ -261,6 +263,7 @@ fn preserves_distinct_native_locators_for_sessions_in_the_same_project() {
         claude_root,
         pi_roots: vec![root.join("pi")],
         grok_root: root.join("grok"),
+        goose_root: root.join("goose"),
         startup_min_modified: SystemTime::UNIX_EPOCH,
         startup_candidate_limit: 16,
         pinned_local_paths: Vec::new(),
@@ -329,6 +332,7 @@ fn newer_subagents_do_not_consume_the_root_session_candidate_limit() {
         claude_root: root.join("claude"),
         pi_roots: vec![root.join("pi")],
         grok_root: root.join("grok"),
+        goose_root: root.join("goose"),
         startup_min_modified: SystemTime::UNIX_EPOCH,
         startup_candidate_limit: 2,
         pinned_local_paths: Vec::new(),
@@ -379,6 +383,7 @@ fn filters_one_thousand_stale_paths_before_adapter_body_parsing() {
         claude_root,
         pi_roots: vec![pi_root],
         grok_root: root.join("grok"),
+        goose_root: root.join("goose"),
         startup_min_modified: SystemTime::now() - Duration::from_secs(60),
         startup_candidate_limit: 16,
         pinned_local_paths: Vec::new(),
@@ -401,6 +406,7 @@ fn rescan_discovers_a_harness_root_created_after_cookbench_started() {
         claude_root: root.join("claude-missing"),
         pi_roots: vec![root.join("pi-missing")],
         grok_root: root.join("grok"),
+        goose_root: root.join("goose"),
         startup_min_modified: SystemTime::UNIX_EPOCH,
         startup_candidate_limit: 16,
         pinned_local_paths: Vec::new(),
@@ -457,6 +463,7 @@ fn pinned_old_session_is_discovered_without_widening_normal_discovery() {
         claude_root: root.join("claude"),
         pi_roots: vec![root.join("pi")],
         grok_root: root.join("grok"),
+        goose_root: root.join("goose"),
         startup_min_modified: SystemTime::now() - Duration::from_secs(60),
         startup_candidate_limit: 16,
         pinned_local_paths: vec![pinned],
@@ -504,6 +511,7 @@ fn a_restored_old_session_can_join_the_running_observer() {
         claude_root: root.join("claude"),
         pi_roots: vec![root.join("pi")],
         grok_root: root.join("grok"),
+        goose_root: root.join("goose"),
         startup_min_modified: SystemTime::now() - Duration::from_secs(60),
         startup_candidate_limit: 16,
         pinned_local_paths: Vec::new(),
@@ -553,6 +561,7 @@ fn restoring_an_already_watched_session_replays_events_seen_while_archived() {
         claude_root: root.join("claude"),
         pi_roots: vec![root.join("pi")],
         grok_root: root.join("grok"),
+        goose_root: root.join("goose"),
         startup_min_modified: SystemTime::UNIX_EPOCH,
         startup_candidate_limit: 16,
         pinned_local_paths: Vec::new(),
@@ -637,6 +646,7 @@ fn invalid_pinned_paths_are_ignored_without_expanding_file_access() {
         claude_root: root.join("claude"),
         pi_roots: vec![root.join("pi")],
         grok_root: root.join("grok"),
+        goose_root: root.join("goose"),
         startup_min_modified: SystemTime::now() - Duration::from_secs(60),
         startup_candidate_limit: 16,
         pinned_local_paths: vec![outside, root.join("missing.jsonl"), root.join("bad.txt")],
@@ -671,6 +681,7 @@ fn observation_summary_includes_source_mtime_without_reading_extra_records() {
         claude_root: root.join("claude"),
         pi_roots: vec![root.join("pi")],
         grok_root: root.join("grok"),
+        goose_root: root.join("goose"),
         startup_min_modified: SystemTime::UNIX_EPOCH,
         startup_candidate_limit: 16,
         pinned_local_paths: Vec::new(),
@@ -717,6 +728,7 @@ fn discovers_grok_build_native_session_from_summary_index() {
         claude_root: root.join("claude"),
         pi_roots: vec![root.join("pi")],
         grok_root: grok_root.clone(),
+        goose_root: root.join("goose"),
         startup_min_modified: SystemTime::UNIX_EPOCH,
         startup_candidate_limit: 16,
         pinned_local_paths: Vec::new(),
@@ -788,6 +800,7 @@ fn observes_grok_build_allowlisted_lifecycle_updates() {
         claude_root: root.join("claude"),
         pi_roots: vec![root.join("pi")],
         grok_root: grok_root.clone(),
+        goose_root: root.join("goose"),
         startup_min_modified: SystemTime::UNIX_EPOCH,
         startup_candidate_limit: 16,
         pinned_local_paths: Vec::new(),
@@ -884,6 +897,7 @@ fn observes_grok_build_needs_human_and_failed_terminal_states() {
         claude_root: root.join("claude"),
         pi_roots: vec![root.join("pi")],
         grok_root: grok_root.clone(),
+        goose_root: root.join("goose"),
         startup_min_modified: SystemTime::UNIX_EPOCH,
         startup_candidate_limit: 16,
         pinned_local_paths: Vec::new(),
@@ -918,6 +932,75 @@ fn observes_grok_build_needs_human_and_failed_terminal_states() {
         EventKind::TurnCompleted | EventKind::PermissionRequested
     )));
 
+    drop(events);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn discovers_goose_legacy_jsonl_native_session() {
+    let root = temp_root();
+    let goose_root = root.join("goose");
+    write(
+        &goose_root.join("20260906_1.jsonl"),
+        concat!(
+            r#"{"id":"20260906_1","description":"Synthetic Goose fixture","working_dir":"/synthetic/goose-project"}"#,
+            "\n",
+            r#"{"role":"user","created":1757116800,"content":[{"type":"text","text":"secret"}]}"#,
+            "\n",
+            r#"{"role":"assistant","content":[{"type":"toolRequest","id":"1"}]}"#,
+            "\n",
+            r#"{"notification":"turn_completed"}"#,
+            "\n",
+        ),
+    );
+    // SQLite migrations must not be treated as sessions.
+    write(&goose_root.join("sessions.db"), "not-a-session");
+
+    let sink = Arc::new(Sink::default());
+    let config = LocalObservationConfig {
+        host: HostIdentity::local("synthetic-host"),
+        codex_root: root.join("codex"),
+        claude_root: root.join("claude"),
+        pi_roots: vec![root.join("pi")],
+        grok_root: root.join("grok"),
+        goose_root: goose_root.clone(),
+        startup_min_modified: SystemTime::UNIX_EPOCH,
+        startup_candidate_limit: 16,
+        pinned_local_paths: Vec::new(),
+    };
+    let mut runtime = LocalObservationRuntime::new(config, sink.clone());
+    runtime.bootstrap();
+
+    assert_eq!(runtime.session_count(), 1);
+    let statuses = runtime.source_status();
+    let goose = statuses
+        .sources
+        .iter()
+        .find(|source| source.harness == "goose")
+        .expect("goose source status");
+    assert_eq!(goose.discovered_sessions, 1);
+    assert_eq!(goose.observation, LocalSourceObservation::NativeSessions);
+    assert_eq!(goose.label, "Goose");
+    let events = sink.0.lock().unwrap();
+    assert!(events.iter().any(|(identity, project, locator, event)| {
+        identity.harness == cookbench_core::domain::HarnessId::Other("goose".into())
+            && identity.native_session_id == "20260906_1"
+            && project.canonical_root == "/synthetic/goose-project"
+            && locator
+                .native_locator
+                .as_deref()
+                .is_some_and(|value| value.ends_with("20260906_1.jsonl"))
+            && matches!(event.kind, EventKind::SessionDiscovered)
+    }));
+    assert!(events
+        .iter()
+        .any(|(_, _, _, event)| { matches!(event.kind, EventKind::UserPromptSubmitted) }));
+    assert!(events
+        .iter()
+        .any(|(_, _, _, event)| matches!(event.kind, EventKind::ToolStarted)));
+    assert!(events
+        .iter()
+        .any(|(_, _, _, event)| matches!(event.kind, EventKind::TurnCompleted)));
     drop(events);
     fs::remove_dir_all(root).unwrap();
 }

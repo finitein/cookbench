@@ -9,6 +9,7 @@ mod catalog;
 pub mod claude;
 pub mod codex;
 mod fixture;
+pub mod goose;
 pub mod grok;
 pub mod io;
 pub mod pi;

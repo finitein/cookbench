@@ -51,6 +51,7 @@ pub fn discover_expired_local_sessions(
         ParserKind::Claude,
         ParserKind::Pi,
         ParserKind::Grok,
+        ParserKind::Goose,
     ] {
         for root in roots_for_kind(kind, config) {
             let Some(root) = canonical_directory(root) else {
