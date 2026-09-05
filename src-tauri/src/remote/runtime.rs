@@ -60,7 +60,11 @@ impl RemoteHandle {
         self.cancelled.store(true, Ordering::Release);
         let _ = self.sender.send(RemoteControl::Stop);
         if let Some(join) = self.join.take() {
-            let _ = join.join();
+            // Settings save/remove must not wait on an in-flight SSH probe
+            // (ConnectTimeout + local deadline can exceed 10s). Detach the join.
+            thread::spawn(move || {
+                let _ = join.join();
+            });
         }
     }
 }
@@ -70,7 +74,10 @@ impl Drop for RemoteHandle {
         self.cancelled.store(true, Ordering::Release);
         let _ = self.sender.send(RemoteControl::Stop);
         if let Some(join) = self.join.take() {
-            let _ = join.join();
+            // Same as stop(): never block the UI/runtime teardown on SSH liveness.
+            thread::spawn(move || {
+                let _ = join.join();
+            });
         }
     }
 }

@@ -32,5 +32,40 @@ describe("RemoteSourcesPanel", () => {
       bridgeEnabled: false,
       bridgeBinaryPath: null,
     }));
+    expect(await screen.findByRole("status")).toHaveTextContent("SSH source saved.");
+  });
+
+  it("surfaces backend validation errors instead of a generic failure", async () => {
+    vi.mocked(service.configureRemoteSource).mockRejectedValueOnce(
+      "SSH host aliases must be nonempty, option-free, and whitespace-free",
+    );
+    render(<RemoteSourcesPanel />);
+    fireEvent.change(screen.getByRole("textbox", { name: "SSH alias" }), {
+      target: { value: "bad alias" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "SSH host aliases must be nonempty, option-free, and whitespace-free",
+    );
+  });
+
+  it("removes a configured source and reports success", async () => {
+    vi.mocked(service.getRemoteSources).mockResolvedValueOnce([
+      {
+        id: "fixture-host",
+        alias: "fixture-host",
+        sessionRoots: [],
+        enabled: true,
+        bridgeEnabled: false,
+        bridgeBinaryPath: null,
+      },
+    ]);
+    vi.mocked(service.removeRemoteSource).mockResolvedValueOnce([]);
+    render(<RemoteSourcesPanel />);
+    expect(await screen.findByText("fixture-host")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    await waitFor(() => expect(service.removeRemoteSource).toHaveBeenCalledWith("fixture-host"));
+    expect(await screen.findByRole("status")).toHaveTextContent("SSH source removed.");
   });
 });

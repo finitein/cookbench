@@ -6,7 +6,23 @@ import {
   removeRemoteSource,
   type RemoteSourceWire,
 } from "./service";
-import { useI18n, type TranslationKey } from "../../i18n/i18n";
+import { useI18n } from "../../i18n/i18n";
+
+function invokeErrorMessage(error: unknown, fallback: string): string {
+  if (typeof error === "string" && error.trim()) {
+    return error.trim();
+  }
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim();
+  }
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim()) {
+      return message.trim();
+    }
+  }
+  return fallback;
+}
 
 export function RemoteSourcesPanel() {
   const { t } = useI18n();
@@ -15,14 +31,16 @@ export function RemoteSourcesPanel() {
   const [roots, setRoots] = useState("");
   const [bridgeEnabled, setBridgeEnabled] = useState(false);
   const [bridgeBinaryPath, setBridgeBinaryPath] = useState("");
-  const [status, setStatus] = useState<TranslationKey | null>(null);
+  const [statusText, setStatusText] = useState("");
 
   useEffect(() => {
-    void getRemoteSources().then(setSources).catch(() => setStatus("remote.unavailable"));
-  }, []);
+    void getRemoteSources()
+      .then(setSources)
+      .catch((error) => setStatusText(invokeErrorMessage(error, t("remote.unavailable"))));
+  }, [t]);
 
   const add = async () => {
-    setStatus(null);
+    setStatusText("");
     const sessionRoots = roots.split(",").map((root) => root.trim()).filter(Boolean);
     try {
       const next = await configureRemoteSource({
@@ -35,9 +53,12 @@ export function RemoteSourcesPanel() {
       });
       setSources(next);
       setAlias("");
-      setStatus("remote.saved");
-    } catch {
-      setStatus("remote.saveFailed");
+      setRoots("");
+      setBridgeEnabled(false);
+      setBridgeBinaryPath("");
+      setStatusText(t("remote.saved"));
+    } catch (error) {
+      setStatusText(invokeErrorMessage(error, t("remote.saveFailed")));
     }
   };
 
@@ -51,17 +72,17 @@ export function RemoteSourcesPanel() {
         bridgeEnabled: source.bridgeEnabled,
         bridgeBinaryPath: source.bridgeBinaryPath,
       }));
-    } catch {
-      setStatus("remote.updateFailed");
+    } catch (error) {
+      setStatusText(invokeErrorMessage(error, t("remote.updateFailed")));
     }
   };
 
   const remove = async (source: RemoteSourceWire) => {
     try {
       setSources(await removeRemoteSource(source.id));
-      setStatus("remote.removed");
-    } catch {
-      setStatus("remote.removeFailed");
+      setStatusText(t("remote.removed"));
+    } catch (error) {
+      setStatusText(invokeErrorMessage(error, t("remote.removeFailed")));
     }
   };
 
@@ -120,7 +141,7 @@ export function RemoteSourcesPanel() {
           </div>
         ))}
       </div>
-      <output role="status" aria-live="polite">{status ? t(status) : ""}</output>
+      <output role="status" aria-live="polite">{statusText}</output>
     </section>
   );
 }

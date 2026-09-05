@@ -121,3 +121,45 @@ fn wires(configured: &[RemoteSourceConfig]) -> Vec<RemoteSourceWire> {
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{validate_input, RemoteSourceInput};
+
+    fn input(alias: &str, roots: &[&str]) -> RemoteSourceInput {
+        RemoteSourceInput {
+            id: None,
+            alias: alias.to_owned(),
+            session_roots: roots.iter().map(|root| (*root).to_owned()).collect(),
+            enabled: true,
+            bridge_enabled: false,
+            bridge_binary_path: None,
+        }
+    }
+
+    #[test]
+    fn rejects_whitespace_aliases_with_an_honest_message() {
+        let error = validate_input(&input("bad alias", &[])).unwrap_err();
+        assert!(error.contains("whitespace-free"), "{error}");
+    }
+
+    #[test]
+    fn rejects_relative_session_roots_without_hanging() {
+        let error = validate_input(&input("fixture-host", &["relative/root"])).unwrap_err();
+        assert!(error.contains("absolute"), "{error}");
+    }
+
+    #[test]
+    fn accepts_automatic_roots_and_absolute_custom_roots() {
+        assert!(validate_input(&input("fixture-host", &[])).is_ok());
+        assert!(validate_input(&input("fixture-host", &["/srv/sessions"])).is_ok());
+    }
+
+    #[test]
+    fn rejects_relative_bridge_binary_paths() {
+        let mut value = input("fixture-host", &[]);
+        value.bridge_binary_path = Some("bridge".into());
+        let error = validate_input(&value).unwrap_err();
+        assert!(error.contains("absolute"), "{error}");
+    }
+}
