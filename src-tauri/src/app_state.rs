@@ -1786,7 +1786,9 @@ fn harness_wire(harness: &HarnessId) -> HarnessWire {
         },
         HarnessId::Other(id) => HarnessWire {
             id: id.clone(),
-            label: id.clone(),
+            label: cookbench_adapters::harness_profile(id)
+                .map(|profile| profile.label.to_owned())
+                .unwrap_or_else(|| id.clone()),
         },
     }
 }

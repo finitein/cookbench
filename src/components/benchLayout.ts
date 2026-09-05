@@ -13,7 +13,7 @@ export type BenchLayout = {
   benches: readonly StoveBench[];
 };
 
-const HARNESS_ORDER = ["codex", "claudeCode", "pi"] as const;
+const HARNESS_ORDER = ["codex", "claudeCode", "pi", "grok_cli"] as const;
 
 /** The display must always reserve at least one complete Stove slot. */
 export function stoveCapacityForWidth(width: number): number {

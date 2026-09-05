@@ -8,4 +8,4 @@
 
 mod discovery;
 
-pub use discovery::{default_sessions_root, discover_sessions, GrokAdapter};
+pub use discovery::{default_sessions_root, discover_sessions, session_from_path, GrokAdapter};

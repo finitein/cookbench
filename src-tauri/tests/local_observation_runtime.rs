@@ -121,6 +121,7 @@ fn reconstructs_three_native_harnesses_then_observes_appended_lifecycle_records(
         codex_root: codex_root.clone(),
         claude_root: claude_root.clone(),
         pi_roots: vec![pi_root.clone()],
+        grok_root: root.join("grok"),
         startup_min_modified: SystemTime::UNIX_EPOCH,
         startup_candidate_limit: 16,
         pinned_local_paths: Vec::new(),
@@ -221,6 +222,7 @@ fn runtime_does_not_register_codex_subagent_session_files() {
         codex_root,
         claude_root: root.join("claude"),
         pi_roots: vec![root.join("pi")],
+        grok_root: root.join("grok"),
         startup_min_modified: SystemTime::UNIX_EPOCH,
         startup_candidate_limit: 16,
         pinned_local_paths: vec![subagent_session],
@@ -258,6 +260,7 @@ fn preserves_distinct_native_locators_for_sessions_in_the_same_project() {
         codex_root: root.join("codex"),
         claude_root,
         pi_roots: vec![root.join("pi")],
+        grok_root: root.join("grok"),
         startup_min_modified: SystemTime::UNIX_EPOCH,
         startup_candidate_limit: 16,
         pinned_local_paths: Vec::new(),
@@ -325,6 +328,7 @@ fn newer_subagents_do_not_consume_the_root_session_candidate_limit() {
         codex_root,
         claude_root: root.join("claude"),
         pi_roots: vec![root.join("pi")],
+        grok_root: root.join("grok"),
         startup_min_modified: SystemTime::UNIX_EPOCH,
         startup_candidate_limit: 2,
         pinned_local_paths: Vec::new(),
@@ -374,6 +378,7 @@ fn filters_one_thousand_stale_paths_before_adapter_body_parsing() {
         codex_root,
         claude_root,
         pi_roots: vec![pi_root],
+        grok_root: root.join("grok"),
         startup_min_modified: SystemTime::now() - Duration::from_secs(60),
         startup_candidate_limit: 16,
         pinned_local_paths: Vec::new(),
@@ -395,6 +400,7 @@ fn rescan_discovers_a_harness_root_created_after_cookbench_started() {
         codex_root: codex_root.clone(),
         claude_root: root.join("claude-missing"),
         pi_roots: vec![root.join("pi-missing")],
+        grok_root: root.join("grok"),
         startup_min_modified: SystemTime::UNIX_EPOCH,
         startup_candidate_limit: 16,
         pinned_local_paths: Vec::new(),
@@ -450,6 +456,7 @@ fn pinned_old_session_is_discovered_without_widening_normal_discovery() {
         codex_root: codex_root.clone(),
         claude_root: root.join("claude"),
         pi_roots: vec![root.join("pi")],
+        grok_root: root.join("grok"),
         startup_min_modified: SystemTime::now() - Duration::from_secs(60),
         startup_candidate_limit: 16,
         pinned_local_paths: vec![pinned],
@@ -496,6 +503,7 @@ fn a_restored_old_session_can_join_the_running_observer() {
         codex_root,
         claude_root: root.join("claude"),
         pi_roots: vec![root.join("pi")],
+        grok_root: root.join("grok"),
         startup_min_modified: SystemTime::now() - Duration::from_secs(60),
         startup_candidate_limit: 16,
         pinned_local_paths: Vec::new(),
@@ -544,6 +552,7 @@ fn restoring_an_already_watched_session_replays_events_seen_while_archived() {
         codex_root,
         claude_root: root.join("claude"),
         pi_roots: vec![root.join("pi")],
+        grok_root: root.join("grok"),
         startup_min_modified: SystemTime::UNIX_EPOCH,
         startup_candidate_limit: 16,
         pinned_local_paths: Vec::new(),
@@ -627,6 +636,7 @@ fn invalid_pinned_paths_are_ignored_without_expanding_file_access() {
         codex_root,
         claude_root: root.join("claude"),
         pi_roots: vec![root.join("pi")],
+        grok_root: root.join("grok"),
         startup_min_modified: SystemTime::now() - Duration::from_secs(60),
         startup_candidate_limit: 16,
         pinned_local_paths: vec![outside, root.join("missing.jsonl"), root.join("bad.txt")],
@@ -660,6 +670,7 @@ fn observation_summary_includes_source_mtime_without_reading_extra_records() {
         codex_root,
         claude_root: root.join("claude"),
         pi_roots: vec![root.join("pi")],
+        grok_root: root.join("grok"),
         startup_min_modified: SystemTime::UNIX_EPOCH,
         startup_candidate_limit: 16,
         pinned_local_paths: Vec::new(),
@@ -673,5 +684,68 @@ fn observation_summary_includes_source_mtime_without_reading_extra_records() {
         .unwrap()
         .iter()
         .any(|summary| { summary.source_modified_at_ms == Some(1_700_000_000_000) }));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn discovers_grok_build_native_session_from_summary_index() {
+    let root = temp_root();
+    let grok_root = root.join("grok");
+    let session_dir = grok_root
+        .join("%2Fsynthetic%2Fproject")
+        .join("01999999-aaaa-7bbb-8ccc-ddddeeeeffff");
+    write(
+        &session_dir.join("summary.json"),
+        r#"{
+  "info": {
+    "session_id": "01999999-aaaa-7bbb-8ccc-ddddeeeeffff",
+    "cwd": "/synthetic/project"
+  },
+  "generated_title": "Synthetic fixture task",
+  "title_is_manual": false
+}"#,
+    );
+    write(
+        &session_dir.join("updates.jsonl"),
+        "{\"sessionUpdate\":\"agent_message_chunk\",\"sessionId\":\"01999999-aaaa-7bbb-8ccc-ddddeeeeffff\",\"kind\":\"started\"}\n",
+    );
+
+    let sink = Arc::new(Sink::default());
+    let config = LocalObservationConfig {
+        host: HostIdentity::local("synthetic-host"),
+        codex_root: root.join("codex"),
+        claude_root: root.join("claude"),
+        pi_roots: vec![root.join("pi")],
+        grok_root: grok_root.clone(),
+        startup_min_modified: SystemTime::UNIX_EPOCH,
+        startup_candidate_limit: 16,
+        pinned_local_paths: Vec::new(),
+    };
+    let mut runtime = LocalObservationRuntime::new(config, sink.clone());
+    runtime.bootstrap();
+
+    assert_eq!(runtime.session_count(), 1);
+    let statuses = runtime.source_status();
+    let grok = statuses
+        .sources
+        .iter()
+        .find(|source| source.harness == "grok_cli")
+        .expect("grok source status");
+    assert_eq!(grok.discovered_sessions, 1);
+    assert_eq!(grok.observation, LocalSourceObservation::NativeSessions);
+    assert_eq!(grok.label, "Grok Build");
+    let events = sink.0.lock().unwrap();
+    assert!(events.iter().any(|(identity, project, locator, event)| {
+        identity.harness
+            == cookbench_core::domain::HarnessId::Other("grok_cli".into())
+            && identity.native_session_id == "01999999-aaaa-7bbb-8ccc-ddddeeeeffff"
+            && project.canonical_root == "/synthetic/project"
+            && locator
+                .native_locator
+                .as_deref()
+                .is_some_and(|value| value.ends_with("updates.jsonl"))
+            && matches!(event.kind, EventKind::SessionDiscovered)
+    }));
+    drop(events);
     fs::remove_dir_all(root).unwrap();
 }

@@ -23,6 +23,7 @@ use cookbench_adapters::{
     catalog,
     claude::{self, ClaudeAdapter},
     codex::{self, CodexAdapter},
+    grok::{self, GrokAdapter},
     io::{DirectoryWatch, JsonlTailer, TailLimits, TailRecord},
     pi::{self, PiAdapter},
     HostSource, NativeSession, SupportTier,
@@ -115,6 +116,7 @@ pub struct LocalObservationConfig {
     pub codex_root: PathBuf,
     pub claude_root: PathBuf,
     pub pi_roots: Vec<PathBuf>,
+    pub grok_root: PathBuf,
     pub startup_min_modified: SystemTime,
     pub startup_candidate_limit: usize,
     /// Explicit local session files that remain observable after the normal
@@ -129,11 +131,14 @@ impl LocalObservationConfig {
         let claude = ClaudeAdapter::from_environment()
             .unwrap_or_else(|_| ClaudeAdapter::new(PathBuf::from(".claude/projects")));
         let pi = PiAdapter::new();
+        let grok = GrokAdapter::from_environment()
+            .unwrap_or_else(|_| GrokAdapter::new(PathBuf::from(".grok/sessions")));
         Self {
             host,
             codex_root: codex.root().to_owned(),
             claude_root: claude.projects_root().to_owned(),
             pi_roots: pi.roots().to_vec(),
+            grok_root: grok.sessions_root().to_owned(),
             startup_min_modified: SystemTime::now()
                 .checked_sub(STARTUP_DISCOVERY_AGE)
                 .unwrap_or(SystemTime::UNIX_EPOCH),
@@ -168,6 +173,7 @@ enum ParserKind {
     Codex,
     Claude,
     Pi,
+    Grok,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -247,6 +253,10 @@ impl LocalSourceStatusState {
                         .into_iter()
                         .map(Path::to_path_buf)
                         .collect::<Vec<_>>(),
+                    "grok_cli" => roots_for_kind(ParserKind::Grok, config)
+                        .into_iter()
+                        .map(Path::to_path_buf)
+                        .collect::<Vec<_>>(),
                     _ => profile
                         .default_roots
                         .iter()
@@ -264,7 +274,9 @@ impl LocalSourceStatusState {
                     label: profile.label,
                     tier: LocalSourceSupportTier::from(profile.tier),
                     observation: match profile.id {
-                        "codex" | "claude_code" | "pi" => LocalSourceObservation::NativeSessions,
+                        "codex" | "claude_code" | "pi" | "grok_cli" => {
+                            LocalSourceObservation::NativeSessions
+                        }
                         _ if profile.structured_lifecycle => LocalSourceObservation::StructuredHook,
                         _ => LocalSourceObservation::PresenceOnly,
                     },
@@ -323,6 +335,7 @@ const fn harness_for(kind: ParserKind) -> &'static str {
         ParserKind::Codex => "codex",
         ParserKind::Claude => "claudeCode",
         ParserKind::Pi => "pi",
+        ParserKind::Grok => "grok_cli",
     }
 }
 
@@ -496,7 +509,7 @@ impl<S: ObservationSink> LocalObservationRuntime<S> {
     }
 
     fn refresh_all(&mut self) {
-        for kind in [ParserKind::Codex, ParserKind::Claude, ParserKind::Pi] {
+        for kind in [ParserKind::Codex, ParserKind::Claude, ParserKind::Pi, ParserKind::Grok] {
             self.refresh_kind(kind);
         }
     }
@@ -567,7 +580,7 @@ impl<S: ObservationSink> LocalObservationRuntime<S> {
     /// Archive restoration uses this to recover events that were observed
     /// while the Stove presentation was deliberately suppressed.
     fn refresh_path(&mut self, path: &Path) {
-        for kind in [ParserKind::Codex, ParserKind::Claude, ParserKind::Pi] {
+        for kind in [ParserKind::Codex, ParserKind::Claude, ParserKind::Pi, ParserKind::Grok] {
             let Some(path) = validated_pinned_path(kind, &self.config, path) else {
                 continue;
             };
@@ -725,6 +738,7 @@ fn roots(config: &LocalObservationConfig) -> Vec<(ParserKind, &Path)> {
     let mut values = vec![
         (ParserKind::Codex, config.codex_root.as_path()),
         (ParserKind::Claude, config.claude_root.as_path()),
+        (ParserKind::Grok, config.grok_root.as_path()),
     ];
     values.extend(
         config
@@ -738,6 +752,7 @@ fn root_for(kind: ParserKind, config: &LocalObservationConfig, path: &Path) -> P
     match kind {
         ParserKind::Codex => config.codex_root.clone(),
         ParserKind::Claude => config.claude_root.clone(),
+        ParserKind::Grok => config.grok_root.clone(),
         ParserKind::Pi => config
             .pi_roots
             .iter()
@@ -834,6 +849,15 @@ fn session_from_path_with_source_result(
             .session_metadata_from_path(source, path.to_owned())
             .map(Some)
             .map_err(|_| ()),
+        ParserKind::Grok => {
+            let root = fs::canonicalize(&config.grok_root)
+                .unwrap_or_else(|_| config.grok_root.clone());
+            let path = fs::canonicalize(path).unwrap_or_else(|_| path.to_owned());
+            if !path.starts_with(&root) {
+                return Ok(None);
+            }
+            grok::session_from_path(&path, source).map_err(|_| ())
+        }
     }
 }
 
@@ -882,6 +906,7 @@ fn roots_for_kind(kind: ParserKind, config: &LocalObservationConfig) -> Vec<&Pat
         ParserKind::Codex => vec![config.codex_root.as_path()],
         ParserKind::Claude => vec![config.claude_root.as_path()],
         ParserKind::Pi => config.pi_roots.iter().map(PathBuf::as_path).collect(),
+        ParserKind::Grok => vec![config.grok_root.as_path()],
     }
 }
 fn parse(kind: ParserKind, line: &str, sequence: u64) -> Vec<StoveEvent> {
@@ -899,6 +924,10 @@ fn parse(kind: ParserKind, line: &str, sequence: u64) -> Vec<StoveEvent> {
             .map(|record| record.events)
             .unwrap_or_default(),
         ParserKind::Pi => pi::parse_record(line, sequence),
+        // Lifecycle normalization from Grok Build updates.jsonl is deferred until
+        // an allowlisted ACP event map is verified. Discovery still surfaces the
+        // stove via SessionDiscovered.
+        ParserKind::Grok => Vec::new(),
     }
 }
 

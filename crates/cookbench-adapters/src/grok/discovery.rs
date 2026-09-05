@@ -110,6 +110,31 @@ struct SummaryInfo {
     cwd: Option<String>,
 }
 
+
+pub fn session_from_path(
+    path: &Path,
+    source: &HostSource,
+) -> Result<Option<NativeSession>, AdapterError> {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default();
+    let summary = if file_name.eq_ignore_ascii_case("summary.json") {
+        path.to_owned()
+    } else if file_name.eq_ignore_ascii_case("updates.jsonl") {
+        let Some(parent) = path.parent() else {
+            return Ok(None);
+        };
+        parent.join("summary.json")
+    } else {
+        return Ok(None);
+    };
+    if !summary.is_file() {
+        return Ok(None);
+    }
+    session_from_summary(&summary, source).map(Some)
+}
+
 fn session_from_summary(path: &Path, source: &HostSource) -> Result<NativeSession, AdapterError> {
     let bytes = fs::read(path).map_err(|error| AdapterError::Message(error.to_string()))?;
     if bytes.len() > 64 * 1024 {
@@ -228,5 +253,27 @@ mod tests {
             Some("/synthetic/project")
         );
         assert!(session.locator.value.ends_with("updates.jsonl"));
+    }
+
+    #[test]
+    fn discovers_session_from_updates_jsonl_path() {
+        let updates = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/grok_build/sessions/%2Fsynthetic%2Fproject/01999999-aaaa-7bbb-8ccc-ddddeeeeffff/updates.jsonl");
+        let source = HostSource::local(HostIdentity::local("fixture-host"));
+        let session = session_from_path(&updates, &source)
+            .expect("parse")
+            .expect("session");
+        assert_eq!(
+            session.native_session_id,
+            "01999999-aaaa-7bbb-8ccc-ddddeeeeffff"
+        );
+        assert!(session.locator.value.ends_with("updates.jsonl"));
+    }
+
+    #[test]
+    fn ignores_unrelated_jsonl_paths() {
+        let path = PathBuf::from("/tmp/unrelated.jsonl");
+        let source = HostSource::local(HostIdentity::local("fixture-host"));
+        assert_eq!(session_from_path(&path, &source).expect("parse"), None);
     }
 }
