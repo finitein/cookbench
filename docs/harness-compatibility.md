@@ -36,7 +36,7 @@ configuration yet.
 | `opencode` | OpenCode | Full | Structured plugin/event surface | Manual | Guarded app or verified terminal |
 | `cline` | Cline | Full | Structured task hooks | Manual | Guarded IDE target |
 | `trae` | Trae / Trae CLI | Standard | Allowlisted structured metadata | Manual | Guarded IDE or terminal |
-| `grok_cli` | Grok CLI | Standard | Allowlisted structured metadata | Manual | Verified terminal when uniquely correlated |
+| `grok_cli` | Grok Build | Standard | Allowlisted structured metadata (`~/.grok/sessions`) | Manual | Verified terminal when uniquely correlated |
 | `goose` | Goose | Standard | Allowlisted structured metadata | Manual | Guarded app or terminal |
 | `aider` | Aider | Standard | Allowlisted structured metadata | Manual | Verified terminal when uniquely correlated |
 | `kiro` | Kiro | Standard | Allowlisted structured metadata | Manual | Guarded IDE target |

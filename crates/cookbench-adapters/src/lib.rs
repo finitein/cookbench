@@ -10,6 +10,7 @@ pub mod claude;
 pub mod codex;
 mod fixture;
 pub mod io;
+pub mod grok;
 pub mod pi;
 mod registry;
 

@@ -213,6 +213,8 @@ pub fn canonical_harness(value: &str) -> Option<&str> {
         "factory" | "droid" => "factory_droid",
         "copilot" | "github-copilot" => "github_copilot",
         "open-code" => "opencode",
+        // xAI Grok Build CLI and common shorthand / product names.
+        "grok" | "grok-cli" | "grok-build" | "grok_build" => "grok_cli",
         value => value,
     };
     STRUCTURED_HARNESSES.contains(&value).then_some(value)
@@ -595,6 +597,13 @@ mod tests {
                 serialized["event"]["locator"]["working_directory"],
                 "/safe/project"
             );
+        }
+    }
+
+    #[test]
+    fn accepts_grok_build_harness_aliases() {
+        for alias in ["grok", "grok-cli", "grok-build", "grok_build", "grok_cli"] {
+            assert_eq!(canonical_harness(alias), Some("grok_cli"), "{alias}");
         }
     }
 

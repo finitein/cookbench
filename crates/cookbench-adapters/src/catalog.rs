@@ -237,14 +237,14 @@ static CATALOG: [HarnessProfile; 27] = [
     ),
     profile!(
         "grok_cli",
-        "Grok CLI",
+        "Grok Build",
         Standard,
         GenericStructured,
         Terminal,
         true,
-        ["grok"],
-        ["~/.grok"],
-        "https://github.com/superagent-ai/grok-cli"
+        ["grok", "grok-build"],
+        ["~/.grok/sessions"],
+        "https://github.com/xai-org/grok-build"
     ),
     profile!(
         "goose",

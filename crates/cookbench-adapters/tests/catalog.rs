@@ -82,3 +82,14 @@ fn process_and_root_metadata_are_bounded_and_content_free() {
             .all(|value| !value.is_empty() && value.len() <= 256));
     }
 }
+
+#[test]
+fn grok_build_profile_points_at_sessions_root() {
+    let profile = harness_profile("grok_cli").expect("grok_cli profile");
+    assert_eq!(profile.label, "Grok Build");
+    assert_eq!(profile.tier, SupportTier::Standard);
+    assert_eq!(profile.hook_dialect, HookDialect::GenericStructured);
+    assert_eq!(profile.default_roots, &["~/.grok/sessions"]);
+    assert!(profile.executables.contains(&"grok"));
+    assert!(profile.reference.contains("xai-org/grok-build"));
+}

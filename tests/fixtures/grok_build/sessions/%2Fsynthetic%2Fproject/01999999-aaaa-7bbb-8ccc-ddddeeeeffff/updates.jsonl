@@ -1,0 +1,3 @@
+{"sessionUpdate": "agent_message_chunk", "sessionId": "01999999-aaaa-7bbb-8ccc-ddddeeeeffff", "kind": "started"}
+{"sessionUpdate": "tool_call", "sessionId": "01999999-aaaa-7bbb-8ccc-ddddeeeeffff", "status": "completed", "toolName": "list_dir"}
+{"sessionUpdate": "agent_thought_chunk", "sessionId": "01999999-aaaa-7bbb-8ccc-ddddeeeeffff", "kind": "completed"}

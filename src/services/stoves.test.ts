@@ -148,6 +148,25 @@ describe("StoveSync", () => {
     await vi.waitFor(() => expect(received.at(-1)).toEqual({ revision: 4, stoves: [stove], attentionOrder: [stove.id] }));
   });
 
+  it("bounds recovery when live revisions keep advancing", async () => {
+    let handler: ((change: { revision: number; stove: StoveWire | null; removedStoveId: string | null; attentionOrder?: string[] }) => void) | undefined;
+    let revision = 1;
+    const transport: StoveTransport = {
+      snapshot: vi.fn(async () => {
+        revision += 1;
+        return { revision, stoves: [stove], attentionOrder: [stove.id] };
+      }),
+      listen: vi.fn(async (next) => { handler = next; return () => {}; }),
+    };
+    await subscribeToStoves(() => {}, transport);
+    // Seed a gap target far ahead so recovery would otherwise chase forever.
+    handler?.({ revision: 10_000, stove, removedStoveId: null, attentionOrder: [stove.id] });
+    await vi.waitFor(() => expect(transport.snapshot.mock.calls.length).toBeGreaterThan(2));
+    await vi.waitFor(() => expect(transport.snapshot).toHaveBeenCalledTimes(17));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(transport.snapshot).toHaveBeenCalledTimes(17);
+  });
+
   it("stops recovery when a retry snapshot makes no progress", async () => {
     let handler: ((change: { revision: number; stove: StoveWire | null; removedStoveId: string | null; attentionOrder?: string[] }) => void) | undefined;
     const transport: StoveTransport = {
