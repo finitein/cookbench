@@ -821,3 +821,102 @@ fn observes_grok_build_allowlisted_lifecycle_updates() {
     drop(events);
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn observes_grok_build_needs_human_and_failed_terminal_states() {
+    let root = temp_root();
+    let grok_root = root.join("grok");
+
+    let needs_human_dir = grok_root
+        .join("%2Fsynthetic%2Fproject")
+        .join("0199aaaa-bbbb-7ccc-8ddd-eeee11111111");
+    write(
+        &needs_human_dir.join("summary.json"),
+        r#"{
+  "info": {
+    "session_id": "0199aaaa-bbbb-7ccc-8ddd-eeee11111111",
+    "cwd": "/synthetic/project"
+  },
+  "generated_title": "Needs Human fixture",
+  "title_is_manual": false
+}"#,
+    );
+    write(
+        &needs_human_dir.join("updates.jsonl"),
+        concat!(
+            r#"{"sessionUpdate":"user_message_chunk","sessionId":"0199aaaa-bbbb-7ccc-8ddd-eeee11111111"}"#,
+            "\n",
+            r#"{"sessionUpdate":"tool_call","sessionId":"0199aaaa-bbbb-7ccc-8ddd-eeee11111111","status":"pending"}"#,
+            "\n",
+            r#"{"sessionUpdate":"state_update","sessionId":"0199aaaa-bbbb-7ccc-8ddd-eeee11111111","state":"requires_action"}"#,
+            "\n",
+        ),
+    );
+
+    let failed_dir = grok_root
+        .join("%2Fsynthetic%2Fproject")
+        .join("0199bbbb-cccc-7ddd-8eee-ffff22222222");
+    write(
+        &failed_dir.join("summary.json"),
+        r#"{
+  "info": {
+    "session_id": "0199bbbb-cccc-7ddd-8eee-ffff22222222",
+    "cwd": "/synthetic/project"
+  },
+  "generated_title": "Failed fixture",
+  "title_is_manual": false
+}"#,
+    );
+    write(
+        &failed_dir.join("updates.jsonl"),
+        concat!(
+            r#"{"sessionUpdate":"user_message_chunk","sessionId":"0199bbbb-cccc-7ddd-8eee-ffff22222222"}"#,
+            "\n",
+            r#"{"sessionUpdate":"state_update","sessionId":"0199bbbb-cccc-7ddd-8eee-ffff22222222","state":"idle","stopReason":"refusal"}"#,
+            "\n",
+        ),
+    );
+
+    let sink = Arc::new(Sink::default());
+    let config = LocalObservationConfig {
+        host: HostIdentity::local("synthetic-host"),
+        codex_root: root.join("codex"),
+        claude_root: root.join("claude"),
+        pi_roots: vec![root.join("pi")],
+        grok_root: grok_root.clone(),
+        startup_min_modified: SystemTime::UNIX_EPOCH,
+        startup_candidate_limit: 16,
+        pinned_local_paths: Vec::new(),
+    };
+    let mut runtime = LocalObservationRuntime::new(config, sink.clone());
+    runtime.bootstrap();
+
+    assert_eq!(runtime.session_count(), 2);
+    let events = sink.0.lock().unwrap();
+    let by_session = |session_id: &str| -> Vec<&EventKind> {
+        events
+            .iter()
+            .filter(|(identity, _, _, _)| identity.native_session_id == session_id)
+            .map(|(_, _, _, event)| &event.kind)
+            .collect()
+    };
+
+    let needs_human = by_session("0199aaaa-bbbb-7ccc-8ddd-eeee11111111");
+    assert!(needs_human
+        .iter()
+        .any(|kind| matches!(kind, EventKind::PermissionRequested)));
+    assert!(!needs_human
+        .iter()
+        .any(|kind| matches!(kind, EventKind::TurnCompleted | EventKind::SessionFailed)));
+
+    let failed = by_session("0199bbbb-cccc-7ddd-8eee-ffff22222222");
+    assert!(failed
+        .iter()
+        .any(|kind| matches!(kind, EventKind::SessionFailed)));
+    assert!(!failed
+        .iter()
+        .any(|kind| matches!(kind, EventKind::TurnCompleted | EventKind::PermissionRequested)));
+
+    drop(events);
+    fs::remove_dir_all(root).unwrap();
+}
