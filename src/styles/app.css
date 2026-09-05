@@ -25,7 +25,10 @@ body {
 .shell--global-bar {
   height: 100vh;
   padding: 0;
-  overflow: hidden;
+  /* Dense Full wrap can exceed one work area after D31 caps the native window;
+     keep every Stove reachable without spilling past the display. */
+  overflow-x: hidden;
+  overflow-y: auto;
   background: transparent;
   place-items: stretch;
 }

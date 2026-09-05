@@ -7,9 +7,9 @@
 use std::{fmt, sync::Mutex};
 
 use cookbench_core::persistence::{
-    resolve_top_dock, select_dock_monitor, top_dock_decision, DetachedStoveLayout,
-    DockMonitorWorkArea, GlobalBarPosition, GlobalBarTopDock, MonitorIdentity, MonitorWorkArea,
-    RelativePosition, TopDockDecision, TopDockInput, WindowPosition, WindowSize,
+    clamp_window_position_to_work_area, resolve_top_dock, select_dock_monitor, top_dock_decision,
+    DetachedStoveLayout, DockMonitorWorkArea, GlobalBarPosition, GlobalBarTopDock, MonitorIdentity,
+    MonitorWorkArea, RelativePosition, TopDockDecision, TopDockInput, WindowPosition, WindowSize,
 };
 
 use serde::{Deserialize, Serialize};
@@ -1278,6 +1278,10 @@ pub fn record_global_bar_size(
 /// height/width (when provided) resize the current window so Minimal can shrink
 /// to compact chrome and Full can restore remembered size; otherwise only an
 /// undersized current edge is expanded so no Stove is clipped.
+///
+/// Dense Full layouts can ask for more than one monitor's work area. Cap the
+/// applied outer size to the current work area and re-clamp position so growth
+/// cannot spill past the display (D31).
 #[tauri::command]
 pub fn set_global_bar_minimum_size(
     app: AppHandle,
@@ -1290,48 +1294,123 @@ pub fn set_global_bar_minimum_size(
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| "Cookbench global Bar window is unavailable".to_owned())?;
+    let scale = window.scale_factor().map_err(|error| error.to_string())?;
+    let scale = if scale.is_finite() && scale > 0.0 {
+        scale
+    } else {
+        1.0
+    };
+    let work_area = current_global_bar_work_area(&window)?;
+    let work_width = work_area.width.max(1);
+    let work_height = work_area.height.max(1);
+    let mut minimum_height = (f64::from(minimum.height) * scale).ceil() as u32;
+    let mut minimum_width = (f64::from(minimum.width) * scale).ceil() as u32;
+    minimum_width = minimum_width.min(work_width.max(1));
+    minimum_height = minimum_height.min(work_height.max(1));
     window
         .set_min_size(Some(LogicalSize::new(
-            f64::from(minimum.width),
-            f64::from(minimum.height),
+            f64::from(minimum_width) / scale,
+            f64::from(minimum_height) / scale,
         )))
         .map_err(|error| error.to_string())?;
-    let scale = window.scale_factor().map_err(|error| error.to_string())?;
     let current = window.outer_size().map_err(|error| error.to_string())?;
-    let minimum_height = (f64::from(minimum.height) * scale).ceil() as u32;
-    let minimum_width = (f64::from(minimum.width) * scale).ceil() as u32;
     let preferred_height = preferred_height
         .filter(|height| height.is_finite())
         .map(|height| height.ceil().max(f64::from(minimum.height)));
     let preferred_width = preferred_width
         .filter(|width| width.is_finite())
         .map(|width| width.ceil().max(f64::from(minimum.width)));
-    let target_height = preferred_height
+    let uncapped_height = preferred_height
         .map(|height| (height * scale).ceil() as u32)
         .unwrap_or(minimum_height);
-    let target_width = preferred_width
+    let uncapped_width = preferred_width
         .map(|width| (width * scale).ceil() as u32)
         .unwrap_or_else(|| current.width.max(minimum_width));
+    let (target_width, target_height) = fit_global_bar_outer_size_to_work_area(
+        uncapped_width,
+        uncapped_height,
+        work_width,
+        work_height,
+    );
     let need_height = current.height < minimum_height
-        || preferred_height.is_some_and(|_| current.height.abs_diff(target_height) > 1);
+        || preferred_height.is_some_and(|_| current.height.abs_diff(target_height) > 1)
+        || current.height > work_height.max(1);
     let need_width = current.width < minimum_width
-        || preferred_width.is_some_and(|_| current.width.abs_diff(target_width) > 1);
+        || preferred_width.is_some_and(|_| current.width.abs_diff(target_width) > 1)
+        || current.width > work_width.max(1);
     if need_height || need_width {
         let next_width = if need_width {
             target_width
         } else {
-            current.width.max(minimum_width)
+            current.width.max(minimum_width).min(work_width.max(1))
         };
         let next_height = if need_height {
             target_height
         } else {
-            current.height.max(minimum_height)
+            current.height.max(minimum_height).min(work_height.max(1))
         };
         window
             .set_size(LogicalSize::new(
                 f64::from(next_width) / scale,
                 f64::from(next_height) / scale,
             ))
+            .map_err(|error| error.to_string())?;
+    }
+    clamp_global_bar_to_work_area(&window, &work_area)?;
+    Ok(())
+}
+
+/// Caps a requested outer size so it never exceeds the monitor work area.
+pub(crate) fn fit_global_bar_outer_size_to_work_area(
+    width: u32,
+    height: u32,
+    work_width: u32,
+    work_height: u32,
+) -> (u32, u32) {
+    (
+        width.min(work_width.max(1)),
+        height.min(work_height.max(1)),
+    )
+}
+
+fn current_global_bar_work_area<R: Runtime>(
+    window: &tauri::WebviewWindow<R>,
+) -> Result<MonitorWorkArea, String> {
+    let monitor = window
+        .current_monitor()
+        .map_err(|error| error.to_string())?
+        .or_else(|| window.primary_monitor().ok().flatten())
+        .ok_or_else(|| "no display is available for the Cookbench global Bar".to_owned())?;
+    let area = monitor.work_area();
+    let name = monitor.name().cloned();
+    Ok(MonitorWorkArea {
+        primary: true,
+        identity: native_monitor_identity(name, 0, None),
+        x: area.position.x,
+        y: area.position.y,
+        width: area.size.width,
+        height: area.size.height,
+    })
+}
+
+fn clamp_global_bar_to_work_area<R: Runtime>(
+    window: &tauri::WebviewWindow<R>,
+    work_area: &MonitorWorkArea,
+) -> Result<(), String> {
+    let outer = window.outer_size().map_err(|error| error.to_string())?;
+    let position = window.outer_position().map_err(|error| error.to_string())?;
+    let size = WindowSize {
+        width: outer.width,
+        height: outer.height,
+    };
+    let current = WindowPosition {
+        x: position.x,
+        y: position.y,
+    };
+    let clamped = clamp_window_position_to_work_area(current, size, work_area);
+    if clamped != current {
+        window
+            .set_position(PhysicalPosition::new(clamped.x, clamped.y))
             .map_err(|error| error.to_string())?;
     }
     Ok(())
@@ -1658,6 +1737,22 @@ mod dock_tests {
         );
         assert_eq!(result, Err("save failed".to_owned()));
         assert_eq!(restored, Some(original));
+    }
+
+    #[test]
+    fn fit_global_bar_outer_size_caps_to_work_area_edges() {
+        assert_eq!(
+            fit_global_bar_outer_size_to_work_area(900, 900, 1280, 800),
+            (900, 800)
+        );
+        assert_eq!(
+            fit_global_bar_outer_size_to_work_area(2000, 100, 1280, 800),
+            (1280, 100)
+        );
+        assert_eq!(
+            fit_global_bar_outer_size_to_work_area(500, 400, 0, 0),
+            (1, 1)
+        );
     }
 
     #[test]
