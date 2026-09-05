@@ -509,7 +509,12 @@ impl<S: ObservationSink> LocalObservationRuntime<S> {
     }
 
     fn refresh_all(&mut self) {
-        for kind in [ParserKind::Codex, ParserKind::Claude, ParserKind::Pi, ParserKind::Grok] {
+        for kind in [
+            ParserKind::Codex,
+            ParserKind::Claude,
+            ParserKind::Pi,
+            ParserKind::Grok,
+        ] {
             self.refresh_kind(kind);
         }
     }
@@ -580,7 +585,12 @@ impl<S: ObservationSink> LocalObservationRuntime<S> {
     /// Archive restoration uses this to recover events that were observed
     /// while the Stove presentation was deliberately suppressed.
     fn refresh_path(&mut self, path: &Path) {
-        for kind in [ParserKind::Codex, ParserKind::Claude, ParserKind::Pi, ParserKind::Grok] {
+        for kind in [
+            ParserKind::Codex,
+            ParserKind::Claude,
+            ParserKind::Pi,
+            ParserKind::Grok,
+        ] {
             let Some(path) = validated_pinned_path(kind, &self.config, path) else {
                 continue;
             };
@@ -850,8 +860,8 @@ fn session_from_path_with_source_result(
             .map(Some)
             .map_err(|_| ()),
         ParserKind::Grok => {
-            let root = fs::canonicalize(&config.grok_root)
-                .unwrap_or_else(|_| config.grok_root.clone());
+            let root =
+                fs::canonicalize(&config.grok_root).unwrap_or_else(|_| config.grok_root.clone());
             let path = fs::canonicalize(path).unwrap_or_else(|_| path.to_owned());
             if !path.starts_with(&root) {
                 return Ok(None);

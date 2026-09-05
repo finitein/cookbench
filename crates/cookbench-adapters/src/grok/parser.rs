@@ -62,7 +62,10 @@ pub fn parse_record(line: &str, sequence: u64) -> Vec<StoveEvent> {
         "tool_call" | "tool_call_update" => match tool_status(session_update.as_str(), update) {
             ToolStatus::Started => vec![StoveEvent::new(EventKind::ToolStarted, metadata)],
             ToolStatus::Completed { succeeded } => {
-                vec![StoveEvent::new(EventKind::ToolCompleted { succeeded }, metadata)]
+                vec![StoveEvent::new(
+                    EventKind::ToolCompleted { succeeded },
+                    metadata,
+                )]
             }
             ToolStatus::Unknown => Vec::new(),
         },
@@ -71,18 +74,18 @@ pub fn parse_record(line: &str, sequence: u64) -> Vec<StoveEvent> {
             Some("requires_action") => {
                 vec![StoveEvent::new(EventKind::PermissionRequested, metadata)]
             }
-            Some("idle") => match bounded_string(update.get("stopReason"), MAX_FIELD_BYTES)
-                .as_deref()
-            {
-                Some("end_turn" | "cancelled") => {
-                    vec![StoveEvent::new(EventKind::TurnCompleted, metadata)]
+            Some("idle") => {
+                match bounded_string(update.get("stopReason"), MAX_FIELD_BYTES).as_deref() {
+                    Some("end_turn" | "cancelled") => {
+                        vec![StoveEvent::new(EventKind::TurnCompleted, metadata)]
+                    }
+                    Some("refusal" | "max_tokens" | "max_turn_requests") => {
+                        vec![StoveEvent::new(EventKind::SessionFailed, metadata)]
+                    }
+                    // Idle without a stop reason is not completion evidence.
+                    _ => Vec::new(),
                 }
-                Some("refusal" | "max_tokens" | "max_turn_requests") => {
-                    vec![StoveEvent::new(EventKind::SessionFailed, metadata)]
-                }
-                // Idle without a stop reason is not completion evidence.
-                _ => Vec::new(),
-            },
+            }
             _ => Vec::new(),
         },
         "plan" => plan_progress(update)
@@ -185,7 +188,10 @@ mod tests {
             kind(r#"{"sessionUpdate":"agent_message_chunk","kind":"started"}"#),
             vec![EventKind::UserPromptSubmitted]
         );
-        assert!(kind(r#"{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"secret"}}"#).is_empty());
+        assert!(kind(
+            r#"{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"secret"}}"#
+        )
+        .is_empty());
         assert_eq!(
             kind(r#"{"sessionUpdate":"tool_call","status":"pending","toolName":"list_dir"}"#),
             vec![EventKind::ToolStarted]

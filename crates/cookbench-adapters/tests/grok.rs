@@ -44,10 +44,9 @@ fn discovers_fixture_and_parses_allowlisted_lifecycle_updates() {
     assert!(kinds
         .iter()
         .any(|kind| matches!(kind, EventKind::ToolStarted)));
-    assert!(kinds.iter().any(|kind| matches!(
-        kind,
-        EventKind::ToolCompleted { succeeded: true }
-    )));
+    assert!(kinds
+        .iter()
+        .any(|kind| matches!(kind, EventKind::ToolCompleted { succeeded: true })));
     assert!(kinds.iter().any(|kind| matches!(
         kind,
         EventKind::PlanUpdated {

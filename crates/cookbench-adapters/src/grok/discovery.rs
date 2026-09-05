@@ -68,7 +68,8 @@ fn collect_summaries(
     if depth > MAX_DISCOVERY_DEPTH || *scanned >= MAX_SCANNED_ENTRIES {
         return Ok(());
     }
-    let entries = fs::read_dir(directory).map_err(|error| AdapterError::Message(error.to_string()))?;
+    let entries =
+        fs::read_dir(directory).map_err(|error| AdapterError::Message(error.to_string()))?;
     for entry in entries {
         if *scanned >= MAX_SCANNED_ENTRIES {
             break;
@@ -110,7 +111,6 @@ struct SummaryInfo {
     cwd: Option<String>,
 }
 
-
 pub fn session_from_path(
     path: &Path,
     source: &HostSource,
@@ -144,9 +144,9 @@ fn session_from_summary(path: &Path, source: &HostSource) -> Result<NativeSessio
     }
     let summary: SummaryFile = serde_json::from_slice(&bytes)
         .map_err(|_| AdapterError::invalid_session_metadata("summary.json is not valid JSON"))?;
-    let info = summary.info.ok_or_else(|| {
-        AdapterError::invalid_session_metadata("summary.json is missing info")
-    })?;
+    let info = summary
+        .info
+        .ok_or_else(|| AdapterError::invalid_session_metadata("summary.json is missing info"))?;
     let native_session_id = info
         .session_id
         .filter(|value| !value.is_empty() && value.len() <= NativeSession::MAX_ID_BYTES)
@@ -232,8 +232,8 @@ impl HarnessAdapter for GrokAdapter {
 
 #[cfg(test)]
 mod tests {
-    use cookbench_core::domain::HostIdentity;
     use super::*;
+    use cookbench_core::domain::HostIdentity;
 
     #[test]
     fn discovers_synthetic_fixture_session() {

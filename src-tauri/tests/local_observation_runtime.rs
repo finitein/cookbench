@@ -736,8 +736,7 @@ fn discovers_grok_build_native_session_from_summary_index() {
     assert_eq!(grok.label, "Grok Build");
     let events = sink.0.lock().unwrap();
     assert!(events.iter().any(|(identity, project, locator, event)| {
-        identity.harness
-            == cookbench_core::domain::HarnessId::Other("grok_cli".into())
+        identity.harness == cookbench_core::domain::HarnessId::Other("grok_cli".into())
             && identity.native_session_id == "01999999-aaaa-7bbb-8ccc-ddddeeeeffff"
             && project.canonical_root == "/synthetic/project"
             && locator
@@ -822,4 +821,3 @@ fn observes_grok_build_allowlisted_lifecycle_updates() {
     drop(events);
     fs::remove_dir_all(root).unwrap();
 }
-

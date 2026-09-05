@@ -46,7 +46,12 @@ pub fn discover_expired_local_sessions(
     let mut scanned = 0;
     let mut candidates = Vec::new();
 
-    for kind in [ParserKind::Codex, ParserKind::Claude, ParserKind::Pi, ParserKind::Grok] {
+    for kind in [
+        ParserKind::Codex,
+        ParserKind::Claude,
+        ParserKind::Pi,
+        ParserKind::Grok,
+    ] {
         for root in roots_for_kind(kind, config) {
             let Some(root) = canonical_directory(root) else {
                 continue;
