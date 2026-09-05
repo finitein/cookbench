@@ -161,7 +161,7 @@ describe("StoveSync", () => {
     await subscribeToStoves(() => {}, transport);
     // Seed a gap target far ahead so recovery would otherwise chase forever.
     handler?.({ revision: 10_000, stove, removedStoveId: null, attentionOrder: [stove.id] });
-    await vi.waitFor(() => expect(transport.snapshot.mock.calls.length).toBeGreaterThan(2));
+    await vi.waitFor(() => expect(vi.mocked(transport.snapshot).mock.calls.length).toBeGreaterThan(2));
     await vi.waitFor(() => expect(transport.snapshot).toHaveBeenCalledTimes(17));
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(transport.snapshot).toHaveBeenCalledTimes(17);
