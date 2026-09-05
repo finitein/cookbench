@@ -924,10 +924,7 @@ fn parse(kind: ParserKind, line: &str, sequence: u64) -> Vec<StoveEvent> {
             .map(|record| record.events)
             .unwrap_or_default(),
         ParserKind::Pi => pi::parse_record(line, sequence),
-        // Lifecycle normalization from Grok Build updates.jsonl is deferred until
-        // an allowlisted ACP event map is verified. Discovery still surfaces the
-        // stove via SessionDiscovered.
-        ParserKind::Grok => Vec::new(),
+        ParserKind::Grok => grok::parse_record(line, sequence),
     }
 }
 

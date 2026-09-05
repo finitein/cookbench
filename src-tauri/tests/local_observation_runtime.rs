@@ -749,3 +749,77 @@ fn discovers_grok_build_native_session_from_summary_index() {
     drop(events);
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn observes_grok_build_allowlisted_lifecycle_updates() {
+    let root = temp_root();
+    let grok_root = root.join("grok");
+    let session_dir = grok_root
+        .join("%2Fsynthetic%2Fproject")
+        .join("01999999-aaaa-7bbb-8ccc-ddddeeeeffff");
+    write(
+        &session_dir.join("summary.json"),
+        r#"{
+  "info": {
+    "session_id": "01999999-aaaa-7bbb-8ccc-ddddeeeeffff",
+    "cwd": "/synthetic/project"
+  },
+  "generated_title": "Synthetic fixture task",
+  "title_is_manual": false
+}"#,
+    );
+    write(
+        &session_dir.join("updates.jsonl"),
+        concat!(
+            r#"{"sessionUpdate":"user_message_chunk","sessionId":"01999999-aaaa-7bbb-8ccc-ddddeeeeffff"}"#,
+            "\n",
+            r#"{"sessionUpdate":"tool_call","sessionId":"01999999-aaaa-7bbb-8ccc-ddddeeeeffff","status":"pending"}"#,
+            "\n",
+            r#"{"sessionUpdate":"state_update","sessionId":"01999999-aaaa-7bbb-8ccc-ddddeeeeffff","state":"requires_action"}"#,
+            "\n",
+            r#"{"sessionUpdate":"state_update","sessionId":"01999999-aaaa-7bbb-8ccc-ddddeeeeffff","state":"idle","stopReason":"end_turn"}"#,
+            "\n",
+        ),
+    );
+
+    let sink = Arc::new(Sink::default());
+    let config = LocalObservationConfig {
+        host: HostIdentity::local("synthetic-host"),
+        codex_root: root.join("codex"),
+        claude_root: root.join("claude"),
+        pi_roots: vec![root.join("pi")],
+        grok_root: grok_root.clone(),
+        startup_min_modified: SystemTime::UNIX_EPOCH,
+        startup_candidate_limit: 16,
+        pinned_local_paths: Vec::new(),
+    };
+    let mut runtime = LocalObservationRuntime::new(config, sink.clone());
+    runtime.bootstrap();
+
+    let events = sink.0.lock().unwrap();
+    let kinds: Vec<_> = events
+        .iter()
+        .filter(|(identity, _, _, _)| {
+            identity.harness == cookbench_core::domain::HarnessId::Other("grok_cli".into())
+        })
+        .map(|(_, _, _, event)| &event.kind)
+        .collect();
+    assert!(kinds
+        .iter()
+        .any(|kind| matches!(kind, EventKind::SessionDiscovered)));
+    assert!(kinds
+        .iter()
+        .any(|kind| matches!(kind, EventKind::UserPromptSubmitted)));
+    assert!(kinds
+        .iter()
+        .any(|kind| matches!(kind, EventKind::ToolStarted)));
+    assert!(kinds
+        .iter()
+        .any(|kind| matches!(kind, EventKind::PermissionRequested)));
+    assert!(kinds
+        .iter()
+        .any(|kind| matches!(kind, EventKind::TurnCompleted)));
+    drop(events);
+    fs::remove_dir_all(root).unwrap();
+}
+

@@ -1,3 +1,9 @@
-{"sessionUpdate": "agent_message_chunk", "sessionId": "01999999-aaaa-7bbb-8ccc-ddddeeeeffff", "kind": "started"}
-{"sessionUpdate": "tool_call", "sessionId": "01999999-aaaa-7bbb-8ccc-ddddeeeeffff", "status": "completed", "toolName": "list_dir"}
-{"sessionUpdate": "agent_thought_chunk", "sessionId": "01999999-aaaa-7bbb-8ccc-ddddeeeeffff", "kind": "completed"}
+{"sessionUpdate":"user_message_chunk","sessionId":"01999999-aaaa-7bbb-8ccc-ddddeeeeffff"}
+{"sessionUpdate":"agent_message_chunk","sessionId":"01999999-aaaa-7bbb-8ccc-ddddeeeeffff","kind":"started"}
+{"sessionUpdate":"tool_call","sessionId":"01999999-aaaa-7bbb-8ccc-ddddeeeeffff","status":"pending","toolCallId":"call_1"}
+{"sessionUpdate":"tool_call_update","sessionId":"01999999-aaaa-7bbb-8ccc-ddddeeeeffff","status":"completed","toolCallId":"call_1"}
+{"sessionUpdate":"plan","sessionId":"01999999-aaaa-7bbb-8ccc-ddddeeeeffff","entries":[{"status":"completed"},{"status":"pending"}]}
+{"sessionUpdate":"state_update","sessionId":"01999999-aaaa-7bbb-8ccc-ddddeeeeffff","state":"requires_action"}
+{"sessionUpdate":"state_update","sessionId":"01999999-aaaa-7bbb-8ccc-ddddeeeeffff","state":"running"}
+{"sessionUpdate":"state_update","sessionId":"01999999-aaaa-7bbb-8ccc-ddddeeeeffff","state":"idle","stopReason":"end_turn"}
+{"sessionUpdate":"agent_thought_chunk","sessionId":"01999999-aaaa-7bbb-8ccc-ddddeeeeffff","kind":"completed"}
