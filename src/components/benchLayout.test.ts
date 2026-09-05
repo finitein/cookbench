@@ -78,4 +78,31 @@ describe("arrangeBenches", () => {
       "fixture:codex:15",
     ]);
   });
+
+  it("orders Goose and Amp after the known Standard harnesses when grouped", () => {
+    const layout = arrangeBenches([
+      makeStove(0, { id: "codex-a", harness: { id: "codex", label: "Codex" } }),
+      makeStove(0, { id: "goose-a", harness: { id: "goose", label: "Goose" } }),
+      makeStove(0, { id: "amp-a", harness: { id: "amp", label: "Amp" } }),
+      makeStove(0, { id: "goose-b", harness: { id: "goose", label: "Goose" } }),
+      makeStove(0, { id: "goose-c", harness: { id: "goose", label: "Goose" } }),
+    ], 2);
+
+    expect(layout.grouped).toBe(true);
+    expect(layout.benches.map((bench) => bench.id)).toEqual(["codex", "goose", "amp"]);
+  });
+
+
+  it("orders grouped benches by attention (first appearance) rather than harness catalog order", () => {
+    const layout = arrangeBenches([
+      makeStove(0, { id: "grok-needs", harness: { id: "grok_cli", label: "Grok Build" }, state: "needsHuman" }),
+      makeStove(0, { id: "claude-cooked", harness: { id: "claudeCode", label: "Claude Code" }, state: "cooked" }),
+      makeStove(0, { id: "grok-failed", harness: { id: "grok_cli", label: "Grok Build" }, state: "failed" }),
+      makeStove(0, { id: "grok-cooked", harness: { id: "grok_cli", label: "Grok Build" }, state: "cooked" }),
+    ], 2);
+
+    expect(layout.grouped).toBe(true);
+    expect(layout.benches.map((bench) => bench.id)).toEqual(["grok_cli", "claudeCode"]);
+  });
+
 });

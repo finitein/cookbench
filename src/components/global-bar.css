@@ -10,6 +10,9 @@
   --bar-codex: #007cab;
   --bar-claude: #bd4f22;
   --bar-pi: #8135ae;
+  --bar-grok: #2563eb;
+  --bar-goose: #0f766e;
+  --bar-amp: #7c3aed;
   box-sizing: border-box;
   position: relative;
   display: grid;
@@ -175,6 +178,9 @@
 .global-bar__bench[data-harness="codex"] .global-bar__bench-heading { color: var(--bar-codex); }
 .global-bar__bench[data-harness="claudeCode"] .global-bar__bench-heading { color: var(--bar-claude); }
 .global-bar__bench[data-harness="pi"] .global-bar__bench-heading { color: var(--bar-pi); }
+.global-bar__bench[data-harness="grok_cli"] .global-bar__bench-heading { color: var(--bar-grok); }
+.global-bar__bench[data-harness="goose"] .global-bar__bench-heading { color: var(--bar-goose); }
+.global-bar__bench[data-harness="amp"] .global-bar__bench-heading { color: var(--bar-amp); }
 
 .global-bar__stoves {
   display: grid;
@@ -482,6 +488,9 @@
 .harness-mark--claude { color: var(--bar-claude); }
 .harness-mark--claudeCode { color: var(--bar-claude); }
 .harness-mark--pi { color: var(--bar-pi); }
+.harness-mark--grok_cli { color: var(--bar-grok); }
+.harness-mark--goose { color: var(--bar-goose); }
+.harness-mark--amp { color: var(--bar-amp); }
 
 .host-badge {
   position: absolute;
