@@ -8,7 +8,7 @@ import { GlobalBar } from "./GlobalBar";
 import { LOCAL_ALERT_TEST_STOVE_ID } from "../services/localAlerts";
 
 describe("GlobalBar", () => {
-  it("keeps the empty state as a compact branded bar rather than a blank window", () => {
+  it("keeps the empty state as a compact branded bar with a watching hint", () => {
     render(<GlobalBar stoves={[]} />);
 
     const bar = screen.getByRole("region", { name: "Cookbench global bar with 0 stoves" });
@@ -17,6 +17,7 @@ describe("GlobalBar", () => {
       "src",
       expect.stringContaining("cookbench-mark"),
     );
+    expect(screen.getByText("Watching for native sessions")).toBeInTheDocument();
   });
 
   it("renders every stove at the same time and preserves the session count", () => {

@@ -152,6 +152,9 @@ export function GlobalBar({
           {priorityMenuOpen ? <StovePriorityMenu stoves={stoves} onActivate={onActivateStove} onClose={closePriorityMenu} /> : null}
         </div>
       ) : <div className="global-bar__benches" data-layout={layout.grouped ? "grouped" : "mixed"}>
+        {stoves.length === 0 ? (
+          <p className="global-bar__empty-hint">{t("bar.emptyHint")}</p>
+        ) : null}
         {layout.benches.map((bench) => (
           <section className="global-bar__bench" data-harness={bench.id} key={bench.id} aria-label={bench.id === "all" ? t("bar.stoves") : bench.label}>
             {layout.grouped ? <h2 className="global-bar__bench-heading">{bench.label}</h2> : null}

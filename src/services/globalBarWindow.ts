@@ -87,6 +87,9 @@ export function createGlobalBarDockController(
   let releaseUnconfirmed = false;
   let pointerEnded = false;
   let disposed = false;
+  // Auto-hide only after the user has found the expanded dock this session.
+  // Restoring a docked Bar must not immediately collapse it off-screen.
+  let hideArmed = false;
   const clearRevealArm = () => {
     if (revealArmTimer) clearTimeout(revealArmTimer);
     revealArmTimer = undefined;
@@ -119,10 +122,10 @@ export function createGlobalBarDockController(
   });
   const scheduleCollapse = () => {
     clearCollapse();
-    if (disposed || hasGuard() || releaseUnconfirmed || state.phase !== "dockedExpanded" || state.bestEffort || activeToken != null || pendingStart || pendingFinish) return;
+    if (disposed || !hideArmed || hasGuard() || releaseUnconfirmed || state.phase !== "dockedExpanded" || state.bestEffort || activeToken != null || pendingStart || pendingFinish) return;
     collapseTimer = setTimeout(() => {
       collapseTimer = undefined;
-      if (!disposed && !hasGuard() && !releaseUnconfirmed && state.phase === "dockedExpanded" && !state.bestEffort && activeToken == null && !pendingStart && !pendingFinish) safe(transport.collapse());
+      if (!disposed && hideArmed && !hasGuard() && !releaseUnconfirmed && state.phase === "dockedExpanded" && !state.bestEffort && activeToken == null && !pendingStart && !pendingFinish) safe(transport.collapse());
     }, 600);
   };
   const setGuards = (next: Partial<GlobalBarDockGuards>) => {
@@ -131,6 +134,9 @@ export function createGlobalBarDockController(
     if (state.collapsed && pointerWasInside && !guards.pointerInside) {
       clearRevealArm();
       revealArmed = true;
+    }
+    if (guards.pointerInside && state.docked) {
+      hideArmed = true;
     }
     clearCollapse();
     if (!disposed) safe(transport.setGuards(guards));
@@ -146,6 +152,7 @@ export function createGlobalBarDockController(
     void transport.finishDrag(token).then((next) => {
       pendingFinish = false;
       apply(next);
+      if (state.docked) hideArmed = true;
       if (!disposed) onInteractionSettled?.();
       scheduleCollapse();
     }).catch(() => {

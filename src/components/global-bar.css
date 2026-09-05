@@ -70,11 +70,11 @@
 }
 .global-bar__settings {
   position: absolute;
-  right: 3px;
-  bottom: 3px;
+  right: 0;
+  bottom: 0;
   display: grid;
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   border: 0;
   border-radius: 4px;
@@ -186,7 +186,19 @@
   overflow: visible;
 }
 
-.global-bar--empty .global-bar__benches { display: none; }
+.global-bar--empty .global-bar__benches {
+  display: grid;
+  align-content: center;
+  min-height: 54px;
+}
+.global-bar__empty-hint {
+  margin: 0;
+  padding: 0 8px 0 4px;
+  color: var(--bar-muted);
+  font-size: 12px;
+  line-height: 1.35;
+  font-weight: 500;
+}
 
 /* The native webview cannot paint outside its window. Grow only while a detail
    card is requested so the card remains a real, reachable hover/focus surface. */

@@ -120,20 +120,41 @@ describe("global bar dock controller", () => {
     };
   }
 
-  it("collapses only after 600ms with every guard clear", async () => {
-    vi.useFakeTimers(); const native = transport(); const controller = createGlobalBarDockController(native);
+  it("keeps a restored dock visible until the user finds it once", async () => {
+    vi.useFakeTimers();
+    const native = transport();
+    const controller = createGlobalBarDockController(native);
     await controller.initialize();
-    await vi.advanceTimersByTimeAsync(599); expect(native.collapse).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(1); expect(native.collapse).toHaveBeenCalledOnce();
-    controller.dispose(); vi.useRealTimers();
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(native.collapse).not.toHaveBeenCalled();
+    controller.dispose();
+    vi.useRealTimers();
+  });
+
+  it("collapses only after 600ms once the user has hovered the restored dock", async () => {
+    vi.useFakeTimers();
+    const native = transport();
+    const controller = createGlobalBarDockController(native);
+    await controller.initialize();
+    controller.setGuards({ pointerInside: true });
+    controller.setGuards({ pointerInside: false });
+    await vi.advanceTimersByTimeAsync(599);
+    expect(native.collapse).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(native.collapse).toHaveBeenCalledOnce();
+    controller.dispose();
+    vi.useRealTimers();
   });
 
   it("does not let the collapse move immediately reveal the trigger under the pointer", async () => {
     vi.useFakeTimers();
     const native = transport();
-    native.setGuards = vi.fn().mockResolvedValue(collapsed);
+    native.setGuards = vi.fn().mockResolvedValue(expanded);
     const controller = createGlobalBarDockController(native);
     await controller.initialize();
+    controller.setGuards({ pointerInside: true });
+    controller.setGuards({ pointerInside: false });
+    native.setGuards = vi.fn().mockResolvedValue(collapsed);
     await vi.advanceTimersByTimeAsync(600);
 
     controller.setGuards({ pointerInside: true });
@@ -153,9 +174,12 @@ describe("global bar dock controller", () => {
   it("arms the collapsed trigger when the pointer stays outside", async () => {
     vi.useFakeTimers();
     const native = transport();
-    native.setGuards = vi.fn().mockResolvedValue(collapsed);
+    native.setGuards = vi.fn().mockResolvedValue(expanded);
     const controller = createGlobalBarDockController(native);
     await controller.initialize();
+    controller.setGuards({ pointerInside: true });
+    controller.setGuards({ pointerInside: false });
+    native.setGuards = vi.fn().mockResolvedValue(collapsed);
     await vi.advanceTimersByTimeAsync(600);
     await vi.advanceTimersByTimeAsync(150);
 
@@ -204,7 +228,11 @@ describe("global bar dock controller", () => {
     vi.useFakeTimers();
     for (const guard of ["pointerInside", "focused", "menuOpen", "resizing"] as const) {
       const native = transport(); const controller = createGlobalBarDockController(native);
-      await controller.initialize(); controller.setGuards({ [guard]: true });
+      await controller.initialize();
+      // Arm auto-hide after a restored dock only once the user has found the Bar.
+      controller.setGuards({ pointerInside: true });
+      controller.setGuards({ pointerInside: false });
+      controller.setGuards({ [guard]: true });
       await vi.advanceTimersByTimeAsync(600); expect(native.collapse).not.toHaveBeenCalled();
       controller.setGuards({ [guard]: false }); await vi.advanceTimersByTimeAsync(599);
       expect(native.collapse).not.toHaveBeenCalled(); await vi.advanceTimersByTimeAsync(1);
@@ -252,6 +280,8 @@ describe("global bar dock controller", () => {
     native.waitForPointerRelease = vi.fn().mockResolvedValue(false);
     const controller = createGlobalBarDockController(native);
     await controller.initialize();
+    controller.setGuards({ pointerInside: true });
+    controller.setGuards({ pointerInside: false });
     controller.startResize();
     await Promise.resolve();
     controller.refresh();
