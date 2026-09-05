@@ -996,6 +996,10 @@ impl AppState {
         )
     }
 
+    /// Bootstrap / historical native replay. Skips live notifications and
+    /// retained Cooked writes, but still tracks non-Cooked SessionRecords so
+    /// expiry and missing-native sweeps (D25/D28) see NH/Failed after first
+    /// discovery.
     #[allow(clippy::too_many_arguments)]
     pub fn apply_replay_observation_and_emit<R: tauri::Runtime>(
         &self,
@@ -1101,27 +1105,31 @@ impl AppState {
             summary,
             event,
         )?;
-        if side_effects {
-            if let Some(stove) = self
-                .stoves
-                .core_stove_for_identity(&identity_for_persistence)
+        // D28: bootstrap Replay must still persist expiry/missing-native
+        // SessionRecords for non-Cooked stoves. Live-only side effects remain
+        // notifications and retained Cooked writes (replay must not invent
+        // Cookbench completions from historical native files).
+        if let Some(stove) = self
+            .stoves
+            .core_stove_for_identity(&identity_for_persistence)
+        {
+            if let Some(runtime) = self
+                .persistence
+                .lock()
+                .expect("desktop persistence lock poisoned")
+                .as_mut()
             {
-                if let Some(runtime) = self
-                    .persistence
-                    .lock()
-                    .expect("desktop persistence lock poisoned")
-                    .as_mut()
-                {
-                    let summary = self
-                        .stoves
-                        .summary_for_identity(&identity_for_persistence)
-                        .unwrap_or_else(|| StoveSummary::for_project(&stove.project));
-                    let observed_at_ms =
-                        latest_observed_at(&summary).unwrap_or_else(current_time_ms);
-                    let presentation = RetainedStovePresentation::new(
-                        summary.project_label,
-                        summary.project_root_display,
-                    );
+                let summary = self
+                    .stoves
+                    .summary_for_identity(&identity_for_persistence)
+                    .unwrap_or_else(|| StoveSummary::for_project(&stove.project));
+                let observed_at_ms =
+                    latest_observed_at(&summary).unwrap_or_else(current_time_ms);
+                let presentation = RetainedStovePresentation::new(
+                    summary.project_label,
+                    summary.project_root_display,
+                );
+                if side_effects {
                     let _ = runtime.service.persist_transition_with_presentation(
                         &mut runtime.state,
                         identity_for_persistence.clone(),
@@ -1130,45 +1138,45 @@ impl AppState {
                         stove.last_event.as_ref().unwrap_or(&source_metadata),
                         presentation.clone(),
                     );
-                    if stove.state == StoveState::Cooked {
-                        let _ = runtime
-                            .service
-                            .remove_tracked(&mut runtime.state, &identity_for_persistence);
-                    } else if let Some(record) = SessionRecord::new(
-                        identity_for_persistence.clone(),
-                        self.stoves
-                            .locator_for(&stove_id(&identity_for_persistence))
-                            .and_then(|locator| locator.native_locator),
-                        observed_at_ms,
-                        presentation,
-                        stove.state,
-                    ) {
-                        if runtime
-                            .service
-                            .is_pinned(&runtime.state, &identity_for_persistence)
+                }
+                if stove.state == StoveState::Cooked {
+                    let _ = runtime
+                        .service
+                        .remove_tracked(&mut runtime.state, &identity_for_persistence);
+                } else if let Some(record) = SessionRecord::new(
+                    identity_for_persistence.clone(),
+                    self.stoves
+                        .locator_for(&stove_id(&identity_for_persistence))
+                        .and_then(|locator| locator.native_locator),
+                    observed_at_ms,
+                    presentation,
+                    stove.state,
+                ) {
+                    if runtime
+                        .service
+                        .is_pinned(&runtime.state, &identity_for_persistence)
+                    {
+                        if let Some(pinned) =
+                            runtime.state.pinned.iter_mut().find(|pinned| {
+                                pinned.session.locator == identity_for_persistence
+                            })
                         {
-                            if let Some(pinned) =
-                                runtime.state.pinned.iter_mut().find(|pinned| {
-                                    pinned.session.locator == identity_for_persistence
-                                })
+                            let same_metadata = pinned.session.native_locator
+                                == record.native_locator
+                                && pinned.session.presentation == record.presentation
+                                && pinned.session.last_state == record.last_state;
+                            if !same_metadata
+                                || record
+                                    .observed_at_ms
+                                    .saturating_sub(pinned.session.observed_at_ms)
+                                    >= 60_000
                             {
-                                let same_metadata = pinned.session.native_locator
-                                    == record.native_locator
-                                    && pinned.session.presentation == record.presentation
-                                    && pinned.session.last_state == record.last_state;
-                                if !same_metadata
-                                    || record
-                                        .observed_at_ms
-                                        .saturating_sub(pinned.session.observed_at_ms)
-                                        >= 60_000
-                                {
-                                    pinned.session = record;
-                                    let _ = runtime.service.save_state(&runtime.state);
-                                }
+                                pinned.session = record;
+                                let _ = runtime.service.save_state(&runtime.state);
                             }
-                        } else {
-                            let _ = runtime.service.track_session(&mut runtime.state, record);
                         }
+                    } else {
+                        let _ = runtime.service.track_session(&mut runtime.state, record);
                     }
                 }
             }
