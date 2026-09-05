@@ -4,6 +4,7 @@
 //! they never launch, host, or control an agent process.
 
 mod adapter;
+pub mod amp;
 mod capabilities;
 mod catalog;
 pub mod claude;

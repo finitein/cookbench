@@ -106,3 +106,16 @@ fn goose_profile_points_at_legacy_sessions_root() {
     );
     assert!(profile.executables.contains(&"goose"));
 }
+
+#[test]
+fn amp_profile_points_at_legacy_threads_root() {
+    let profile = harness_profile("amp").expect("amp profile");
+    assert_eq!(profile.label, "Amp");
+    assert_eq!(profile.tier, SupportTier::Standard);
+    assert_eq!(profile.hook_dialect, HookDialect::GenericStructured);
+    assert_eq!(
+        profile.default_roots,
+        &["~/.local/share/amp/threads", "~/.config/amp"]
+    );
+    assert!(profile.executables.contains(&"amp"));
+}

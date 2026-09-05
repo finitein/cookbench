@@ -320,7 +320,7 @@ static CATALOG: [HarnessProfile; 27] = [
         Terminal,
         true,
         ["amp"],
-        ["~/.config/amp"],
+        ["~/.local/share/amp/threads", "~/.config/amp"],
         "https://ampcode.com/manual"
     ),
     profile!(

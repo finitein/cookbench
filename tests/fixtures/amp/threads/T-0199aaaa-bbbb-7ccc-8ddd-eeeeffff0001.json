@@ -1,0 +1,58 @@
+{
+  "v": 3,
+  "id": "T-0199aaaa-bbbb-7ccc-8ddd-eeeeffff0001",
+  "created": 1757116800000,
+  "title": "Synthetic Amp fixture",
+  "agentMode": "smart",
+  "env": {
+    "initial": {
+      "trees": [
+        {
+          "uri": "file:///synthetic/amp-project",
+          "repository": { "ref": "refs/heads/main", "type": "git" }
+        }
+      ],
+      "platform": { "client": "CLI", "clientVersion": "fixture" }
+    }
+  },
+  "nextMessageId": 4,
+  "messages": [
+    {
+      "role": "user",
+      "messageId": 0,
+      "meta": { "sentAt": 1757116801000 },
+      "content": [{ "type": "text", "text": "fixture prompt must not be retained" }]
+    },
+    {
+      "role": "assistant",
+      "messageId": 1,
+      "content": [
+        {
+          "type": "tool_use",
+          "complete": true,
+          "id": "toolu_01",
+          "name": "Bash",
+          "input": { "cmd": "echo secret", "cwd": "/synthetic/amp-project" }
+        }
+      ],
+      "state": { "type": "complete", "stopReason": "tool_use" }
+    },
+    {
+      "role": "user",
+      "messageId": 2,
+      "content": [
+        {
+          "type": "tool_result",
+          "toolUseID": "toolu_01",
+          "run": { "status": "done", "result": { "output": "ok\n", "exitCode": 0 } }
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "messageId": 3,
+      "content": [{ "type": "text", "text": "done without retaining text" }],
+      "state": { "type": "complete", "stopReason": "end_turn" }
+    }
+  ]
+}

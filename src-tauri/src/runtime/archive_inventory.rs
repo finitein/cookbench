@@ -27,7 +27,7 @@ const MAX_ARCHIVE_RECORDS: usize = 4_096;
 /// are strictly older than Cookbench's 48-hour active-discovery window.
 ///
 /// Candidates are selected using filesystem metadata first. Only selected
-/// regular JSONL files inside a canonical configured root reach an adapter's
+/// regular JSONL (or Amp thread JSON) files inside a canonical configured root reach an adapter's
 /// existing bounded one-path metadata parser. The resulting records contain
 /// only identity, native path, timestamp, project presentation, and the
 /// honest unknown-state representation (`Disconnected`).
@@ -52,6 +52,7 @@ pub fn discover_expired_local_sessions(
         ParserKind::Pi,
         ParserKind::Grok,
         ParserKind::Goose,
+        ParserKind::Amp,
     ] {
         for root in roots_for_kind(kind, config) {
             let Some(root) = canonical_directory(root) else {
@@ -159,11 +160,15 @@ fn collect_expired_jsonl(
             }
             continue;
         }
-        if !metadata.is_file()
-            || !path
+        let extension_ok = match kind {
+            ParserKind::Amp => path
                 .extension()
-                .is_some_and(|extension| extension.eq_ignore_ascii_case("jsonl"))
-        {
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("json")),
+            _ => path
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("jsonl")),
+        };
+        if !metadata.is_file() || !extension_ok {
             continue;
         }
         let Ok(modified) = metadata.modified() else {

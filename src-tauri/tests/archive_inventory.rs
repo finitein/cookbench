@@ -44,6 +44,7 @@ fn config(root: &Path) -> LocalObservationConfig {
         pi_roots: vec![root.join("pi")],
         grok_root: root.join("grok"),
         goose_root: root.join("goose"),
+        amp_root: root.join("amp"),
         startup_min_modified: SystemTime::UNIX_EPOCH,
         startup_candidate_limit: 64,
         pinned_local_paths: Vec::new(),
