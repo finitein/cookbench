@@ -171,6 +171,10 @@ pub trait ObservationSink: Send + Sync + 'static {
         origin: ObservationOrigin,
         event: StoveEvent,
     );
+
+    /// Invoked after the first local `refresh_all` so callers can reconcile
+    /// tracked records whose native files were not rediscovered.
+    fn local_discovery_ready(&self) {}
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -437,6 +441,7 @@ impl<S: ObservationSink> LocalObservationRuntime<S> {
     /// any adapter opens their bodies.
     pub fn bootstrap(&mut self) {
         self.refresh_all();
+        self.sink.local_discovery_ready();
     }
 
     pub fn tick(&mut self) {

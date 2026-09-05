@@ -7,6 +7,7 @@ pub mod hook_spool;
 pub mod hooks;
 pub mod i18n;
 pub mod locator;
+pub mod missing_natives;
 pub mod notifications;
 pub mod persistence;
 pub mod platform;
@@ -88,6 +89,14 @@ impl runtime::ObservationSink for TauriObservationSink {
             ),
         };
     }
+
+    fn local_discovery_ready(&self) {
+        // D25: first local refresh_all is the authoritative native inventory.
+        // Tracked files that were not rediscovered are archived (not Cooked,
+        // not an invented SSH-shaped disconnect).
+        let state = self.app.state::<app_state::AppState>();
+        let _ = state.reconcile_missing_natives_and_emit(&self.app);
+    }
 }
 
 pub(crate) struct LocalRuntimeState(Mutex<Option<runtime::RuntimeHandle>>);
@@ -138,6 +147,7 @@ fn start_expiry_runtime(app: tauri::AppHandle) -> ExpiryRuntimeHandle {
                 thread::sleep(Duration::from_millis(100));
             }
             let state = app.state::<app_state::AppState>();
+            let _ = state.reconcile_missing_natives_and_emit(&app);
             let _ = state.reconcile_expired_and_emit(&app);
         }
     });
