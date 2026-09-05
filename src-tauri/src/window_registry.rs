@@ -186,3 +186,114 @@ fn validate_stove_key(stove_key: &str) -> Result<(), RegistryError> {
 fn host_error(error: impl fmt::Display) -> RegistryError {
     RegistryError::Host(error.to_string())
 }
+
+/// Opaque stove keys written by Cookbench follow
+/// `{local|ssh}:{host_id}:{harness_id}:{native_session_id}`.
+/// Reject control characters and incomplete identities so a corrupt layout
+/// never becomes an empty ghost window.
+pub fn stove_key_identity_is_valid(stove_key: &str) -> bool {
+    if stove_key.is_empty()
+        || stove_key.len() > 256
+        || stove_key.chars().any(char::is_control)
+        || stove_key != stove_key.trim()
+    {
+        return false;
+    }
+    let mut parts = stove_key.splitn(4, ':');
+    let Some(kind) = parts.next() else {
+        return false;
+    };
+    let Some(host) = parts.next() else {
+        return false;
+    };
+    let Some(harness) = parts.next() else {
+        return false;
+    };
+    let Some(session) = parts.next() else {
+        return false;
+    };
+    matches!(kind, "local" | "ssh")
+        && !host.is_empty()
+        && !harness.is_empty()
+        && !session.is_empty()
+}
+
+/// Keeps layouts that still match a known live/archived session identity.
+/// Layouts with invalid stove keys or unknown sessions are dropped so startup
+/// restore cannot open empty "Cookbench Stove" ghost windows (dogfood D24).
+pub fn filter_detached_layouts_for_known_sessions(
+    layouts: impl IntoIterator<Item = DetachedStoveLayout>,
+    known_stove_keys: &std::collections::BTreeSet<String>,
+) -> Vec<DetachedStoveLayout> {
+    layouts
+        .into_iter()
+        .filter(|layout| {
+            stove_key_identity_is_valid(&layout.stove_key)
+                && known_stove_keys.contains(&layout.stove_key)
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod identity_filter_tests {
+    use super::*;
+    use cookbench_core::persistence::{MonitorIdentity, RelativePosition, WindowSize};
+
+    fn layout(stove_key: &str) -> DetachedStoveLayout {
+        DetachedStoveLayout {
+            stove_key: stove_key.into(),
+            monitor: MonitorIdentity {
+                id: "primary".into(),
+                name: None,
+            },
+            relative_position: RelativePosition { x: 0, y: 0 },
+            size: WindowSize {
+                width: 164,
+                height: 104,
+            },
+        }
+    }
+
+    #[test]
+    fn accepts_cookbench_stove_identities_and_rejects_garbage() {
+        assert!(stove_key_identity_is_valid(
+            "local:local:codex:rollout-abc"
+        ));
+        assert!(stove_key_identity_is_valid(
+            "ssh:jump:claudeCode:session-1"
+        ));
+        assert!(stove_key_identity_is_valid("local:local:grok:thread-9"));
+        assert!(!stove_key_identity_is_valid(""));
+        assert!(!stove_key_identity_is_valid("session-a"));
+        assert!(!stove_key_identity_is_valid("local:local:codex:"));
+        assert!(!stove_key_identity_is_valid("ftp:local:codex:x"));
+        assert!(!stove_key_identity_is_valid("local:local:codex:bad\u{0001}"));
+    }
+
+    #[test]
+    fn prunes_stale_and_invalid_layouts_before_restore() {
+        let mut known = std::collections::BTreeSet::new();
+        known.insert("local:local:codex:live-1".into());
+        known.insert("local:local:amp:archived-2".into());
+        let kept = filter_detached_layouts_for_known_sessions(
+            vec![
+                layout("local:local:codex:live-1"),
+                layout("local:local:amp:archived-2"),
+                layout("local:local:goose:missing-3"),
+                layout("orphan-not-an-identity"),
+                layout(""),
+            ],
+            &known,
+        );
+        assert_eq!(
+            kept
+                .iter()
+                .map(|layout| layout.stove_key.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "local:local:codex:live-1",
+                "local:local:amp:archived-2"
+            ]
+        );
+    }
+}

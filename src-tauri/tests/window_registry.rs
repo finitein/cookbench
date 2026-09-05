@@ -197,3 +197,39 @@ fn command_service_persists_a_user_move_relative_to_the_destination_monitor() {
         .unwrap();
     assert_eq!(restored.position, WindowPosition { x: 2400, y: 300 });
 }
+
+#[test]
+fn skips_stale_layouts_when_filtering_before_restore() {
+    use cookbench_desktop_lib::window_registry::filter_detached_layouts_for_known_sessions;
+    use std::collections::BTreeSet;
+
+    let display = monitor("primary", 0, 1440, true);
+    let live = layout(
+        "local:local:codex:live-session",
+        &display,
+        WindowPosition { x: 100, y: 100 },
+    );
+    let stale = layout(
+        "local:local:codex:gone-session",
+        &display,
+        WindowPosition { x: 200, y: 200 },
+    );
+    let garbage = layout("not-a-stove-identity", &display, WindowPosition { x: 300, y: 300 });
+    let mut known = BTreeSet::new();
+    known.insert("local:local:codex:live-session".into());
+    let kept = filter_detached_layouts_for_known_sessions(
+        vec![live.clone(), stale, garbage],
+        &known,
+    );
+    assert_eq!(kept.len(), 1);
+    assert_eq!(kept[0].stove_key, "local:local:codex:live-session");
+
+    let mut registry = WindowRegistry::new(true);
+    let mut windows = FakeWindows::default();
+    let restored = registry
+        .restore_all(&mut windows, kept, std::slice::from_ref(&display))
+        .unwrap();
+    assert_eq!(restored.len(), 1);
+    assert_eq!(windows.created.len(), 1);
+    assert!(registry.detached("local:local:codex:gone-session").is_none());
+}

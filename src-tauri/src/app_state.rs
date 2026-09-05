@@ -24,6 +24,18 @@ use tauri::Manager;
 
 use crate::{events::StoveChange, persistence::DesktopPersistence};
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct DetachedLayoutRestoreKeys {
+    pub live: std::collections::BTreeSet<String>,
+    pub archived: std::collections::BTreeSet<String>,
+}
+
+impl DetachedLayoutRestoreKeys {
+    pub fn known(&self) -> std::collections::BTreeSet<String> {
+        self.live.union(&self.archived).cloned().collect()
+    }
+}
+
 pub struct AppState {
     pub stoves: StoveStore,
     persistence: Mutex<Option<PersistenceRuntime>>,
@@ -461,6 +473,57 @@ impl AppState {
             .as_ref()
             .map(|runtime| runtime.config.clone())
             .unwrap_or_default()
+    }
+
+    /// Stove keys that may still own a detached window after restart.
+    /// Live = tracked/pinned/retained/visible; archived is known for prune
+    /// matching but does not reopen a window (archive already closed it).
+    pub fn detached_layout_restore_keys(&self) -> DetachedLayoutRestoreKeys {
+        use std::collections::BTreeSet;
+        let mut live = BTreeSet::new();
+        for stove in self.stoves.snapshot().stoves {
+            live.insert(stove.id);
+        }
+        let persistence = self
+            .persistence
+            .lock()
+            .expect("desktop persistence lock poisoned");
+        let mut archived = BTreeSet::new();
+        if let Some(runtime) = persistence.as_ref() {
+            for tracked in &runtime.state.tracked {
+                if tracked.is_valid() {
+                    live.insert(stove_id(&tracked.locator));
+                }
+            }
+            for pinned in &runtime.state.pinned {
+                if pinned.session.is_valid() {
+                    live.insert(stove_id(&pinned.session.locator));
+                }
+            }
+            for retained in &runtime.state.retained {
+                live.insert(stove_id(&retained.locator));
+            }
+            for entry in &runtime.state.archived {
+                if entry.session.is_valid() {
+                    archived.insert(stove_id(&entry.session.locator));
+                }
+            }
+        }
+        DetachedLayoutRestoreKeys { live, archived }
+    }
+
+    /// Drops layouts that fail identity checks or no longer match a live or
+    /// archived session, then returns only the live subset safe to reopen.
+    pub fn prune_detached_layouts_for_restore(
+        &self,
+        layouts: Vec<cookbench_core::persistence::DetachedStoveLayout>,
+    ) -> Vec<cookbench_core::persistence::DetachedStoveLayout> {
+        let keys = self.detached_layout_restore_keys();
+        let known = keys.known();
+        crate::window_registry::filter_detached_layouts_for_known_sessions(layouts, &known)
+            .into_iter()
+            .filter(|layout| keys.live.contains(&layout.stove_key))
+            .collect()
     }
 
     pub fn update_persisted_config(
@@ -2199,5 +2262,99 @@ mod notification_tests {
             )
             .unwrap();
         assert!(recent_store.expiration_candidates(200).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod detached_layout_prune_tests {
+    use std::{
+        fs,
+        path::PathBuf,
+        sync::atomic::{AtomicU64, Ordering},
+    };
+
+    use cookbench_core::{
+        domain::{HarnessId, HostIdentity, StoveIdentity, StoveState},
+        persistence::{
+            DetachedStoveLayout, MonitorIdentity, RelativePosition, SessionRecord,
+            RetainedStovePresentation, WindowSize,
+        },
+    };
+
+    use super::AppState;
+
+    static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
+
+    struct TestDirectory(PathBuf);
+
+    impl TestDirectory {
+        fn new() -> Self {
+            let suffix = NEXT_DIRECTORY.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!("cookbench-d24-{suffix}"));
+            fs::create_dir_all(&path).unwrap();
+            Self(path)
+        }
+    }
+
+    impl Drop for TestDirectory {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn layout(stove_key: &str) -> DetachedStoveLayout {
+        DetachedStoveLayout {
+            stove_key: stove_key.into(),
+            monitor: MonitorIdentity {
+                id: "primary".into(),
+                name: None,
+            },
+            relative_position: RelativePosition { x: 0, y: 0 },
+            size: WindowSize {
+                width: 164,
+                height: 104,
+            },
+        }
+    }
+
+    #[test]
+    fn prunes_stale_detached_layouts_before_restore() {
+        let directory = TestDirectory::new();
+        let state = AppState::default();
+        state.initialize_persistence(&directory.0);
+
+        let live_identity =
+            StoveIdentity::new(HostIdentity::local("local"), HarnessId::Codex, "live-1");
+        let live_key = "local:local:codex:live-1";
+        {
+            let mut persistence = state.persistence.lock().unwrap();
+            let runtime = persistence.as_mut().unwrap();
+            let record = SessionRecord::new(
+                live_identity,
+                None,
+                1_700_000_000_000,
+                RetainedStovePresentation {
+                    project_label: "demo".into(),
+                    project_root_display: "/tmp/demo".into(),
+                },
+                StoveState::Cooking,
+            )
+            .unwrap();
+            runtime.state.tracked.push(record);
+        }
+
+        let restored = state.prune_detached_layouts_for_restore(vec![
+            layout(live_key),
+            layout("local:local:codex:missing-orphan"),
+            layout("ghost-not-identity"),
+            layout("local:local:amp:archived-only"),
+        ]);
+        assert_eq!(
+            restored
+                .iter()
+                .map(|layout| layout.stove_key.as_str())
+                .collect::<Vec<_>>(),
+            vec![live_key]
+        );
     }
 }

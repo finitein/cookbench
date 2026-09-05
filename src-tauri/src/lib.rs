@@ -259,7 +259,15 @@ pub fn run() {
                 commands::windows::TauriDetachedWindowHost::new(app.handle().clone()),
                 commands::windows::TauriMonitorProvider::new(app.handle().clone()),
             ));
+            // D24: never reopen detached windows for stoves Cookbench no longer
+            // knows (or whose identity is corrupt). Prune config first so a
+            // stale detached_layouts entry cannot create an empty ghost window.
             let layouts = state.persisted_config().layout.detached_layouts;
+            let layouts = state.prune_detached_layouts_for_restore(layouts);
+            let _ = state.update_persisted_config(|config| {
+                config.layout.detached_layouts = layouts.clone();
+                config.layout.detached_stoves.clear();
+            });
             app.state::<commands::windows::TauriWindowCommandService>()
                 .restore(layouts)
                 .map_err(|error| error.to_string())?;
