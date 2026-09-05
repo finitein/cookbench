@@ -62,7 +62,7 @@ export function NotificationSettingsPanel() {
   const { t } = useI18n();
   const eventLabel = (event: NotificationEvent) => t(EVENT_KEYS[event]);
   const channelLabel = (channel: LocalNotificationChannel) => t(CHANNEL_KEYS[channel]);
-  const [tab, setTab] = useState<"general" | "archive">("general");
+  const [tab, setTab] = useState<"general" | "sources" | "hooks" | "notifications" | "archive">("general");
   const [destinations, setDestinations] = useState<NotificationDestinationWire[]>([]);
   const [localSettings, setLocalSettings] = useState<LocalNotificationSettingsWire>(
     DEFAULT_LOCAL_NOTIFICATION_SETTINGS,
@@ -178,9 +178,15 @@ export function NotificationSettingsPanel() {
         </header>
         <div className="notification-settings__tabs" role="tablist" aria-label={t("settings.title")}>
           <button type="button" role="tab" aria-selected={tab === "general"} onClick={() => setTab("general")}>{t("settings.general")}</button>
+          <button type="button" role="tab" aria-selected={tab === "sources"} onClick={() => setTab("sources")}>{t("sources.title")}</button>
+          <button type="button" role="tab" aria-selected={tab === "hooks"} onClick={() => setTab("hooks")}>{t("hooks.title")}</button>
+          <button type="button" role="tab" aria-selected={tab === "notifications"} onClick={() => setTab("notifications")}>{t("notifications.title")}</button>
           <button type="button" role="tab" aria-selected={tab === "archive"} onClick={() => setTab("archive")}>{t("settings.archive")}</button>
         </div>
-        {tab === "archive" ? <ArchiveSettingsPanel /> : <>
+        {tab === "archive" ? <ArchiveSettingsPanel /> : null}
+        {tab === "sources" ? <><SourcesStatusPanel /><RemoteSourcesPanel /></> : null}
+        {tab === "hooks" ? <HookHealthPanel /> : null}
+        {tab === "general" ? <>
         <DisplaySettingsPanel />
         <section aria-labelledby="local-alerts-title">
           <div className="notification-settings__section-heading">
@@ -229,6 +235,8 @@ export function NotificationSettingsPanel() {
             </div>
           </div>
         </section>
+        </> : null}
+        {tab === "notifications" ? <>
         <section aria-labelledby="notification-settings-title">
           <div className="notification-settings__section-heading">
             <h2 id="notification-settings-title">{t("notifications.title")}</h2>
@@ -312,18 +320,15 @@ export function NotificationSettingsPanel() {
           </section>
         ))}
           </div>
-          <output role="status" aria-live="polite">{
-            status
-              ? t(status.key, status.name || status.nameKey
-                ? { name: status.name ?? (status.nameKey ? t(status.nameKey) : "") }
-                : undefined)
-              : ""
-          }</output>
         </section>
-        <SourcesStatusPanel />
-        <HookHealthPanel />
-        <RemoteSourcesPanel />
-        </>}
+        </> : null}
+        <output className="notification-settings__status" role="status" aria-live="polite">
+          {status
+            ? t(status.key, status.name || status.nameKey
+              ? { name: status.name ?? (status.nameKey ? t(status.nameKey) : "") }
+              : undefined)
+            : ""}
+        </output>
       </div>
     </main>
   );

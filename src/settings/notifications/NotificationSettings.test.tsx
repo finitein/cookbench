@@ -8,6 +8,14 @@ vi.mock("../hooks/HookHealthPanel", () => ({
   HookHealthPanel: () => <section aria-label="Hook health integration" />,
 }));
 
+vi.mock("../sources/SourcesStatusPanel", () => ({
+  SourcesStatusPanel: () => <section aria-label="Local sources integration" />,
+}));
+
+vi.mock("../remote/RemoteSourcesPanel", () => ({
+  RemoteSourcesPanel: () => <section aria-label="Remote sources integration" />,
+}));
+
 vi.mock("./service", () => ({
   configureNotificationDestination: vi.fn(),
   configureLocalNotificationSettings: vi.fn(async (input) => input),
@@ -30,7 +38,8 @@ describe("NotificationSettings", () => {
     await waitFor(() => expect(screen.getByRole("main", { name: "Cookbench settings" })).toBeInTheDocument());
     expect(screen.getByText("Settings", { selector: "h1" })).toBeInTheDocument();
     expect(document.querySelector(".notification-settings__surface")).toBeInTheDocument();
-    expect(screen.getByLabelText("Hook health integration")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "General" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("heading", { name: "Local alerts" })).toBeInTheDocument();
   });
 
   it("only exposes outbound destination toggles and synthetic test sends", async () => {
@@ -117,6 +126,21 @@ describe("NotificationSettings", () => {
     await waitFor(() => expect(archive).toHaveAttribute("aria-selected", "true"));
     expect(screen.getByRole("heading", { name: "Archive" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Notifications" })).not.toBeInTheDocument();
+  });
+
+  it("exposes Sources, Hook Health, and Notifications as first-class Settings tabs", async () => {
+    render(<NotificationSettingsPanel />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Local Sources" }));
+    await waitFor(() => expect(screen.getByLabelText("Local sources integration")).toBeInTheDocument());
+    expect(screen.getByLabelText("Remote sources integration")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Hook Health" }));
+    await waitFor(() => expect(screen.getByLabelText("Hook health integration")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("tab", { name: "Notifications" }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Notifications" })).toBeInTheDocument());
+    expect(screen.queryByRole("heading", { name: "Local alerts" })).not.toBeInTheDocument();
   });
 
   it("runs a test only for an enabled channel", async () => {

@@ -38,6 +38,7 @@
 
 .notification-settings__tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 3px;
   padding: 10px 20px 0;
   border-bottom: 1px solid #dfe7ee;
@@ -255,4 +256,12 @@
   .notification-settings__fields,
   .remote-settings__add { grid-template-columns: 1fr; }
   .remote-settings__add .remote-settings__bridge-choice { align-self: start; }
+}
+
+.notification-settings__status {
+  display: block;
+  min-height: 1.4em;
+  padding: 0 20px 16px;
+  color: #5f6875;
+  font-size: 12px;
 }
