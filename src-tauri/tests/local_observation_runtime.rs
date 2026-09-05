@@ -913,9 +913,10 @@ fn observes_grok_build_needs_human_and_failed_terminal_states() {
     assert!(failed
         .iter()
         .any(|kind| matches!(kind, EventKind::SessionFailed)));
-    assert!(!failed
-        .iter()
-        .any(|kind| matches!(kind, EventKind::TurnCompleted | EventKind::PermissionRequested)));
+    assert!(!failed.iter().any(|kind| matches!(
+        kind,
+        EventKind::TurnCompleted | EventKind::PermissionRequested
+    )));
 
     drop(events);
     fs::remove_dir_all(root).unwrap();
