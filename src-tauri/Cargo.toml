@@ -33,3 +33,6 @@ objc2-foundation = { version = "0.3.2", default-features = false, features = ["N
 
 [dev-dependencies]
 tauri = { version = "2.8.1", features = ["test"] }
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]

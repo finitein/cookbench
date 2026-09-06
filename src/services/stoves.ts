@@ -111,8 +111,13 @@ export async function subscribeToStoves(
   };
   const recoverSnapshot = async (): Promise<void> => {
     let previousRevision = sync.current().revision;
+    // Bound recovery so a continuous live revision stream cannot chase forever
+    // and starve the UI with nested snapshot fetches.
+    const maxRecoverySnapshots = 16;
+    let attempts = 0;
     try {
-      while (true) {
+      while (attempts < maxRecoverySnapshots) {
+        attempts += 1;
         const snapshot = await transport.snapshot();
         const current = sync.replace(snapshot);
         onSnapshot(current);

@@ -310,6 +310,185 @@ fn replaying_the_same_raw_completion_after_restart_keeps_it_acknowledged() {
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn replay_tracks_needs_human_and_failed_without_retaining_cooked() {
+    let directory = TestDirectory::new();
+    let app = tauri::test::mock_app();
+    let state = AppState::default();
+    state.initialize_persistence(&directory.0);
+    let project = ProjectIdentity::new(HostIdentity::local("test-host"), "/safe/d28");
+
+    let needs_human = StoveIdentity::new(
+        HostIdentity::local("test-host"),
+        HarnessId::Other("grok".into()),
+        "d28-needs-human",
+    );
+    state
+        .apply_replay_observation_and_emit(
+            app.handle(),
+            needs_human.clone(),
+            project.clone(),
+            LocatorCapability::Unavailable,
+            None,
+            None,
+            StoveEvent::new(EventKind::SessionDiscovered, event(1, 1)),
+        )
+        .unwrap();
+    state
+        .apply_replay_observation_and_emit(
+            app.handle(),
+            needs_human.clone(),
+            project.clone(),
+            LocatorCapability::Unavailable,
+            None,
+            None,
+            StoveEvent::new(EventKind::QuestionAsked, event(2, 2)),
+        )
+        .unwrap();
+
+    let failed = StoveIdentity::new(
+        HostIdentity::local("test-host"),
+        HarnessId::Other("grok".into()),
+        "d28-failed",
+    );
+    state
+        .apply_replay_observation_and_emit(
+            app.handle(),
+            failed.clone(),
+            project.clone(),
+            LocatorCapability::Unavailable,
+            None,
+            None,
+            StoveEvent::new(EventKind::SessionDiscovered, event(1, 1)),
+        )
+        .unwrap();
+    state
+        .apply_replay_observation_and_emit(
+            app.handle(),
+            failed.clone(),
+            project.clone(),
+            LocatorCapability::Unavailable,
+            None,
+            None,
+            StoveEvent::new(EventKind::SessionFailed, event(2, 2)),
+        )
+        .unwrap();
+
+    let cooked = StoveIdentity::new(
+        HostIdentity::local("test-host"),
+        HarnessId::Other("grok".into()),
+        "d28-cooked-replay",
+    );
+    state
+        .apply_replay_observation_and_emit(
+            app.handle(),
+            cooked.clone(),
+            project.clone(),
+            LocatorCapability::Unavailable,
+            None,
+            None,
+            StoveEvent::new(EventKind::SessionDiscovered, event(1, 1)),
+        )
+        .unwrap();
+    state
+        .apply_replay_observation_and_emit(
+            app.handle(),
+            cooked.clone(),
+            project.clone(),
+            LocatorCapability::Unavailable,
+            None,
+            None,
+            StoveEvent::new(EventKind::ToolStarted, event(2, 2)),
+        )
+        .unwrap();
+    state
+        .apply_replay_observation_and_emit(
+            app.handle(),
+            cooked,
+            project,
+            LocatorCapability::Unavailable,
+            None,
+            None,
+            StoveEvent::new(EventKind::TurnCompleted, event(3, 3)),
+        )
+        .unwrap();
+
+    let persisted = DesktopPersistence::in_app_data(&directory.0).load().state;
+    let tracked_ids: Vec<_> = persisted
+        .tracked
+        .iter()
+        .map(|record| (record.locator.native_session_id.clone(), record.last_state))
+        .collect();
+    assert!(
+        tracked_ids.contains(&("d28-needs-human".into(), StoveState::NeedsHuman)),
+        "replay NeedsHuman must enter tracked for expiry/missing-native: {tracked_ids:?}"
+    );
+    assert!(
+        tracked_ids.contains(&("d28-failed".into(), StoveState::Failed)),
+        "replay Failed must enter tracked for expiry/missing-native: {tracked_ids:?}"
+    );
+    assert!(
+        !tracked_ids.iter().any(|(id, _)| id == "d28-cooked-replay"),
+        "Cooked must not remain tracked after replay completion: {tracked_ids:?}"
+    );
+    assert!(
+        persisted.retained.is_empty(),
+        "replay must not invent retained Cooked completions: {:?}",
+        persisted.retained
+    );
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn live_cooked_still_retains_while_replay_cooked_does_not() {
+    let directory = TestDirectory::new();
+    let app = tauri::test::mock_app();
+    let state = AppState::default();
+    state.initialize_persistence(&directory.0);
+    let project = ProjectIdentity::new(HostIdentity::local("test-host"), "/safe/d28-live");
+    let identity = StoveIdentity::new(
+        HostIdentity::local("test-host"),
+        HarnessId::Codex,
+        "d28-live-cooked",
+    );
+
+    state
+        .apply_observation_and_emit(
+            app.handle(),
+            identity.clone(),
+            project.clone(),
+            LocatorCapability::Unavailable,
+            None,
+            None,
+            StoveEvent::new(EventKind::ToolStarted, event(1, 1)),
+        )
+        .unwrap();
+    state
+        .apply_observation_and_emit(
+            app.handle(),
+            identity,
+            project,
+            LocatorCapability::Unavailable,
+            None,
+            None,
+            StoveEvent::new(EventKind::TurnCompleted, event(2, 2)),
+        )
+        .unwrap();
+
+    let persisted = DesktopPersistence::in_app_data(&directory.0).load().state;
+    assert_eq!(persisted.retained.len(), 1);
+    assert_eq!(
+        persisted.retained[0].locator.native_session_id,
+        "d28-live-cooked"
+    );
+    assert!(
+        persisted.tracked.is_empty(),
+        "live Cooked must leave tracked empty: {:?}",
+        persisted.tracked
+    );
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn clear_then_new_raw_events_restore_the_new_cooked_completion() {
     let directory = TestDirectory::new();
     let app = tauri::test::mock_app();

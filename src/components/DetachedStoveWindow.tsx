@@ -1,7 +1,7 @@
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useEffect } from "react";
 import type { StoveWire } from "../types/stove";
-import { createPositionPersistence, detachedStoveTransport, startDetachedWindowDrag } from "../services/detachedStoves";
+import { applyDetachedWindowSize, createPositionPersistence, detachedStoveTransport, startDetachedWindowDrag } from "../services/detachedStoves";
 import { DetachedStoveBar } from "./DetachedStoveBar";
 import { archiveStove, setStovePinned } from "../services/stoves";
 import { useI18n } from "../i18n/i18n";
@@ -20,7 +20,16 @@ export function DetachedStoveWindow({ stove, onActivate, activeAlertStoveId }: D
     });
     let disposed = false;
     let stop: (() => void) | undefined;
+    let retry: ReturnType<typeof setTimeout> | undefined;
     try {
+      const applySize = () => {
+        void applyDetachedWindowSize().catch(() => {
+          // Browser fixtures and transient window teardown can reject setSize.
+        });
+      };
+      applySize();
+      // Second pass after first paint — WebKitGTK often inflates before layout settles.
+      retry = window.setTimeout(applySize, 50);
       void getCurrentWebviewWindow().onMoved(({ payload }) => {
         persistence.schedule(payload);
       }).then((unlisten) => {
@@ -32,6 +41,7 @@ export function DetachedStoveWindow({ stove, onActivate, activeAlertStoveId }: D
     }
     return () => {
       disposed = true;
+      if (retry != null) window.clearTimeout(retry);
       persistence.flush();
       stop?.();
     };

@@ -9,8 +9,10 @@
   position: relative;
   display: flex;
   box-sizing: border-box;
-  width: 100%;
-  height: 100%;
+  /* Fixed to the detach default (164x104). Stretching to 100% made Linux/X11
+     toolkit-floor windows (~200²) show blank white chrome around the burner. */
+  width: 164px;
+  height: 104px;
   min-height: 0;
   align-items: center;
   justify-content: center;

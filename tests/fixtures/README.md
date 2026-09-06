@@ -12,3 +12,5 @@ Fixture generators must replace all content-bearing fields with stable
 placeholders, preserve only the structural fields required by the test, bound
 record sizes, and document their input assumptions. Generators are development
 tools; their input and any generated raw output must remain outside the repo.
+
+Current harness fixtures: `claude/`, `codex/`, `grok_build/`, `pi/`, and `goose/` (legacy JSONL).

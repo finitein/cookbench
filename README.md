@@ -88,6 +88,9 @@ Pulling the Bar 24 px away undocks it. Detached Stoves keep their usual movable
 behavior. Wayland docking is best effort because the compositor owns that
 interaction. v0.4.2 fixes macOS auto-hide by using a native three-pixel trigger
 instead of asking AppKit to move a visible window beyond the top screen edge.
+Linux/X11 first tries the same off-screen slide; when a WM clamps the window so
+more than the trigger stays visible (observed with xfwm4), Cookbench shrinks in
+place to the three-pixel trigger at the dock edge — same contract as macOS.
 
 The v0.4.1 safety hotfix, retained in v0.4.2, temporarily suspends dynamic macOS
 status-bar Stove rendering after a WindowServer crash was reproduced on

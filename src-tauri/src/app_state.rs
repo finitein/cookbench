@@ -22,7 +22,23 @@ use cookbench_core::{
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
-use crate::{events::StoveChange, persistence::DesktopPersistence};
+use crate::{
+    events::StoveChange,
+    missing_natives::{filter_tracked_missing_natives, local_native_file_exists},
+    persistence::DesktopPersistence,
+};
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct DetachedLayoutRestoreKeys {
+    pub live: std::collections::BTreeSet<String>,
+    pub archived: std::collections::BTreeSet<String>,
+}
+
+impl DetachedLayoutRestoreKeys {
+    pub fn known(&self) -> std::collections::BTreeSet<String> {
+        self.live.union(&self.archived).cloned().collect()
+    }
+}
 
 pub struct AppState {
     pub stoves: StoveStore,
@@ -376,6 +392,21 @@ impl AppState {
                 );
             }
         }
+        // D25: recent tracked locals whose native file is already gone must
+        // not linger as D24 restore-live keys. Archive as Expired (source
+        // gone). Pins stay until unpin; SSH disconnect stays Disconnected.
+        for tracked in filter_tracked_missing_natives(
+            &loaded.state.tracked,
+            &pinned_identities,
+            local_native_file_exists,
+        ) {
+            let _ = service.archive_session(
+                &mut loaded.state,
+                tracked,
+                current_time_ms(),
+                ArchiveReason::Expired,
+            );
+        }
         let retained = loaded.state.retained.clone();
         let pinned = loaded.state.pinned.clone();
         *self
@@ -461,6 +492,71 @@ impl AppState {
             .as_ref()
             .map(|runtime| runtime.config.clone())
             .unwrap_or_default()
+    }
+
+    /// Stove keys that may still own a detached window after restart.
+    /// Live = tracked/pinned/retained/visible; archived is known for prune
+    /// matching but does not reopen a window (archive already closed it).
+    pub fn detached_layout_restore_keys(&self) -> DetachedLayoutRestoreKeys {
+        use std::collections::BTreeSet;
+        let mut live = BTreeSet::new();
+        for stove in self.stoves.snapshot().stoves {
+            live.insert(stove.id);
+        }
+        let persistence = self
+            .persistence
+            .lock()
+            .expect("desktop persistence lock poisoned");
+        let mut archived = BTreeSet::new();
+        if let Some(runtime) = persistence.as_ref() {
+            let pinned_locators = runtime
+                .state
+                .pinned
+                .iter()
+                .map(|pinned| pinned.session.locator.clone())
+                .collect::<HashSet<_>>();
+            let missing_natives = filter_tracked_missing_natives(
+                &runtime.state.tracked,
+                &pinned_locators,
+                local_native_file_exists,
+            )
+            .into_iter()
+            .map(|record| record.locator)
+            .collect::<HashSet<_>>();
+            for tracked in &runtime.state.tracked {
+                if tracked.is_valid() && !missing_natives.contains(&tracked.locator) {
+                    live.insert(stove_id(&tracked.locator));
+                }
+            }
+            for pinned in &runtime.state.pinned {
+                if pinned.session.is_valid() {
+                    live.insert(stove_id(&pinned.session.locator));
+                }
+            }
+            for retained in &runtime.state.retained {
+                live.insert(stove_id(&retained.locator));
+            }
+            for entry in &runtime.state.archived {
+                if entry.session.is_valid() {
+                    archived.insert(stove_id(&entry.session.locator));
+                }
+            }
+        }
+        DetachedLayoutRestoreKeys { live, archived }
+    }
+
+    /// Drops layouts that fail identity checks or no longer match a live or
+    /// archived session, then returns only the live subset safe to reopen.
+    pub fn prune_detached_layouts_for_restore(
+        &self,
+        layouts: Vec<cookbench_core::persistence::DetachedStoveLayout>,
+    ) -> Vec<cookbench_core::persistence::DetachedStoveLayout> {
+        let keys = self.detached_layout_restore_keys();
+        let known = keys.known();
+        crate::window_registry::filter_detached_layouts_for_known_sessions(layouts, &known)
+            .into_iter()
+            .filter(|layout| keys.live.contains(&layout.stove_key))
+            .collect()
     }
 
     pub fn update_persisted_config(
@@ -659,6 +755,70 @@ impl AppState {
         Ok(())
     }
 
+    /// After local discovery, archive non-pinned tracked locals whose native
+    /// file is gone and close any detached window for those keys.
+    pub fn reconcile_missing_natives_and_emit<R: tauri::Runtime>(
+        &self,
+        app: &tauri::AppHandle<R>,
+    ) -> Result<usize, AppStateError> {
+        let _serial = self.apply_lock.lock().expect("stove apply lock poisoned");
+        let candidates = {
+            let persistence = self
+                .persistence
+                .lock()
+                .expect("desktop persistence lock poisoned");
+            let Some(runtime) = persistence.as_ref() else {
+                return Ok(0);
+            };
+            let pinned_locators = runtime
+                .state
+                .pinned
+                .iter()
+                .map(|pinned| pinned.session.locator.clone())
+                .collect::<HashSet<_>>();
+            filter_tracked_missing_natives(
+                &runtime.state.tracked,
+                &pinned_locators,
+                local_native_file_exists,
+            )
+        };
+        if candidates.is_empty() {
+            return Ok(0);
+        }
+        let archived = {
+            let mut persistence = self
+                .persistence
+                .lock()
+                .expect("desktop persistence lock poisoned");
+            let runtime = persistence
+                .as_mut()
+                .ok_or_else(|| AppStateError::Persistence("persistence is unavailable".into()))?;
+            runtime
+                .service
+                .archive_expired_sessions(&mut runtime.state, candidates.clone(), current_time_ms())
+                .map_err(|error| AppStateError::Persistence(error.to_string()))?
+        };
+        for record in &candidates {
+            let id = stove_id(&record.locator);
+            if let Some(change) = self.stoves.remove_presentation(&id) {
+                crate::events::emit_stove_change(app, self.with_attention_order(change))
+                    .map_err(AppStateError::Emit)?;
+            }
+            if let Some(windows) =
+                app.try_state::<crate::commands::windows::TauriWindowCommandService>()
+            {
+                let _ = windows.clear_stove(&id);
+            }
+        }
+        if let Some(windows) =
+            app.try_state::<crate::commands::windows::TauriWindowCommandService>()
+        {
+            let _ = crate::commands::windows::persist_layouts(self, &windows);
+        }
+        crate::platform::publish_presentation_snapshot(app, &self.snapshot_locked());
+        Ok(archived)
+    }
+
     fn archive_stove_with_reason<R: tauri::Runtime>(
         &self,
         app: &tauri::AppHandle<R>,
@@ -836,6 +996,10 @@ impl AppState {
         )
     }
 
+    /// Bootstrap / historical native replay. Skips live notifications and
+    /// retained Cooked writes, but still tracks non-Cooked SessionRecords so
+    /// expiry and missing-native sweeps (D25/D28) see NH/Failed after first
+    /// discovery.
     #[allow(clippy::too_many_arguments)]
     pub fn apply_replay_observation_and_emit<R: tauri::Runtime>(
         &self,
@@ -941,27 +1105,30 @@ impl AppState {
             summary,
             event,
         )?;
-        if side_effects {
-            if let Some(stove) = self
-                .stoves
-                .core_stove_for_identity(&identity_for_persistence)
+        // D28: bootstrap Replay must still persist expiry/missing-native
+        // SessionRecords for non-Cooked stoves. Live-only side effects remain
+        // notifications and retained Cooked writes (replay must not invent
+        // Cookbench completions from historical native files).
+        if let Some(stove) = self
+            .stoves
+            .core_stove_for_identity(&identity_for_persistence)
+        {
+            if let Some(runtime) = self
+                .persistence
+                .lock()
+                .expect("desktop persistence lock poisoned")
+                .as_mut()
             {
-                if let Some(runtime) = self
-                    .persistence
-                    .lock()
-                    .expect("desktop persistence lock poisoned")
-                    .as_mut()
-                {
-                    let summary = self
-                        .stoves
-                        .summary_for_identity(&identity_for_persistence)
-                        .unwrap_or_else(|| StoveSummary::for_project(&stove.project));
-                    let observed_at_ms =
-                        latest_observed_at(&summary).unwrap_or_else(current_time_ms);
-                    let presentation = RetainedStovePresentation::new(
-                        summary.project_label,
-                        summary.project_root_display,
-                    );
+                let summary = self
+                    .stoves
+                    .summary_for_identity(&identity_for_persistence)
+                    .unwrap_or_else(|| StoveSummary::for_project(&stove.project));
+                let observed_at_ms = latest_observed_at(&summary).unwrap_or_else(current_time_ms);
+                let presentation = RetainedStovePresentation::new(
+                    summary.project_label,
+                    summary.project_root_display,
+                );
+                if side_effects {
                     let _ = runtime.service.persist_transition_with_presentation(
                         &mut runtime.state,
                         identity_for_persistence.clone(),
@@ -970,45 +1137,46 @@ impl AppState {
                         stove.last_event.as_ref().unwrap_or(&source_metadata),
                         presentation.clone(),
                     );
-                    if stove.state == StoveState::Cooked {
-                        let _ = runtime
-                            .service
-                            .remove_tracked(&mut runtime.state, &identity_for_persistence);
-                    } else if let Some(record) = SessionRecord::new(
-                        identity_for_persistence.clone(),
-                        self.stoves
-                            .locator_for(&stove_id(&identity_for_persistence))
-                            .and_then(|locator| locator.native_locator),
-                        observed_at_ms,
-                        presentation,
-                        stove.state,
-                    ) {
-                        if runtime
-                            .service
-                            .is_pinned(&runtime.state, &identity_for_persistence)
+                }
+                if stove.state == StoveState::Cooked {
+                    let _ = runtime
+                        .service
+                        .remove_tracked(&mut runtime.state, &identity_for_persistence);
+                } else if let Some(record) = SessionRecord::new(
+                    identity_for_persistence.clone(),
+                    self.stoves
+                        .locator_for(&stove_id(&identity_for_persistence))
+                        .and_then(|locator| locator.native_locator),
+                    observed_at_ms,
+                    presentation,
+                    stove.state,
+                ) {
+                    if runtime
+                        .service
+                        .is_pinned(&runtime.state, &identity_for_persistence)
+                    {
+                        if let Some(pinned) = runtime
+                            .state
+                            .pinned
+                            .iter_mut()
+                            .find(|pinned| pinned.session.locator == identity_for_persistence)
                         {
-                            if let Some(pinned) =
-                                runtime.state.pinned.iter_mut().find(|pinned| {
-                                    pinned.session.locator == identity_for_persistence
-                                })
+                            let same_metadata = pinned.session.native_locator
+                                == record.native_locator
+                                && pinned.session.presentation == record.presentation
+                                && pinned.session.last_state == record.last_state;
+                            if !same_metadata
+                                || record
+                                    .observed_at_ms
+                                    .saturating_sub(pinned.session.observed_at_ms)
+                                    >= 60_000
                             {
-                                let same_metadata = pinned.session.native_locator
-                                    == record.native_locator
-                                    && pinned.session.presentation == record.presentation
-                                    && pinned.session.last_state == record.last_state;
-                                if !same_metadata
-                                    || record
-                                        .observed_at_ms
-                                        .saturating_sub(pinned.session.observed_at_ms)
-                                        >= 60_000
-                                {
-                                    pinned.session = record;
-                                    let _ = runtime.service.save_state(&runtime.state);
-                                }
+                                pinned.session = record;
+                                let _ = runtime.service.save_state(&runtime.state);
                             }
-                        } else {
-                            let _ = runtime.service.track_session(&mut runtime.state, record);
                         }
+                    } else {
+                        let _ = runtime.service.track_session(&mut runtime.state, record);
                     }
                 }
             }
@@ -1786,7 +1954,9 @@ fn harness_wire(harness: &HarnessId) -> HarnessWire {
         },
         HarnessId::Other(id) => HarnessWire {
             id: id.clone(),
-            label: id.clone(),
+            label: cookbench_adapters::harness_profile(id)
+                .map(|profile| profile.label.to_owned())
+                .unwrap_or_else(|| id.clone()),
         },
     }
 }
@@ -2197,5 +2367,285 @@ mod notification_tests {
             )
             .unwrap();
         assert!(recent_store.expiration_candidates(200).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod detached_layout_prune_tests {
+    use std::{
+        fs,
+        path::PathBuf,
+        sync::atomic::{AtomicU64, Ordering},
+    };
+
+    use cookbench_core::{
+        domain::{HarnessId, HostIdentity, StoveIdentity, StoveState},
+        persistence::{
+            DetachedStoveLayout, MonitorIdentity, RelativePosition, RetainedStovePresentation,
+            SessionRecord, WindowSize,
+        },
+    };
+
+    use super::AppState;
+
+    static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
+
+    struct TestDirectory(PathBuf);
+
+    impl TestDirectory {
+        fn new() -> Self {
+            let suffix = NEXT_DIRECTORY.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!("cookbench-d24-{suffix}"));
+            fs::create_dir_all(&path).unwrap();
+            Self(path)
+        }
+    }
+
+    impl Drop for TestDirectory {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn layout(stove_key: &str) -> DetachedStoveLayout {
+        DetachedStoveLayout {
+            stove_key: stove_key.into(),
+            monitor: MonitorIdentity {
+                id: "primary".into(),
+                name: None,
+            },
+            relative_position: RelativePosition { x: 0, y: 0 },
+            size: WindowSize {
+                width: 164,
+                height: 104,
+            },
+        }
+    }
+
+    #[test]
+    fn prunes_stale_detached_layouts_before_restore() {
+        let directory = TestDirectory::new();
+        let state = AppState::default();
+        state.initialize_persistence(&directory.0);
+
+        let live_identity =
+            StoveIdentity::new(HostIdentity::local("local"), HarnessId::Codex, "live-1");
+        let live_key = "local:local:codex:live-1";
+        {
+            let mut persistence = state.persistence.lock().unwrap();
+            let runtime = persistence.as_mut().unwrap();
+            let record = SessionRecord::new(
+                live_identity,
+                None,
+                1_700_000_000_000,
+                RetainedStovePresentation {
+                    project_label: "demo".into(),
+                    project_root_display: "/tmp/demo".into(),
+                },
+                StoveState::Cooking,
+            )
+            .unwrap();
+            runtime.state.tracked.push(record);
+        }
+
+        let restored = state.prune_detached_layouts_for_restore(vec![
+            layout(live_key),
+            layout("local:local:codex:missing-orphan"),
+            layout("ghost-not-identity"),
+            layout("local:local:amp:archived-only"),
+        ]);
+        assert_eq!(
+            restored
+                .iter()
+                .map(|layout| layout.stove_key.as_str())
+                .collect::<Vec<_>>(),
+            vec![live_key]
+        );
+    }
+}
+
+#[cfg(test)]
+mod missing_native_sweep_tests {
+    use std::{
+        fs,
+        path::PathBuf,
+        sync::atomic::{AtomicU64, Ordering},
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    use cookbench_core::{
+        domain::{HarnessId, HostIdentity, HostKind, StoveIdentity, StoveState},
+        persistence::{
+            DetachedStoveLayout, MonitorIdentity, RelativePosition, RetainedStovePresentation,
+            SessionRecord, WindowSize,
+        },
+    };
+
+    use crate::persistence::DesktopPersistence;
+
+    use super::AppState;
+
+    static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
+
+    struct TestDirectory(PathBuf);
+
+    impl TestDirectory {
+        fn new() -> Self {
+            let suffix = NEXT_DIRECTORY.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!("cookbench-d25-{suffix}"));
+            fs::create_dir_all(&path).unwrap();
+            Self(path)
+        }
+    }
+
+    impl Drop for TestDirectory {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn now_ms() -> u64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64
+    }
+
+    fn local_record(session: &str, native_locator: Option<&str>) -> SessionRecord {
+        SessionRecord::new(
+            StoveIdentity::new(HostIdentity::local("local"), HarnessId::Codex, session),
+            native_locator.map(str::to_owned),
+            now_ms(),
+            RetainedStovePresentation::new("demo", "/tmp/demo"),
+            StoveState::NeedsHuman,
+        )
+        .unwrap()
+    }
+
+    fn layout(stove_key: &str) -> DetachedStoveLayout {
+        DetachedStoveLayout {
+            stove_key: stove_key.into(),
+            monitor: MonitorIdentity {
+                id: "primary".into(),
+                name: None,
+            },
+            relative_position: RelativePosition { x: 0, y: 0 },
+            size: WindowSize {
+                width: 164,
+                height: 104,
+            },
+        }
+    }
+
+    #[test]
+    fn initialize_persistence_archives_recent_tracked_missing_natives() {
+        let directory = TestDirectory::new();
+        let persistence = DesktopPersistence::in_app_data(&directory.0);
+        let mut persisted = cookbench_core::persistence::PersistedState::default();
+        let missing = local_record("d25-gone", Some("/tmp/cookbench-d25-does-not-exist.jsonl"));
+        persistence.track_session(&mut persisted, missing).unwrap();
+
+        let state = AppState::default();
+        state.initialize_persistence(&directory.0);
+
+        assert!(state.stoves.snapshot().stoves.is_empty());
+        let archived = state.archived_sessions();
+        assert_eq!(archived.len(), 1);
+        assert_eq!(archived[0].id, "local:local:codex:d25-gone");
+        assert!(!archived[0].source_available);
+        assert_eq!(archived[0].reason, super::ArchiveReasonWire::Expired);
+        {
+            let guard = state.persistence.lock().unwrap();
+            assert!(guard.as_ref().unwrap().state.tracked.is_empty());
+        }
+    }
+
+    #[test]
+    fn keeps_existing_files_pins_and_ssh_tracked_records() {
+        let directory = TestDirectory::new();
+        let present_path = directory.0.join("present.jsonl");
+        fs::write(&present_path, "{}\n").unwrap();
+        let persistence = DesktopPersistence::in_app_data(&directory.0);
+        let mut persisted = cookbench_core::persistence::PersistedState::default();
+        persistence
+            .track_session(
+                &mut persisted,
+                local_record("present", Some(present_path.to_str().unwrap())),
+            )
+            .unwrap();
+        persistence
+            .pin_session(
+                &mut persisted,
+                local_record("pinned-gone", Some("/tmp/cookbench-d25-pinned-gone.jsonl")),
+                now_ms(),
+            )
+            .unwrap();
+        let ssh = SessionRecord::new(
+            StoveIdentity::new(HostIdentity::ssh("jump"), HarnessId::Codex, "ssh-session"),
+            Some("/tmp/cookbench-d25-ssh-gone.jsonl".into()),
+            now_ms(),
+            RetainedStovePresentation::new("remote", "/remote/demo"),
+            StoveState::Disconnected,
+        )
+        .unwrap();
+        persistence.track_session(&mut persisted, ssh).unwrap();
+
+        let state = AppState::default();
+        state.initialize_persistence(&directory.0);
+
+        {
+            let guard = state.persistence.lock().unwrap();
+            let runtime = guard.as_ref().unwrap();
+            let tracked: Vec<_> = runtime
+                .state
+                .tracked
+                .iter()
+                .map(|record| {
+                    (
+                        record.locator.host.kind.clone(),
+                        record.locator.native_session_id.as_str(),
+                    )
+                })
+                .collect();
+            assert!(tracked.contains(&(HostKind::Local, "present")));
+            assert!(tracked.contains(&(HostKind::Ssh, "ssh-session")));
+            assert_eq!(runtime.state.pinned.len(), 1);
+            assert!(runtime.state.archived.is_empty());
+        }
+
+        let restored = state.prune_detached_layouts_for_restore(vec![
+            layout("local:local:codex:present"),
+            layout("local:local:codex:pinned-gone"),
+            layout("ssh:jump:codex:ssh-session"),
+            layout("local:local:codex:d25-gone"),
+        ]);
+        let keys: Vec<_> = restored
+            .iter()
+            .map(|layout| layout.stove_key.as_str())
+            .collect();
+        assert!(keys.contains(&"local:local:codex:present"));
+        assert!(keys.contains(&"local:local:codex:pinned-gone"));
+        assert!(keys.contains(&"ssh:jump:codex:ssh-session"));
+        assert!(!keys.contains(&"local:local:codex:d25-gone"));
+    }
+
+    #[test]
+    fn restore_keys_exclude_in_memory_missing_natives() {
+        let directory = TestDirectory::new();
+        let state = AppState::default();
+        state.initialize_persistence(&directory.0);
+        {
+            let mut persistence = state.persistence.lock().unwrap();
+            let runtime = persistence.as_mut().unwrap();
+            runtime.state.tracked.push(local_record(
+                "ghost",
+                Some("/tmp/cookbench-d25-ghost.jsonl"),
+            ));
+        }
+        let keys = state.detached_layout_restore_keys();
+        assert!(!keys.live.contains("local:local:codex:ghost"));
+        assert!(state
+            .prune_detached_layouts_for_restore(vec![layout("local:local:codex:ghost")])
+            .is_empty());
     }
 }

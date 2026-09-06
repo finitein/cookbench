@@ -1,8 +1,9 @@
 //! Read-only local session observation.
 //!
-//! This runtime tails only native JSONL session files and forwards normalized,
-//! content-free lifecycle events. It never launches, controls, or configures a
-//! harness, and it retains neither transcript records nor a session database.
+//! This runtime observes native session files (JSONL tails, plus Amp's legacy
+//! thread JSON documents) and forwards normalized, content-free lifecycle
+//! events. It never launches, controls, or configures a harness, and it
+//! retains neither transcript records nor a session database.
 
 pub mod archive_inventory;
 
@@ -20,9 +21,12 @@ use std::{
 };
 
 use cookbench_adapters::{
+    amp::{self, AmpAdapter},
     catalog,
     claude::{self, ClaudeAdapter},
     codex::{self, CodexAdapter},
+    goose::{self, GooseAdapter},
+    grok::{self, GrokAdapter},
     io::{DirectoryWatch, JsonlTailer, TailLimits, TailRecord},
     pi::{self, PiAdapter},
     HostSource, NativeSession, SupportTier,
@@ -115,6 +119,9 @@ pub struct LocalObservationConfig {
     pub codex_root: PathBuf,
     pub claude_root: PathBuf,
     pub pi_roots: Vec<PathBuf>,
+    pub grok_root: PathBuf,
+    pub goose_root: PathBuf,
+    pub amp_root: PathBuf,
     pub startup_min_modified: SystemTime,
     pub startup_candidate_limit: usize,
     /// Explicit local session files that remain observable after the normal
@@ -129,11 +136,20 @@ impl LocalObservationConfig {
         let claude = ClaudeAdapter::from_environment()
             .unwrap_or_else(|_| ClaudeAdapter::new(PathBuf::from(".claude/projects")));
         let pi = PiAdapter::new();
+        let grok = GrokAdapter::from_environment()
+            .unwrap_or_else(|_| GrokAdapter::new(PathBuf::from(".grok/sessions")));
+        let goose = GooseAdapter::from_environment()
+            .unwrap_or_else(|_| GooseAdapter::new(PathBuf::from(".local/share/goose/sessions")));
+        let amp = AmpAdapter::from_environment()
+            .unwrap_or_else(|_| AmpAdapter::new(PathBuf::from(".local/share/amp/threads")));
         Self {
             host,
             codex_root: codex.root().to_owned(),
             claude_root: claude.projects_root().to_owned(),
             pi_roots: pi.roots().to_vec(),
+            grok_root: grok.sessions_root().to_owned(),
+            goose_root: goose.sessions_root().to_owned(),
+            amp_root: amp.threads_root().to_owned(),
             startup_min_modified: SystemTime::now()
                 .checked_sub(STARTUP_DISCOVERY_AGE)
                 .unwrap_or(SystemTime::UNIX_EPOCH),
@@ -155,6 +171,10 @@ pub trait ObservationSink: Send + Sync + 'static {
         origin: ObservationOrigin,
         event: StoveEvent,
     );
+
+    /// Invoked after the first local `refresh_all` so callers can reconcile
+    /// tracked records whose native files were not rediscovered.
+    fn local_discovery_ready(&self) {}
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -168,6 +188,9 @@ enum ParserKind {
     Codex,
     Claude,
     Pi,
+    Grok,
+    Goose,
+    Amp,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -247,6 +270,18 @@ impl LocalSourceStatusState {
                         .into_iter()
                         .map(Path::to_path_buf)
                         .collect::<Vec<_>>(),
+                    "grok_cli" => roots_for_kind(ParserKind::Grok, config)
+                        .into_iter()
+                        .map(Path::to_path_buf)
+                        .collect::<Vec<_>>(),
+                    "goose" => roots_for_kind(ParserKind::Goose, config)
+                        .into_iter()
+                        .map(Path::to_path_buf)
+                        .collect::<Vec<_>>(),
+                    "amp" => roots_for_kind(ParserKind::Amp, config)
+                        .into_iter()
+                        .map(Path::to_path_buf)
+                        .collect::<Vec<_>>(),
                     _ => profile
                         .default_roots
                         .iter()
@@ -264,7 +299,9 @@ impl LocalSourceStatusState {
                     label: profile.label,
                     tier: LocalSourceSupportTier::from(profile.tier),
                     observation: match profile.id {
-                        "codex" | "claude_code" | "pi" => LocalSourceObservation::NativeSessions,
+                        "codex" | "claude_code" | "pi" | "grok_cli" | "goose" | "amp" => {
+                            LocalSourceObservation::NativeSessions
+                        }
                         _ if profile.structured_lifecycle => LocalSourceObservation::StructuredHook,
                         _ => LocalSourceObservation::PresenceOnly,
                     },
@@ -323,6 +360,9 @@ const fn harness_for(kind: ParserKind) -> &'static str {
         ParserKind::Codex => "codex",
         ParserKind::Claude => "claudeCode",
         ParserKind::Pi => "pi",
+        ParserKind::Grok => "grok_cli",
+        ParserKind::Goose => "goose",
+        ParserKind::Amp => "amp",
     }
 }
 
@@ -346,9 +386,12 @@ struct WatchedSession {
     locator: SessionLocator,
     title: Option<String>,
     parser: ParserKind,
-    tailer: JsonlTailer,
+    /// Present for JSONL harnesses. Amp uses whole-document observation instead.
+    tailer: Option<JsonlTailer>,
     sequence: u64,
     source_modified_at_ms: Option<u64>,
+    /// Fingerprint length for Amp document re-read suppression.
+    amp_doc_len: Option<u64>,
 }
 
 const REPLAY_WINDOW_BYTES: u64 = 1024 * 1024;
@@ -398,6 +441,7 @@ impl<S: ObservationSink> LocalObservationRuntime<S> {
     /// any adapter opens their bodies.
     pub fn bootstrap(&mut self) {
         self.refresh_all();
+        self.sink.local_discovery_ready();
     }
 
     pub fn tick(&mut self) {
@@ -447,8 +491,14 @@ impl<S: ObservationSink> LocalObservationRuntime<S> {
         let Some(session) = self.sessions.get_mut(&lookup) else {
             return false;
         };
+        if session.parser == ParserKind::Amp {
+            return observe_amp_document(session, &lookup, origin, self.sink.as_ref());
+        }
         session.source_modified_at_ms = source_modified_at_ms(&lookup);
-        let records = match session.tailer.poll() {
+        let Some(tailer) = session.tailer.as_mut() else {
+            return false;
+        };
+        let records = match tailer.poll() {
             Ok(records) => records,
             Err(_) => return false,
         };
@@ -496,7 +546,14 @@ impl<S: ObservationSink> LocalObservationRuntime<S> {
     }
 
     fn refresh_all(&mut self) {
-        for kind in [ParserKind::Codex, ParserKind::Claude, ParserKind::Pi] {
+        for kind in [
+            ParserKind::Codex,
+            ParserKind::Claude,
+            ParserKind::Pi,
+            ParserKind::Grok,
+            ParserKind::Goose,
+            ParserKind::Amp,
+        ] {
             self.refresh_kind(kind);
         }
     }
@@ -567,7 +624,14 @@ impl<S: ObservationSink> LocalObservationRuntime<S> {
     /// Archive restoration uses this to recover events that were observed
     /// while the Stove presentation was deliberately suppressed.
     fn refresh_path(&mut self, path: &Path) {
-        for kind in [ParserKind::Codex, ParserKind::Claude, ParserKind::Pi] {
+        for kind in [
+            ParserKind::Codex,
+            ParserKind::Claude,
+            ParserKind::Pi,
+            ParserKind::Grok,
+            ParserKind::Goose,
+            ParserKind::Amp,
+        ] {
             let Some(path) = validated_pinned_path(kind, &self.config, path) else {
                 continue;
             };
@@ -585,14 +649,19 @@ impl<S: ObservationSink> LocalObservationRuntime<S> {
         if self.sessions.contains_key(&path) {
             return;
         }
-        let root = root_for(kind, &self.config, &path);
-        let Ok(mut tailer) = JsonlTailer::open(root, &path, TailLimits::default()) else {
-            return;
+        let (tailer, sequence) = if kind == ParserKind::Amp {
+            (None, 0)
+        } else {
+            let root = root_for(kind, &self.config, &path);
+            let Ok(mut opened) = JsonlTailer::open(root, &path, TailLimits::default()) else {
+                return;
+            };
+            if opened.seek_recent_window(REPLAY_WINDOW_BYTES).is_err() {
+                return;
+            }
+            let sequence = opened.cursor();
+            (Some(opened), sequence)
         };
-        if tailer.seek_recent_window(REPLAY_WINDOW_BYTES).is_err() {
-            return;
-        }
-        let sequence = tailer.cursor();
         let identity = StoveIdentity::new(
             session.host.clone(),
             session.harness.clone(),
@@ -631,6 +700,7 @@ impl<S: ObservationSink> LocalObservationRuntime<S> {
                 tailer,
                 sequence,
                 source_modified_at_ms: source_modified_at_ms(&path),
+                amp_doc_len: None,
             },
         );
         self.replay_recent(&path);
@@ -725,6 +795,9 @@ fn roots(config: &LocalObservationConfig) -> Vec<(ParserKind, &Path)> {
     let mut values = vec![
         (ParserKind::Codex, config.codex_root.as_path()),
         (ParserKind::Claude, config.claude_root.as_path()),
+        (ParserKind::Grok, config.grok_root.as_path()),
+        (ParserKind::Goose, config.goose_root.as_path()),
+        (ParserKind::Amp, config.amp_root.as_path()),
     ];
     values.extend(
         config
@@ -738,6 +811,9 @@ fn root_for(kind: ParserKind, config: &LocalObservationConfig, path: &Path) -> P
     match kind {
         ParserKind::Codex => config.codex_root.clone(),
         ParserKind::Claude => config.claude_root.clone(),
+        ParserKind::Grok => config.grok_root.clone(),
+        ParserKind::Goose => config.goose_root.clone(),
+        ParserKind::Amp => config.amp_root.clone(),
         ParserKind::Pi => config
             .pi_roots
             .iter()
@@ -748,6 +824,9 @@ fn root_for(kind: ParserKind, config: &LocalObservationConfig, path: &Path) -> P
 }
 fn discover(kind: ParserKind, config: &LocalObservationConfig) -> (Vec<NativeSession>, u64) {
     let source = HostSource::local(config.host.clone());
+    if kind == ParserKind::Amp {
+        return discover_amp(config, &source);
+    }
     let mut scanned = 0;
     let mut paths = Vec::new();
     for root in roots_for_kind(kind, config) {
@@ -794,6 +873,23 @@ fn discover(kind: ParserKind, config: &LocalObservationConfig) -> (Vec<NativeSes
     (sessions, parser_errors)
 }
 
+fn discover_amp(config: &LocalObservationConfig, source: &HostSource) -> (Vec<NativeSession>, u64) {
+    let Ok(mut sessions) = amp::discover_sessions(&config.amp_root, source) else {
+        return (Vec::new(), 1);
+    };
+    sessions.retain(|session| {
+        let path = PathBuf::from(&session.locator.value);
+        is_recent_path(&path, config.startup_min_modified)
+    });
+    sessions.sort_by(|left, right| {
+        modified_at_path(Path::new(&right.locator.value))
+            .cmp(&modified_at_path(Path::new(&left.locator.value)))
+            .then_with(|| left.locator.value.cmp(&right.locator.value))
+    });
+    sessions.truncate(config.startup_candidate_limit);
+    (sessions, 0)
+}
+
 fn session_from_path(
     kind: ParserKind,
     config: &LocalObservationConfig,
@@ -834,6 +930,33 @@ fn session_from_path_with_source_result(
             .session_metadata_from_path(source, path.to_owned())
             .map(Some)
             .map_err(|_| ()),
+        ParserKind::Grok => {
+            let root =
+                fs::canonicalize(&config.grok_root).unwrap_or_else(|_| config.grok_root.clone());
+            let path = fs::canonicalize(path).unwrap_or_else(|_| path.to_owned());
+            if !path.starts_with(&root) {
+                return Ok(None);
+            }
+            grok::session_from_path(&path, source).map_err(|_| ())
+        }
+        ParserKind::Goose => {
+            let root =
+                fs::canonicalize(&config.goose_root).unwrap_or_else(|_| config.goose_root.clone());
+            let path = fs::canonicalize(path).unwrap_or_else(|_| path.to_owned());
+            if !path.starts_with(&root) {
+                return Ok(None);
+            }
+            goose::session_from_path(&path, source).map_err(|_| ())
+        }
+        ParserKind::Amp => {
+            let root =
+                fs::canonicalize(&config.amp_root).unwrap_or_else(|_| config.amp_root.clone());
+            let path = fs::canonicalize(path).unwrap_or_else(|_| path.to_owned());
+            if !path.starts_with(&root) {
+                return Ok(None);
+            }
+            amp::session_from_path(&path, source).map_err(|_| ())
+        }
     }
 }
 
@@ -882,6 +1005,9 @@ fn roots_for_kind(kind: ParserKind, config: &LocalObservationConfig) -> Vec<&Pat
         ParserKind::Codex => vec![config.codex_root.as_path()],
         ParserKind::Claude => vec![config.claude_root.as_path()],
         ParserKind::Pi => config.pi_roots.iter().map(PathBuf::as_path).collect(),
+        ParserKind::Grok => vec![config.grok_root.as_path()],
+        ParserKind::Goose => vec![config.goose_root.as_path()],
+        ParserKind::Amp => vec![config.amp_root.as_path()],
     }
 }
 fn parse(kind: ParserKind, line: &str, sequence: u64) -> Vec<StoveEvent> {
@@ -899,7 +1025,58 @@ fn parse(kind: ParserKind, line: &str, sequence: u64) -> Vec<StoveEvent> {
             .map(|record| record.events)
             .unwrap_or_default(),
         ParserKind::Pi => pi::parse_record(line, sequence),
+        ParserKind::Grok => grok::parse_record(line, sequence),
+        ParserKind::Goose => goose::parse_record(line, sequence),
+        ParserKind::Amp => Vec::new(),
     }
+}
+
+const MAX_AMP_DOCUMENT_BYTES: u64 = 256 * 1024;
+
+fn observe_amp_document<S: ObservationSink>(
+    session: &mut WatchedSession,
+    path: &Path,
+    origin: ObservationOrigin,
+    sink: &S,
+) -> bool {
+    let Ok(metadata) = fs::metadata(path) else {
+        return false;
+    };
+    if !metadata.is_file() || metadata.len() > MAX_AMP_DOCUMENT_BYTES {
+        return false;
+    }
+    let len = metadata.len();
+    let mtime = source_modified_at_ms(path);
+    if session.amp_doc_len == Some(len) && session.source_modified_at_ms == mtime {
+        return false;
+    }
+    let Ok(contents) = fs::read_to_string(path) else {
+        return false;
+    };
+    if contents.len() as u64 > MAX_AMP_DOCUMENT_BYTES {
+        return false;
+    }
+    session.source_modified_at_ms = mtime;
+    session.amp_doc_len = Some(len);
+    let mut observed = false;
+    for event in amp::parse_thread(&contents) {
+        if event.metadata.sequence <= session.sequence {
+            continue;
+        }
+        session.sequence = event.metadata.sequence;
+        sink.apply(
+            session.identity.clone(),
+            session.project.clone(),
+            session.locator.clone(),
+            session.title.clone(),
+            ObservationSummary::from_event(session.title.as_deref(), &event, current_time_ms())
+                .with_source_modified_at_ms(session.source_modified_at_ms),
+            origin,
+            event,
+        );
+        observed = true;
+    }
+    observed
 }
 
 fn modified_at_path(path: &Path) -> Option<SystemTime> {
@@ -927,10 +1104,15 @@ fn validated_pinned_path(
     config: &LocalObservationConfig,
     path: &Path,
 ) -> Option<PathBuf> {
-    if !path
-        .extension()
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("jsonl"))
-    {
+    let allowed = match kind {
+        ParserKind::Amp => path
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("json")),
+        _ => path
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("jsonl")),
+    };
+    if !allowed {
         return None;
     }
     let metadata = fs::metadata(path).ok()?;

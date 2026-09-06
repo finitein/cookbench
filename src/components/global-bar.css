@@ -10,6 +10,9 @@
   --bar-codex: #007cab;
   --bar-claude: #bd4f22;
   --bar-pi: #8135ae;
+  --bar-grok: #2563eb;
+  --bar-goose: #0f766e;
+  --bar-amp: #7c3aed;
   box-sizing: border-box;
   position: relative;
   display: grid;
@@ -70,24 +73,26 @@
 }
 .global-bar__settings {
   position: absolute;
-  right: 3px;
-  bottom: 3px;
+  left: 0;
+  right: 0;
+  bottom: 0;
   display: grid;
-  width: 24px;
-  height: 24px;
+  width: 100%;
+  height: 44px;
+  min-height: 44px;
   padding: 0;
   border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: #5f6875;
+  border-radius: 0 0 4px 0;
+  background: rgb(255 255 255 / 42%);
+  color: #3f4a57;
   cursor: pointer;
   place-items: center;
 }
 .global-bar__settings:hover,
-.global-bar__settings:focus-visible { background: rgb(255 255 255 / 76%); outline: 2px solid #316f98; }
-.global-bar__settings > span { display: grid; width: 13px; gap: 3px; }
-.global-bar__settings i { position: relative; display: block; height: 1px; background: currentColor; }
-.global-bar__settings i::after { position: absolute; top: -2px; width: 5px; height: 5px; border-radius: 50%; background: currentColor; content: ""; }
+.global-bar__settings:focus-visible { background: rgb(255 255 255 / 88%); outline: 2px solid #316f98; outline-offset: -2px; }
+.global-bar__settings > span { display: grid; width: 16px; gap: 3px; }
+.global-bar__settings i { position: relative; display: block; height: 2px; background: currentColor; }
+.global-bar__settings i::after { position: absolute; top: -2px; width: 6px; height: 6px; border-radius: 50%; background: currentColor; content: ""; }
 .global-bar__settings i:nth-child(1)::after,
 .global-bar__settings i:nth-child(3)::after { left: 2px; }
 .global-bar__settings i:nth-child(2)::after { right: 2px; }
@@ -173,6 +178,9 @@
 .global-bar__bench[data-harness="codex"] .global-bar__bench-heading { color: var(--bar-codex); }
 .global-bar__bench[data-harness="claudeCode"] .global-bar__bench-heading { color: var(--bar-claude); }
 .global-bar__bench[data-harness="pi"] .global-bar__bench-heading { color: var(--bar-pi); }
+.global-bar__bench[data-harness="grok_cli"] .global-bar__bench-heading { color: var(--bar-grok); }
+.global-bar__bench[data-harness="goose"] .global-bar__bench-heading { color: var(--bar-goose); }
+.global-bar__bench[data-harness="amp"] .global-bar__bench-heading { color: var(--bar-amp); }
 
 .global-bar__stoves {
   display: grid;
@@ -186,7 +194,19 @@
   overflow: visible;
 }
 
-.global-bar--empty .global-bar__benches { display: none; }
+.global-bar--empty .global-bar__benches {
+  display: grid;
+  align-content: center;
+  min-height: 54px;
+}
+.global-bar__empty-hint {
+  margin: 0;
+  padding: 0 8px 0 4px;
+  color: var(--bar-muted);
+  font-size: 12px;
+  line-height: 1.35;
+  font-weight: 500;
+}
 
 /* The native webview cannot paint outside its window. Grow only while a detail
    card is requested so the card remains a real, reachable hover/focus surface. */
@@ -468,6 +488,9 @@
 .harness-mark--claude { color: var(--bar-claude); }
 .harness-mark--claudeCode { color: var(--bar-claude); }
 .harness-mark--pi { color: var(--bar-pi); }
+.harness-mark--grok_cli { color: var(--bar-grok); }
+.harness-mark--goose { color: var(--bar-goose); }
+.harness-mark--amp { color: var(--bar-amp); }
 
 .host-badge {
   position: absolute;
@@ -563,7 +586,7 @@
 
 @media (max-width: 420px) {
   .global-bar { align-items: start; }
-  .global-bar__brand { width: 38px; min-width: 38px; }
+  .global-bar__brand { width: 52px; min-width: 52px; }
   .global-bar__brand img { width: 24px; height: 24px; }
   .global-bar__stoves { grid-template-columns: repeat(auto-fit, minmax(76px, 82px)); }
   .stove-tooltip { width: min(260px, calc(100vw - 16px)); }

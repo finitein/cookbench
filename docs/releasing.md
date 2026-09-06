@@ -77,3 +77,7 @@ Exact terminal-tab focus, Wayland presentation, multi-monitor restoration,
 sleep/wake, full-screen behavior, native notification centers, live outbound
 sandboxes, and real SSH transport remain manual release gates. Never infer them
 from unit tests or Chromium screenshots.
+
+## Local release dogfood
+
+For a GUI smoke without a Vite dev server, use the Tauri CLI release build (or cargo release with the custom-protocol feature after building dist/). See docs/verification/verify-port-notes.md. Plain cargo release keeps cfg(dev) and still loads build.devUrl.

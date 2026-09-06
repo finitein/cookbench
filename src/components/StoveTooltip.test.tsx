@@ -26,7 +26,7 @@ describe("StoveTooltip", () => {
     expect(tooltip).not.toHaveTextContent("0s");
   });
 
-  it("identifies the native session with a short safe suffix rather than its full id", () => {
+  it("identifies the native session with a short safe UUID prefix rather than its full id", () => {
     render(
       <StoveTooltip
         id="tooltip"
@@ -38,7 +38,7 @@ describe("StoveTooltip", () => {
 
     const tooltip = screen.getByRole("tooltip");
     expect(tooltip).toHaveTextContent("Session");
-    expect(tooltip).toHaveTextContent("#d4e5f607");
+    expect(tooltip).toHaveTextContent("#0198f7d2");
     expect(tooltip).not.toHaveTextContent("0198f7d2-5e8b-4a6a-9fb2-a3c1d4e5f607");
   });
 });

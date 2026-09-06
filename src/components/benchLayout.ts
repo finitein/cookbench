@@ -13,7 +13,7 @@ export type BenchLayout = {
   benches: readonly StoveBench[];
 };
 
-const HARNESS_ORDER = ["codex", "claudeCode", "pi"] as const;
+const HARNESS_ORDER = ["codex", "claudeCode", "pi", "grok_cli", "goose", "amp"] as const;
 
 /** The display must always reserve at least one complete Stove slot. */
 export function stoveCapacityForWidth(width: number): number {
@@ -26,11 +26,26 @@ export function sortStovesForBench(stoves: readonly StoveWire[]): StoveWire[] {
   return [...stoves];
 }
 
+function harnessRank(harness: HarnessKind): number {
+  const index = (HARNESS_ORDER as readonly string[]).indexOf(harness);
+  return index >= 0 ? index : HARNESS_ORDER.length;
+}
+
+/** Preserve desktop attention order: first harness in `stoves` wins the top bench. */
 function orderedHarnesses(stoves: readonly StoveWire[]): HarnessKind[] {
-  const seen = new Set(stoves.map((stove) => stove.harness.id));
-  const known = HARNESS_ORDER.filter((harness) => seen.has(harness));
-  const unknown = [...seen].filter((harness) => !HARNESS_ORDER.includes(harness as typeof HARNESS_ORDER[number])).sort();
-  return [...known, ...unknown];
+  const firstIndex = new Map<HarnessKind, number>();
+  stoves.forEach((stove, index) => {
+    if (!firstIndex.has(stove.harness.id)) {
+      firstIndex.set(stove.harness.id, index);
+    }
+  });
+  return [...firstIndex.keys()].sort((left, right) => {
+    const byAttention = (firstIndex.get(left) ?? 0) - (firstIndex.get(right) ?? 0);
+    if (byAttention !== 0) return byAttention;
+    const byKnown = harnessRank(left) - harnessRank(right);
+    if (byKnown !== 0) return byKnown;
+    return left.localeCompare(right);
+  });
 }
 
 export function arrangeBenches(stoves: readonly StoveWire[], rowCapacity: number): BenchLayout {

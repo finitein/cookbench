@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { StoveWire } from "../types/stove";
-import { createPositionPersistence, detachedWindowLabel, stoveForDetachedWindow } from "./detachedStoves";
+import { createPositionPersistence, DETACHED_STOVE_WINDOW_SIZE, detachedWindowLabel, stoveForDetachedWindow } from "./detachedStoves";
 
 const stove = {
   id: "local:codex:session-42",
@@ -36,5 +36,11 @@ describe("detached Stove routing", () => {
     writer.flush();
     expect(persist).toHaveBeenLastCalledWith({ x: 30, y: 40 });
     vi.useRealTimers();
+  });
+});
+
+describe("DETACHED_STOVE_WINDOW_SIZE", () => {
+  it("matches the Rust detach default window size", () => {
+    expect(DETACHED_STOVE_WINDOW_SIZE).toEqual({ width: 164, height: 104 });
   });
 });

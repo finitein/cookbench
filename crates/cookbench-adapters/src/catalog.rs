@@ -237,14 +237,14 @@ static CATALOG: [HarnessProfile; 27] = [
     ),
     profile!(
         "grok_cli",
-        "Grok CLI",
+        "Grok Build",
         Standard,
         GenericStructured,
         Terminal,
         true,
-        ["grok"],
-        ["~/.grok"],
-        "https://github.com/superagent-ai/grok-cli"
+        ["grok", "grok-build"],
+        ["~/.grok/sessions"],
+        "https://github.com/xai-org/grok-build"
     ),
     profile!(
         "goose",
@@ -254,7 +254,7 @@ static CATALOG: [HarnessProfile; 27] = [
         ApplicationOrTerminal,
         true,
         ["goose"],
-        ["~/.local/share/goose", "~/.config/goose"],
+        ["~/.local/share/goose/sessions", "~/.config/goose"],
         "https://block.github.io/goose/"
     ),
     profile!(
@@ -320,7 +320,7 @@ static CATALOG: [HarnessProfile; 27] = [
         Terminal,
         true,
         ["amp"],
-        ["~/.config/amp"],
+        ["~/.local/share/amp/threads", "~/.config/amp"],
         "https://ampcode.com/manual"
     ),
     profile!(

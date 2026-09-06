@@ -22,8 +22,9 @@ pub use dock::{
     TOP_DOCK_TRIGGER_LOGICAL_PX, TOP_UNDOCK_THRESHOLD_LOGICAL_PX,
 };
 pub use layout::{
-    resolve_saved_monitor, DetachedStoveLayout, MonitorIdentity, MonitorWorkArea, RelativePosition,
-    RestoredDetachedStoveLayout, WindowPosition, WindowSize,
+    clamp_window_position_to_work_area, resolve_saved_monitor, DetachedStoveLayout,
+    MonitorIdentity, MonitorWorkArea, RelativePosition, RestoredDetachedStoveLayout,
+    WindowPosition, WindowSize,
 };
 pub use state::{
     ArchiveReason, ArchivedSession, ClearCursor, CookedAttentionCursor, PersistedState,

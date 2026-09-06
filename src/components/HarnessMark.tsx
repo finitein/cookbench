@@ -1,11 +1,15 @@
 import type { StoveWire } from "../types/stove";
 
-type Harness = "codex" | "claude" | "pi";
+type Harness = "codex" | "claude" | "claudeCode" | "pi" | "grok_cli" | "goose" | "amp";
 
 const harnessDetails: Record<Harness, { label: string; token: string }> = {
   codex: { label: "Codex", token: "CX" },
   claude: { label: "Claude Code", token: "CL" },
+  claudeCode: { label: "Claude Code", token: "CL" },
   pi: { label: "Pi", token: "PI" },
+  grok_cli: { label: "Grok Build", token: "GB" },
+  goose: { label: "Goose", token: "GO" },
+  amp: { label: "Amp", token: "AM" },
 };
 
 export function harnessInfo(harness: string) {

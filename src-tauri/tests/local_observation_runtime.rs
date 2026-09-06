@@ -121,6 +121,9 @@ fn reconstructs_three_native_harnesses_then_observes_appended_lifecycle_records(
         codex_root: codex_root.clone(),
         claude_root: claude_root.clone(),
         pi_roots: vec![pi_root.clone()],
+        grok_root: root.join("grok"),
+        goose_root: root.join("goose"),
+        amp_root: root.join("amp"),
         startup_min_modified: SystemTime::UNIX_EPOCH,
         startup_candidate_limit: 16,
         pinned_local_paths: Vec::new(),
@@ -221,6 +224,9 @@ fn runtime_does_not_register_codex_subagent_session_files() {
         codex_root,
         claude_root: root.join("claude"),
         pi_roots: vec![root.join("pi")],
+        grok_root: root.join("grok"),
+        goose_root: root.join("goose"),
+        amp_root: root.join("amp"),
         startup_min_modified: SystemTime::UNIX_EPOCH,
         startup_candidate_limit: 16,
         pinned_local_paths: vec![subagent_session],
@@ -258,6 +264,9 @@ fn preserves_distinct_native_locators_for_sessions_in_the_same_project() {
         codex_root: root.join("codex"),
         claude_root,
         pi_roots: vec![root.join("pi")],
+        grok_root: root.join("grok"),
+        goose_root: root.join("goose"),
+        amp_root: root.join("amp"),
         startup_min_modified: SystemTime::UNIX_EPOCH,
         startup_candidate_limit: 16,
         pinned_local_paths: Vec::new(),
@@ -325,6 +334,9 @@ fn newer_subagents_do_not_consume_the_root_session_candidate_limit() {
         codex_root,
         claude_root: root.join("claude"),
         pi_roots: vec![root.join("pi")],
+        grok_root: root.join("grok"),
+        goose_root: root.join("goose"),
+        amp_root: root.join("amp"),
         startup_min_modified: SystemTime::UNIX_EPOCH,
         startup_candidate_limit: 2,
         pinned_local_paths: Vec::new(),
@@ -374,6 +386,9 @@ fn filters_one_thousand_stale_paths_before_adapter_body_parsing() {
         codex_root,
         claude_root,
         pi_roots: vec![pi_root],
+        grok_root: root.join("grok"),
+        goose_root: root.join("goose"),
+        amp_root: root.join("amp"),
         startup_min_modified: SystemTime::now() - Duration::from_secs(60),
         startup_candidate_limit: 16,
         pinned_local_paths: Vec::new(),
@@ -395,6 +410,9 @@ fn rescan_discovers_a_harness_root_created_after_cookbench_started() {
         codex_root: codex_root.clone(),
         claude_root: root.join("claude-missing"),
         pi_roots: vec![root.join("pi-missing")],
+        grok_root: root.join("grok"),
+        goose_root: root.join("goose"),
+        amp_root: root.join("amp"),
         startup_min_modified: SystemTime::UNIX_EPOCH,
         startup_candidate_limit: 16,
         pinned_local_paths: Vec::new(),
@@ -450,6 +468,9 @@ fn pinned_old_session_is_discovered_without_widening_normal_discovery() {
         codex_root: codex_root.clone(),
         claude_root: root.join("claude"),
         pi_roots: vec![root.join("pi")],
+        grok_root: root.join("grok"),
+        goose_root: root.join("goose"),
+        amp_root: root.join("amp"),
         startup_min_modified: SystemTime::now() - Duration::from_secs(60),
         startup_candidate_limit: 16,
         pinned_local_paths: vec![pinned],
@@ -496,6 +517,9 @@ fn a_restored_old_session_can_join_the_running_observer() {
         codex_root,
         claude_root: root.join("claude"),
         pi_roots: vec![root.join("pi")],
+        grok_root: root.join("grok"),
+        goose_root: root.join("goose"),
+        amp_root: root.join("amp"),
         startup_min_modified: SystemTime::now() - Duration::from_secs(60),
         startup_candidate_limit: 16,
         pinned_local_paths: Vec::new(),
@@ -544,6 +568,9 @@ fn restoring_an_already_watched_session_replays_events_seen_while_archived() {
         codex_root,
         claude_root: root.join("claude"),
         pi_roots: vec![root.join("pi")],
+        grok_root: root.join("grok"),
+        goose_root: root.join("goose"),
+        amp_root: root.join("amp"),
         startup_min_modified: SystemTime::UNIX_EPOCH,
         startup_candidate_limit: 16,
         pinned_local_paths: Vec::new(),
@@ -627,6 +654,9 @@ fn invalid_pinned_paths_are_ignored_without_expanding_file_access() {
         codex_root,
         claude_root: root.join("claude"),
         pi_roots: vec![root.join("pi")],
+        grok_root: root.join("grok"),
+        goose_root: root.join("goose"),
+        amp_root: root.join("amp"),
         startup_min_modified: SystemTime::now() - Duration::from_secs(60),
         startup_candidate_limit: 16,
         pinned_local_paths: vec![outside, root.join("missing.jsonl"), root.join("bad.txt")],
@@ -660,6 +690,9 @@ fn observation_summary_includes_source_mtime_without_reading_extra_records() {
         codex_root,
         claude_root: root.join("claude"),
         pi_roots: vec![root.join("pi")],
+        grok_root: root.join("grok"),
+        goose_root: root.join("goose"),
+        amp_root: root.join("amp"),
         startup_min_modified: SystemTime::UNIX_EPOCH,
         startup_candidate_limit: 16,
         pinned_local_paths: Vec::new(),
@@ -673,5 +706,392 @@ fn observation_summary_includes_source_mtime_without_reading_extra_records() {
         .unwrap()
         .iter()
         .any(|summary| { summary.source_modified_at_ms == Some(1_700_000_000_000) }));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn discovers_grok_build_native_session_from_summary_index() {
+    let root = temp_root();
+    let grok_root = root.join("grok");
+    let session_dir = grok_root
+        .join("%2Fsynthetic%2Fproject")
+        .join("01999999-aaaa-7bbb-8ccc-ddddeeeeffff");
+    write(
+        &session_dir.join("summary.json"),
+        r#"{
+  "info": {
+    "session_id": "01999999-aaaa-7bbb-8ccc-ddddeeeeffff",
+    "cwd": "/synthetic/project"
+  },
+  "generated_title": "Synthetic fixture task",
+  "title_is_manual": false
+}"#,
+    );
+    write(
+        &session_dir.join("updates.jsonl"),
+        "{\"sessionUpdate\":\"agent_message_chunk\",\"sessionId\":\"01999999-aaaa-7bbb-8ccc-ddddeeeeffff\",\"kind\":\"started\"}\n",
+    );
+
+    let sink = Arc::new(Sink::default());
+    let config = LocalObservationConfig {
+        host: HostIdentity::local("synthetic-host"),
+        codex_root: root.join("codex"),
+        claude_root: root.join("claude"),
+        pi_roots: vec![root.join("pi")],
+        grok_root: grok_root.clone(),
+        goose_root: root.join("goose"),
+        amp_root: root.join("amp"),
+        startup_min_modified: SystemTime::UNIX_EPOCH,
+        startup_candidate_limit: 16,
+        pinned_local_paths: Vec::new(),
+    };
+    let mut runtime = LocalObservationRuntime::new(config, sink.clone());
+    runtime.bootstrap();
+
+    assert_eq!(runtime.session_count(), 1);
+    let statuses = runtime.source_status();
+    let grok = statuses
+        .sources
+        .iter()
+        .find(|source| source.harness == "grok_cli")
+        .expect("grok source status");
+    assert_eq!(grok.discovered_sessions, 1);
+    assert_eq!(grok.observation, LocalSourceObservation::NativeSessions);
+    assert_eq!(grok.label, "Grok Build");
+    let events = sink.0.lock().unwrap();
+    assert!(events.iter().any(|(identity, project, locator, event)| {
+        identity.harness == cookbench_core::domain::HarnessId::Other("grok_cli".into())
+            && identity.native_session_id == "01999999-aaaa-7bbb-8ccc-ddddeeeeffff"
+            && project.canonical_root == "/synthetic/project"
+            && locator
+                .native_locator
+                .as_deref()
+                .is_some_and(|value| value.ends_with("updates.jsonl"))
+            && matches!(event.kind, EventKind::SessionDiscovered)
+    }));
+    drop(events);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn observes_grok_build_allowlisted_lifecycle_updates() {
+    let root = temp_root();
+    let grok_root = root.join("grok");
+    let session_dir = grok_root
+        .join("%2Fsynthetic%2Fproject")
+        .join("01999999-aaaa-7bbb-8ccc-ddddeeeeffff");
+    write(
+        &session_dir.join("summary.json"),
+        r#"{
+  "info": {
+    "session_id": "01999999-aaaa-7bbb-8ccc-ddddeeeeffff",
+    "cwd": "/synthetic/project"
+  },
+  "generated_title": "Synthetic fixture task",
+  "title_is_manual": false
+}"#,
+    );
+    write(
+        &session_dir.join("updates.jsonl"),
+        concat!(
+            r#"{"sessionUpdate":"user_message_chunk","sessionId":"01999999-aaaa-7bbb-8ccc-ddddeeeeffff"}"#,
+            "\n",
+            r#"{"sessionUpdate":"tool_call","sessionId":"01999999-aaaa-7bbb-8ccc-ddddeeeeffff","status":"pending"}"#,
+            "\n",
+            r#"{"sessionUpdate":"state_update","sessionId":"01999999-aaaa-7bbb-8ccc-ddddeeeeffff","state":"requires_action"}"#,
+            "\n",
+            r#"{"sessionUpdate":"state_update","sessionId":"01999999-aaaa-7bbb-8ccc-ddddeeeeffff","state":"idle","stopReason":"end_turn"}"#,
+            "\n",
+        ),
+    );
+
+    let sink = Arc::new(Sink::default());
+    let config = LocalObservationConfig {
+        host: HostIdentity::local("synthetic-host"),
+        codex_root: root.join("codex"),
+        claude_root: root.join("claude"),
+        pi_roots: vec![root.join("pi")],
+        grok_root: grok_root.clone(),
+        goose_root: root.join("goose"),
+        amp_root: root.join("amp"),
+        startup_min_modified: SystemTime::UNIX_EPOCH,
+        startup_candidate_limit: 16,
+        pinned_local_paths: Vec::new(),
+    };
+    let mut runtime = LocalObservationRuntime::new(config, sink.clone());
+    runtime.bootstrap();
+
+    let events = sink.0.lock().unwrap();
+    let kinds: Vec<_> = events
+        .iter()
+        .filter(|(identity, _, _, _)| {
+            identity.harness == cookbench_core::domain::HarnessId::Other("grok_cli".into())
+        })
+        .map(|(_, _, _, event)| &event.kind)
+        .collect();
+    assert!(kinds
+        .iter()
+        .any(|kind| matches!(kind, EventKind::SessionDiscovered)));
+    assert!(kinds
+        .iter()
+        .any(|kind| matches!(kind, EventKind::UserPromptSubmitted)));
+    assert!(kinds
+        .iter()
+        .any(|kind| matches!(kind, EventKind::ToolStarted)));
+    assert!(kinds
+        .iter()
+        .any(|kind| matches!(kind, EventKind::PermissionRequested)));
+    assert!(kinds
+        .iter()
+        .any(|kind| matches!(kind, EventKind::TurnCompleted)));
+    drop(events);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn observes_grok_build_needs_human_and_failed_terminal_states() {
+    let root = temp_root();
+    let grok_root = root.join("grok");
+
+    let needs_human_dir = grok_root
+        .join("%2Fsynthetic%2Fproject")
+        .join("0199aaaa-bbbb-7ccc-8ddd-eeee11111111");
+    write(
+        &needs_human_dir.join("summary.json"),
+        r#"{
+  "info": {
+    "session_id": "0199aaaa-bbbb-7ccc-8ddd-eeee11111111",
+    "cwd": "/synthetic/project"
+  },
+  "generated_title": "Needs Human fixture",
+  "title_is_manual": false
+}"#,
+    );
+    write(
+        &needs_human_dir.join("updates.jsonl"),
+        concat!(
+            r#"{"sessionUpdate":"user_message_chunk","sessionId":"0199aaaa-bbbb-7ccc-8ddd-eeee11111111"}"#,
+            "\n",
+            r#"{"sessionUpdate":"tool_call","sessionId":"0199aaaa-bbbb-7ccc-8ddd-eeee11111111","status":"pending"}"#,
+            "\n",
+            r#"{"sessionUpdate":"state_update","sessionId":"0199aaaa-bbbb-7ccc-8ddd-eeee11111111","state":"requires_action"}"#,
+            "\n",
+        ),
+    );
+
+    let failed_dir = grok_root
+        .join("%2Fsynthetic%2Fproject")
+        .join("0199bbbb-cccc-7ddd-8eee-ffff22222222");
+    write(
+        &failed_dir.join("summary.json"),
+        r#"{
+  "info": {
+    "session_id": "0199bbbb-cccc-7ddd-8eee-ffff22222222",
+    "cwd": "/synthetic/project"
+  },
+  "generated_title": "Failed fixture",
+  "title_is_manual": false
+}"#,
+    );
+    write(
+        &failed_dir.join("updates.jsonl"),
+        concat!(
+            r#"{"sessionUpdate":"user_message_chunk","sessionId":"0199bbbb-cccc-7ddd-8eee-ffff22222222"}"#,
+            "\n",
+            r#"{"sessionUpdate":"state_update","sessionId":"0199bbbb-cccc-7ddd-8eee-ffff22222222","state":"idle","stopReason":"refusal"}"#,
+            "\n",
+        ),
+    );
+
+    let sink = Arc::new(Sink::default());
+    let config = LocalObservationConfig {
+        host: HostIdentity::local("synthetic-host"),
+        codex_root: root.join("codex"),
+        claude_root: root.join("claude"),
+        pi_roots: vec![root.join("pi")],
+        grok_root: grok_root.clone(),
+        goose_root: root.join("goose"),
+        amp_root: root.join("amp"),
+        startup_min_modified: SystemTime::UNIX_EPOCH,
+        startup_candidate_limit: 16,
+        pinned_local_paths: Vec::new(),
+    };
+    let mut runtime = LocalObservationRuntime::new(config, sink.clone());
+    runtime.bootstrap();
+
+    assert_eq!(runtime.session_count(), 2);
+    let events = sink.0.lock().unwrap();
+    let by_session = |session_id: &str| -> Vec<&EventKind> {
+        events
+            .iter()
+            .filter(|(identity, _, _, _)| identity.native_session_id == session_id)
+            .map(|(_, _, _, event)| &event.kind)
+            .collect()
+    };
+
+    let needs_human = by_session("0199aaaa-bbbb-7ccc-8ddd-eeee11111111");
+    assert!(needs_human
+        .iter()
+        .any(|kind| matches!(kind, EventKind::PermissionRequested)));
+    assert!(!needs_human
+        .iter()
+        .any(|kind| matches!(kind, EventKind::TurnCompleted | EventKind::SessionFailed)));
+
+    let failed = by_session("0199bbbb-cccc-7ddd-8eee-ffff22222222");
+    assert!(failed
+        .iter()
+        .any(|kind| matches!(kind, EventKind::SessionFailed)));
+    assert!(!failed.iter().any(|kind| matches!(
+        kind,
+        EventKind::TurnCompleted | EventKind::PermissionRequested
+    )));
+
+    drop(events);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn discovers_goose_legacy_jsonl_native_session() {
+    let root = temp_root();
+    let goose_root = root.join("goose");
+    write(
+        &goose_root.join("20260906_1.jsonl"),
+        concat!(
+            r#"{"id":"20260906_1","description":"Synthetic Goose fixture","working_dir":"/synthetic/goose-project"}"#,
+            "\n",
+            r#"{"role":"user","created":1757116800,"content":[{"type":"text","text":"secret"}]}"#,
+            "\n",
+            r#"{"role":"assistant","content":[{"type":"toolRequest","id":"1"}]}"#,
+            "\n",
+            r#"{"notification":"turn_completed"}"#,
+            "\n",
+        ),
+    );
+    // SQLite migrations must not be treated as sessions.
+    write(&goose_root.join("sessions.db"), "not-a-session");
+
+    let sink = Arc::new(Sink::default());
+    let config = LocalObservationConfig {
+        host: HostIdentity::local("synthetic-host"),
+        codex_root: root.join("codex"),
+        claude_root: root.join("claude"),
+        pi_roots: vec![root.join("pi")],
+        grok_root: root.join("grok"),
+        goose_root: goose_root.clone(),
+        amp_root: root.join("amp"),
+        startup_min_modified: SystemTime::UNIX_EPOCH,
+        startup_candidate_limit: 16,
+        pinned_local_paths: Vec::new(),
+    };
+    let mut runtime = LocalObservationRuntime::new(config, sink.clone());
+    runtime.bootstrap();
+
+    assert_eq!(runtime.session_count(), 1);
+    let statuses = runtime.source_status();
+    let goose = statuses
+        .sources
+        .iter()
+        .find(|source| source.harness == "goose")
+        .expect("goose source status");
+    assert_eq!(goose.discovered_sessions, 1);
+    assert_eq!(goose.observation, LocalSourceObservation::NativeSessions);
+    assert_eq!(goose.label, "Goose");
+    let events = sink.0.lock().unwrap();
+    assert!(events.iter().any(|(identity, project, locator, event)| {
+        identity.harness == cookbench_core::domain::HarnessId::Other("goose".into())
+            && identity.native_session_id == "20260906_1"
+            && project.canonical_root == "/synthetic/goose-project"
+            && locator
+                .native_locator
+                .as_deref()
+                .is_some_and(|value| value.ends_with("20260906_1.jsonl"))
+            && matches!(event.kind, EventKind::SessionDiscovered)
+    }));
+    assert!(events
+        .iter()
+        .any(|(_, _, _, event)| { matches!(event.kind, EventKind::UserPromptSubmitted) }));
+    assert!(events
+        .iter()
+        .any(|(_, _, _, event)| matches!(event.kind, EventKind::ToolStarted)));
+    assert!(events
+        .iter()
+        .any(|(_, _, _, event)| matches!(event.kind, EventKind::TurnCompleted)));
+    drop(events);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn discovers_amp_legacy_thread_json_native_session() {
+    let root = temp_root();
+    let amp_root = root.join("amp");
+    write(
+        &amp_root.join("T-0199aaaa-bbbb-7ccc-8ddd-eeeeffff0001.json"),
+        r#"{
+  "v": 3,
+  "id": "T-0199aaaa-bbbb-7ccc-8ddd-eeeeffff0001",
+  "created": 1757116800000,
+  "title": "Synthetic Amp fixture",
+  "env": {"initial":{"trees":[{"uri":"file:///synthetic/amp-project"}]}},
+  "messages": [
+    {"role":"user","messageId":0,"meta":{"sentAt":1757116801000},"content":[{"type":"text","text":"secret"}]},
+    {"role":"assistant","messageId":1,"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{}}],"state":{"type":"complete","stopReason":"tool_use"}},
+    {"role":"user","messageId":2,"content":[{"type":"tool_result","toolUseID":"t1","run":{"status":"done","result":{"exitCode":0}}}]},
+    {"role":"assistant","messageId":3,"content":[{"type":"text","text":"done"}],"state":{"type":"complete","stopReason":"end_turn"}}
+  ]
+}"#,
+    );
+    write(&amp_root.join("stray.json"), r#"{"note":"not amp"}"#);
+
+    let sink = Arc::new(Sink::default());
+    let config = LocalObservationConfig {
+        host: HostIdentity::local("synthetic-host"),
+        codex_root: root.join("codex"),
+        claude_root: root.join("claude"),
+        pi_roots: vec![root.join("pi")],
+        grok_root: root.join("grok"),
+        goose_root: root.join("goose"),
+        amp_root: amp_root.clone(),
+        startup_min_modified: SystemTime::UNIX_EPOCH,
+        startup_candidate_limit: 16,
+        pinned_local_paths: Vec::new(),
+    };
+    let mut runtime = LocalObservationRuntime::new(config, sink.clone());
+    runtime.bootstrap();
+
+    assert_eq!(runtime.session_count(), 1);
+    let statuses = runtime.source_status();
+    let amp = statuses
+        .sources
+        .iter()
+        .find(|source| source.harness == "amp")
+        .expect("amp source status");
+    assert_eq!(amp.discovered_sessions, 1);
+    assert_eq!(amp.observation, LocalSourceObservation::NativeSessions);
+    assert_eq!(amp.label, "Amp");
+    let events = sink.0.lock().unwrap();
+    assert!(events.iter().any(|(identity, project, locator, event)| {
+        identity.harness == cookbench_core::domain::HarnessId::Other("amp".into())
+            && identity.native_session_id == "T-0199aaaa-bbbb-7ccc-8ddd-eeeeffff0001"
+            && project.canonical_root == "/synthetic/amp-project"
+            && locator
+                .native_locator
+                .as_deref()
+                .is_some_and(|value| value.ends_with("T-0199aaaa-bbbb-7ccc-8ddd-eeeeffff0001.json"))
+            && matches!(event.kind, EventKind::SessionDiscovered)
+    }));
+    assert!(events
+        .iter()
+        .any(|(_, _, _, event)| { matches!(event.kind, EventKind::UserPromptSubmitted) }));
+    assert!(events
+        .iter()
+        .any(|(_, _, _, event)| { matches!(event.kind, EventKind::ToolStarted) }));
+    assert!(events.iter().any(|(_, _, _, event)| {
+        matches!(event.kind, EventKind::ToolCompleted { succeeded: true })
+    }));
+    assert!(events
+        .iter()
+        .any(|(_, _, _, event)| { matches!(event.kind, EventKind::TurnCompleted) }));
+
+    drop(events);
     fs::remove_dir_all(root).unwrap();
 }
