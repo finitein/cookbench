@@ -192,7 +192,7 @@ fn project_from_env(
     for tree in trees {
         let uri = tree.get("uri").and_then(Value::as_str)?;
         let path = uri.strip_prefix("file://").unwrap_or(uri).trim().to_owned();
-        if Path::new(&path).is_absolute()
+        if crate::adapter::is_absolute_session_path(&path)
             && path.len() <= 4 * 1024
             && !path.chars().any(char::is_control)
         {

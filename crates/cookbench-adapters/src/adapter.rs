@@ -1,4 +1,4 @@
-use std::{fmt, sync::Arc};
+use std::{fmt, path::Path, sync::Arc};
 
 use async_trait::async_trait;
 use cookbench_core::{
@@ -9,6 +9,16 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use crate::AdapterCapabilities;
+
+
+/// True for host-native absolute paths and POSIX absolute paths (`/...`).
+///
+/// Session metadata (and synthetic fixtures) often carry Unix-style roots even
+/// when the observing host is Windows. Rejecting those with `Path::is_absolute`
+/// alone drops project identity on Windows.
+pub(crate) fn is_absolute_session_path(value: &str) -> bool {
+    Path::new(value).is_absolute() || value.starts_with('/')
+}
 
 /// A discovery source describes where native session files belong. It carries
 /// identity only: adapters own no SSH transport, process lifetime, or agent
@@ -111,8 +121,7 @@ impl NativeSession {
             ));
         }
         let working_directory = project.as_ref().and_then(|project| {
-            std::path::Path::new(&project.canonical_root)
-                .is_absolute()
+            is_absolute_session_path(&project.canonical_root)
                 .then(|| project.canonical_root.clone())
         });
         let locator_identity = LocatorIdentity {
@@ -266,4 +275,30 @@ pub trait HarnessAdapter: Send + Sync {
     async fn watch(&self, sink: EventSink) -> Result<WatchHandle, AdapterError>;
     fn locate(&self, session: &NativeSession) -> Option<SessionLocator>;
     fn resume(&self, session: &NativeSession) -> Vec<ResumeAction>;
+}
+
+#[cfg(test)]
+mod absolute_session_path_tests {
+    use super::is_absolute_session_path;
+
+    #[test]
+    fn is_absolute_session_path_accepts_posix_roots() {
+        assert!(is_absolute_session_path("/synthetic/project"));
+        assert!(is_absolute_session_path("/tmp"));
+        assert!(!is_absolute_session_path("relative/path"));
+        assert!(!is_absolute_session_path(""));
+    }
+
+    #[test]
+    fn is_absolute_session_path_accepts_host_native_absolute() {
+        #[cfg(windows)]
+        {
+            assert!(is_absolute_session_path(r"C:\Users\fixture"));
+            assert!(is_absolute_session_path(r"\\server\share"));
+        }
+        #[cfg(not(windows))]
+        {
+            assert!(is_absolute_session_path("/home/fixture"));
+        }
+    }
 }
