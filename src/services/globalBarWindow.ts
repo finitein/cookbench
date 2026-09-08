@@ -162,9 +162,13 @@ export function createGlobalBarDockController(
     if (enteredCollapsed) {
       clearRevealArm();
       revealArmed = false;
+      // Always arm after the anti-flicker window. Pointer may already be inside
+      // (collapse moved under the cursor, or the user entered during the delay);
+      // reveal() still no-ops until armed, and the hook reveals on a post-arm
+      // pointermove so hover works without requiring an extra leave/enter.
       revealArmTimer = setTimeout(() => {
         revealArmTimer = undefined;
-        if (!disposed && state.collapsed && !guards.pointerInside) revealArmed = true;
+        if (!disposed && state.collapsed) revealArmed = true;
       }, TOP_DOCK_REVEAL_ARM_DELAY_MS);
     } else if (!next.collapsed) {
       clearRevealArm();

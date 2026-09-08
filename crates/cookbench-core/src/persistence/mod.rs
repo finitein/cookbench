@@ -18,8 +18,9 @@ pub use config::{
 pub use dock::{
     dock_threshold_physical, dock_upper_threshold_physical, resolve_top_dock, select_dock_monitor,
     top_dock_decision, DockMonitorWorkArea, GlobalBarTopDock, TopDockDecision, TopDockGeometry,
-    TopDockInput, TOP_DOCK_HIDE_DELAY_MS, TOP_DOCK_THRESHOLD_LOGICAL_PX,
-    TOP_DOCK_TRIGGER_LOGICAL_PX, TOP_UNDOCK_THRESHOLD_LOGICAL_PX,
+    TopDockInput, TOP_DOCK_HIDE_DELAY_MS, TOP_DOCK_HIT_LOGICAL_PX,
+    TOP_DOCK_THRESHOLD_LOGICAL_PX, TOP_DOCK_TRIGGER_LOGICAL_PX,
+    TOP_UNDOCK_THRESHOLD_LOGICAL_PX,
 };
 pub use layout::{
     clamp_window_position_to_work_area, resolve_saved_monitor, DetachedStoveLayout,

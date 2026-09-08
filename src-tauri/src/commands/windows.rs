@@ -773,8 +773,8 @@ fn dock_trigger_height(collapsed_y: i32, expanded_y: i32, bar_height: u32) -> u3
         .clamp(1, i64::from(u32::MAX)) as u32
 }
 
-#[cfg(target_os = "linux")]
-fn collapse_linux_window_to_trigger<R: Runtime>(
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+fn collapse_window_to_trigger<R: Runtime>(
     window: &tauri::WebviewWindow<R>,
     expanded_position: WindowPosition,
     width: u32,
@@ -804,6 +804,24 @@ fn collapse_linux_window_to_trigger<R: Runtime>(
     Ok(())
 }
 
+/// Undecorated + resizable Tauri windows install `TAURI_DRAG_RESIZE_BORDERS`
+/// child hit targets. On a collapsed top-dock strip (~12 logical px), those
+/// borders own the north edge (observed Windows: physical y=1–3) and steal
+/// hover from the webview—so auto-hide never expands without a click/focus.
+/// Disable edge resize while collapsed; restore when expanded geometry applies.
+pub(crate) fn dock_edge_resize_hit_targets_enabled(collapsed: bool) -> bool {
+    !collapsed
+}
+
+fn sync_dock_edge_resize_hit_targets<R: Runtime>(
+    window: &tauri::WebviewWindow<R>,
+    collapsed: bool,
+) -> Result<(), String> {
+    window
+        .set_resizable(dock_edge_resize_hit_targets_enabled(collapsed))
+        .map_err(|error| error.to_string())
+}
+
 fn move_to_dock_geometry<R: Runtime>(
     window: &tauri::WebviewWindow<R>,
     dock: &GlobalBarTopDock,
@@ -824,10 +842,15 @@ fn move_to_dock_geometry<R: Runtime>(
     } else {
         geometry.expanded_position
     };
+    // Collapse first: detach north drag-resize borders before the strip is the
+    // only hover surface. Expand last: reattach after the Bar is tall again.
+    if collapsed {
+        sync_dock_edge_resize_hit_targets(window, true)?;
+    }
     #[cfg(target_os = "macos")]
     if collapsed {
         // AppKit constrains a visible window back on-screen, so a negative-y
-        // move is a no-op. Shrinking in place preserves the same 3px trigger.
+        // move is a no-op. Shrinking in place preserves the hover hit strip.
         let trigger_height = dock_trigger_height(
             geometry.collapsed_position.y,
             geometry.expanded_position.y,
@@ -839,8 +862,8 @@ fn move_to_dock_geometry<R: Runtime>(
     if collapsed {
         // Prefer the shared negative-Y collapse. Some X11 WMs (observed: xfwm4)
         // clamp off-screen placement so a large strip stays visible and break
-        // the 3px trigger contract. Detect that clamp and shrink in place at the
-        // expanded dock edge — same end state as macOS. Wayland never reaches
+        // the hover hit-strip contract. Detect that clamp and shrink in place at
+        // the expanded dock edge — same end state as macOS. Wayland never reaches
         // here: collapse_candidate requires reliable_top_dock_positioning().
         let trigger_height = dock_trigger_height(
             geometry.collapsed_position.y,
@@ -861,7 +884,7 @@ fn move_to_dock_geometry<R: Runtime>(
             applied_size.height,
             trigger_height,
         ) {
-            return collapse_linux_window_to_trigger(
+            return collapse_window_to_trigger(
                 window,
                 geometry.expanded_position,
                 applied_size.width,
@@ -870,9 +893,30 @@ fn move_to_dock_geometry<R: Runtime>(
         }
         return Ok(());
     }
+    #[cfg(target_os = "windows")]
+    if collapsed {
+        // A 3px peek at the work-area top is easy for DWM to miss on hover.
+        // Shrink in place to the hover hit strip so pointerenter/move reach the
+        // webview without a global mouse hook or a click-to-focus reveal.
+        let trigger_height = dock_trigger_height(
+            geometry.collapsed_position.y,
+            geometry.expanded_position.y,
+            size.height,
+        );
+        return collapse_window_to_trigger(
+            window,
+            geometry.expanded_position,
+            size.width,
+            trigger_height,
+        );
+    }
     window
         .set_position(PhysicalPosition::new(position.x, position.y))
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    if !collapsed {
+        sync_dock_edge_resize_hit_targets(window, false)?;
+    }
+    Ok(())
 }
 
 fn expanded_dock_position<R: Runtime>(
@@ -901,6 +945,7 @@ fn compensate_stale_geometry<R: Runtime>(
     // its candidate, put the window at the current expanded dock instead of
     // leaving it physically hidden behind the trigger strip.
     let compensation = runtime.collapse_compensation(fallback_position);
+    let keep_visible = matches!(compensation, CollapseCompensation::KeepVisible);
     execute_geometry_compensation(
         compensation,
         || window.show().map_err(|error| error.to_string()),
@@ -908,9 +953,16 @@ fn compensate_stale_geometry<R: Runtime>(
         |position| {
             window
                 .set_position(PhysicalPosition::new(position.x, position.y))
-                .map_err(|error| error.to_string())
+                .map_err(|error| error.to_string())?;
+            // Collapse may have already detached drag-resize borders; restore
+            // them when rolling back to a freeform / undocked surface.
+            sync_dock_edge_resize_hit_targets(window, false)
         },
-    )
+    )?;
+    if keep_visible {
+        sync_dock_edge_resize_hit_targets(window, runtime.state().collapsed)?;
+    }
+    Ok(())
 }
 
 fn execute_geometry_compensation(
@@ -1919,24 +1971,31 @@ mod dock_tests {
 
     #[test]
     fn collapsed_visible_strip_counts_pixels_inside_the_work_area_top() {
-        assert_eq!(collapsed_visible_strip_px(0, -177, 180), 3);
+        assert_eq!(collapsed_visible_strip_px(0, -168, 180), 12);
         assert_eq!(collapsed_visible_strip_px(0, -151, 180), 29);
-        assert_eq!(collapsed_visible_strip_px(10, -167, 180), 3);
+        assert_eq!(collapsed_visible_strip_px(10, -158, 180), 12);
     }
 
     #[test]
     fn x11_wm_clamp_that_leaves_a_fat_strip_needs_shrink_in_place() {
-        // Observed xfwm4 floor: ~29px still on-screen despite requesting 3px.
-        assert!(collapsed_needs_shrink_in_place(0, -151, 180, 3));
-        assert!(!collapsed_needs_shrink_in_place(0, -177, 180, 3));
-        // Already at trigger height parked on the expanded edge.
-        assert!(!collapsed_needs_shrink_in_place(0, 0, 3, 3));
+        // Observed xfwm4 floor: ~29px still on-screen despite requesting the hit strip.
+        assert!(collapsed_needs_shrink_in_place(0, -151, 180, 12));
+        assert!(!collapsed_needs_shrink_in_place(0, -168, 180, 12));
+        // Already at hit height parked on the expanded edge.
+        assert!(!collapsed_needs_shrink_in_place(0, 0, 12, 12));
     }
 
     #[test]
     fn dock_trigger_height_matches_resolve_top_dock_contract() {
-        assert_eq!(dock_trigger_height(-177, 0, 180), 3);
-        assert_eq!(dock_trigger_height(-740, 0, 743), 3);
+        assert_eq!(dock_trigger_height(-168, 0, 180), 12);
+        assert_eq!(dock_trigger_height(-731, 0, 743), 12);
+    }
+
+    #[test]
+    fn collapsed_dock_disables_edge_resize_hit_targets() {
+        // Windows smoke: TAURI_DRAG_RESIZE_BORDERS owned y=1–3 of a 20px strip.
+        assert!(!dock_edge_resize_hit_targets_enabled(true));
+        assert!(dock_edge_resize_hit_targets_enabled(false));
     }
 
     #[cfg(target_os = "macos")]

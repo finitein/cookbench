@@ -330,6 +330,54 @@ describe("global bar dock controller", () => {
     vi.useRealTimers();
   });
 
+  it("arms after the anti-flicker delay even when the pointer stayed over the trigger", async () => {
+    vi.useFakeTimers();
+    const native = transport();
+    native.setGuards = vi.fn().mockResolvedValue(expanded);
+    const controller = createGlobalBarDockController(native);
+    await controller.initialize();
+    controller.setGuards({ pointerInside: true });
+    controller.setGuards({ pointerInside: false });
+    native.setGuards = vi.fn().mockResolvedValue(collapsed);
+    await vi.advanceTimersByTimeAsync(600);
+
+    controller.setGuards({ pointerInside: true });
+    controller.reveal();
+    await Promise.resolve();
+    expect(native.reveal).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(150);
+    controller.reveal();
+    await Promise.resolve();
+    expect(native.reveal).toHaveBeenCalledOnce();
+    controller.dispose();
+    vi.useRealTimers();
+  });
+
+  it("still blocks immediate re-reveal under the pointer right as collapse happens", async () => {
+    vi.useFakeTimers();
+    const native = transport();
+    native.setGuards = vi.fn().mockResolvedValue(expanded);
+    const controller = createGlobalBarDockController(native);
+    await controller.initialize();
+    controller.setGuards({ pointerInside: true });
+    controller.setGuards({ pointerInside: false });
+    native.setGuards = vi.fn().mockResolvedValue(collapsed);
+    await vi.advanceTimersByTimeAsync(600);
+
+    controller.setGuards({ pointerInside: true });
+    controller.reveal();
+    await Promise.resolve();
+    expect(native.reveal).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(149);
+    controller.reveal();
+    await Promise.resolve();
+    expect(native.reveal).not.toHaveBeenCalled();
+    controller.dispose();
+    vi.useRealTimers();
+  });
+
   it("finishes a token exactly once when pointerup comes before native start resolves", async () => {
     let resolve!: (result: { token: number; completed: boolean; releaseConfirmed: boolean }) => void;
     const native = transport(); native.startDrag = vi.fn(() => new Promise<{ token: number; completed: boolean; releaseConfirmed: boolean }>((done) => { resolve = done; }));

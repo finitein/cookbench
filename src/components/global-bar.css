@@ -233,15 +233,35 @@
 
 .global-bar:hover > .global-bar__resize-handle { opacity: 1; }
 :root[data-cookbench-dock-state="dockedCollapsed"] .global-bar__resize-handle { display: none; }
+/* Hide chrome inside the collapsed peek/shrink strip so only the trigger reads. */
+:root[data-cookbench-dock-state="dockedCollapsed"] .global-bar > * {
+  visibility: hidden;
+}
+/* Full collapsed window is the hover target (not only a bottom 12px band).
+   Native strip is already TOP_DOCK_HIT_LOGICAL_PX tall; cover it entirely so
+   north-edge pixels reach the webview once drag-resize borders are detached. */
+:root[data-cookbench-dock-state="dockedCollapsed"] .global-bar::before {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  content: "";
+  /* Non-zero alpha keeps Windows DWM hit-testing the pad. */
+  background: rgb(49 111 152 / 1%);
+  pointer-events: auto;
+  visibility: visible;
+}
+/* Match TOP_DOCK_TRIGGER_LOGICAL_PX: painted indicator at the screen edge (top dock). */
 :root[data-cookbench-dock-state="dockedCollapsed"] .global-bar::after {
   position: fixed;
+  top: 0;
   right: 0;
-  bottom: 0;
   left: 0;
+  z-index: 41;
   height: 3px;
   content: "";
   background: rgb(49 111 152 / 18%);
   pointer-events: auto;
+  visibility: visible;
 }
 .global-bar__resize-handle[data-resize-direction="North"],
 .global-bar__resize-handle[data-resize-direction="South"] {
