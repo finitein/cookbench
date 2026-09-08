@@ -1,0 +1,8 @@
+{
+  "info": {
+    "id": "native-parent-session",
+    "cwd": "/synthetic/native-project"
+  },
+  "generated_title": "Native parent fixture",
+  "session_kind": "parent"
+}

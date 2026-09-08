@@ -774,6 +774,67 @@ fn discovers_grok_build_native_session_from_summary_index() {
 }
 
 #[test]
+fn discovers_native_grok_parent_and_applies_acp_turn_completion() {
+    let root = temp_root();
+    let grok_root = root.join("grok");
+    let parent_dir = grok_root
+        .join("%2Fsynthetic%2Fnative-project")
+        .join("native-parent-session");
+    write(
+        &parent_dir.join("summary.json"),
+        r#"{
+  "info": { "id": "native-parent-session", "cwd": "/synthetic/native-project" },
+  "session_kind": "parent"
+}"#,
+    );
+    write(
+        &parent_dir.join("updates.jsonl"),
+        r#"{"timestamp":1700000000,"method":"_x.ai/session/update","params":{"sessionId":"native-parent-session","update":{"sessionUpdate":"turn_completed","stop_reason":"end_turn"}}}
+"#,
+    );
+    let child_dir = grok_root
+        .join("%2Fsynthetic%2Fnative-project")
+        .join("native-child-session");
+    write(
+        &child_dir.join("summary.json"),
+        r#"{
+  "info": { "id": "native-child-session", "cwd": "/synthetic/native-project" },
+  "session_kind": "subagent"
+}"#,
+    );
+
+    let sink = Arc::new(Sink::default());
+    let config = LocalObservationConfig {
+        host: HostIdentity::local("synthetic-host"),
+        codex_root: root.join("codex"),
+        claude_root: root.join("claude"),
+        pi_roots: vec![root.join("pi")],
+        grok_root,
+        goose_root: root.join("goose"),
+        amp_root: root.join("amp"),
+        startup_min_modified: SystemTime::UNIX_EPOCH,
+        startup_candidate_limit: 16,
+        pinned_local_paths: Vec::new(),
+    };
+    let mut runtime = LocalObservationRuntime::new(config, sink.clone());
+    runtime.bootstrap();
+
+    assert_eq!(runtime.session_count(), 1);
+    let events = sink.0.lock().unwrap();
+    assert!(events.iter().any(|(identity, _, _, event)| {
+        identity.harness == cookbench_core::domain::HarnessId::Other("grok_cli".into())
+            && identity.native_session_id == "native-parent-session"
+            && matches!(event.kind, EventKind::TurnCompleted)
+            && event.metadata.timestamp_ms == 1_700_000_000_000
+    }));
+    assert!(!events
+        .iter()
+        .any(|(identity, _, _, _)| { identity.native_session_id == "native-child-session" }));
+    drop(events);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn observes_grok_build_allowlisted_lifecycle_updates() {
     let root = temp_root();
     let grok_root = root.join("grok");

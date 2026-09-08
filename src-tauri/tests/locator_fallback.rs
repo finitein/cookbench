@@ -294,6 +294,225 @@ fn pi_project_metadata_selects_the_matching_terminal_from_multiple_pi_sessions()
     assert_eq!(correlated.tty.as_deref(), Some("/dev/ttys008"));
 }
 
+fn grok_locator(session_id: &str) -> SessionLocator {
+    SessionLocator {
+        native_locator: Some(format!(
+            "/synthetic/.grok/sessions/project/{session_id}/updates.jsonl"
+        )),
+        native_session_id: session_id.to_owned(),
+        working_directory: Some("/workspace/cookbench".to_owned()),
+        ..SessionLocator::default()
+    }
+}
+
+fn grok_process(process_id: u32, tty: &str) -> ObservedProcess {
+    ObservedProcess::new(
+        process_id,
+        10,
+        Some(tty),
+        "grok",
+        Some("/workspace/cookbench"),
+    )
+}
+
+#[test]
+fn grok_file_identity_distinguishes_same_project_processes() {
+    let processes = vec![
+        ObservedProcess::new(10, 1, None, "Terminal", None),
+        grok_process(30, "ttys020").with_grok_session_proof("session-a", true, 1),
+        grok_process(31, "ttys021").with_grok_session_proof("session-b", true, 1),
+    ];
+
+    let correlated = correlate_terminal_locator(
+        &cookbench_core::domain::HarnessId::Other("grok_cli".into()),
+        grok_locator("session-a"),
+        &processes,
+    );
+
+    assert_eq!(correlated.tty.as_deref(), Some("/dev/ttys020"));
+    assert_eq!(correlated.process_id, Some(30));
+}
+
+#[test]
+fn grok_process_with_multiple_open_sessions_only_uses_a_fallback() {
+    let base = grok_locator("session-a");
+    let processes = vec![
+        ObservedProcess::new(10, 1, None, "Terminal", None),
+        grok_process(30, "ttys020").with_grok_session_proof("session-a", true, 2),
+    ];
+
+    let correlated = correlate_terminal_locator(
+        &cookbench_core::domain::HarnessId::Other("grok_cli".into()),
+        base.clone(),
+        &processes,
+    );
+
+    assert_eq!(
+        correlated.host_application,
+        Some(HostApplication::MacosTerminal)
+    );
+    assert_eq!(correlated.terminal, None);
+    assert_eq!(correlated.tty, None);
+    assert!(!matches!(
+        actions_for(&correlated).first(),
+        Some(JumpAction::ExactTerminalTab { .. })
+    ));
+    let mut executor = RecordingExecutor::with_outcomes([JumpOutcome::VisibleFallback]);
+    let result = activate_with(&correlated, &mut executor);
+    assert_eq!(result.target, LocatorActivationTarget::ApplicationWindow);
+    assert_eq!(result.status, LocatorActivationStatus::VisibleFallback);
+}
+
+#[test]
+fn multiple_grok_processes_with_the_same_tty_are_still_ambiguous() {
+    let processes = vec![
+        ObservedProcess::new(10, 1, None, "Terminal", None),
+        grok_process(30, "ttys020").with_grok_session_proof("session-a", true, 1),
+        grok_process(31, "ttys020").with_grok_session_proof("session-a", true, 1),
+    ];
+
+    let correlated = correlate_terminal_locator(
+        &cookbench_core::domain::HarnessId::Other("grok_cli".into()),
+        grok_locator("session-a"),
+        &processes,
+    );
+
+    assert_eq!(
+        correlated.host_application,
+        Some(HostApplication::MacosTerminal)
+    );
+    assert_eq!(correlated.terminal, None);
+    assert_eq!(correlated.tty, None);
+}
+
+#[test]
+fn grok_unproven_candidate_blocks_an_otherwise_matching_exact_return() {
+    let processes = vec![
+        ObservedProcess::new(10, 1, None, "Terminal", None),
+        grok_process(30, "ttys020").with_grok_session_proof("session-a", true, 1),
+        grok_process(31, "ttys021"),
+    ];
+
+    let correlated = correlate_terminal_locator(
+        &cookbench_core::domain::HarnessId::Other("grok_cli".into()),
+        grok_locator("session-a"),
+        &processes,
+    );
+
+    assert_eq!(
+        correlated.host_application,
+        Some(HostApplication::MacosTerminal)
+    );
+    assert_eq!(correlated.terminal, None);
+    assert_eq!(correlated.tty, None);
+}
+
+#[test]
+fn grok_proof_budget_exhaustion_blocks_exact_return() {
+    let mut processes = vec![
+        ObservedProcess::new(10, 1, None, "Terminal", None),
+        grok_process(30, "ttys020").with_grok_session_proof("session-a", true, 1),
+    ];
+    processes.extend((31..=46).map(|process_id| grok_process(process_id, "ttys021")));
+
+    let correlated = correlate_terminal_locator(
+        &cookbench_core::domain::HarnessId::Other("grok_cli".into()),
+        grok_locator("session-a"),
+        &processes,
+    );
+
+    assert_eq!(
+        correlated.host_application,
+        Some(HostApplication::MacosTerminal)
+    );
+    assert_eq!(correlated.terminal, None);
+    assert_eq!(correlated.tty, None);
+}
+
+#[test]
+fn grok_requires_valid_matching_bounded_session_proof() {
+    let harness = cookbench_core::domain::HarnessId::Other("grok_cli".into());
+    let terminal = ObservedProcess::new(10, 1, None, "Terminal", None);
+    let cases = [
+        grok_process(30, "ttys020").with_grok_session_proof("session-b", true, 1),
+        grok_process(30, "ttys020").with_grok_session_proof("session-a", false, 1),
+        grok_process(30, "ttys020").with_grok_session_proof("session-a", true, 0),
+        grok_process(30, "ttys020").with_grok_session_proof("session-a", true, 2),
+    ];
+
+    for process in cases {
+        let base = grok_locator("session-a");
+        let correlated =
+            correlate_terminal_locator(&harness, base.clone(), &[terminal.clone(), process]);
+        assert_eq!(
+            correlated.host_application,
+            Some(HostApplication::MacosTerminal)
+        );
+        assert_eq!(correlated.terminal, None);
+        assert_eq!(correlated.tty, None);
+    }
+}
+
+#[test]
+fn grok_rejects_unsafe_or_overlong_native_locator_before_exact_return() {
+    let harness = cookbench_core::domain::HarnessId::Other("grok_cli".into());
+    let terminal = ObservedProcess::new(10, 1, None, "Terminal", None);
+    let process = grok_process(30, "ttys020").with_grok_session_proof("session-a", true, 1);
+    let mut unsafe_locator = grok_locator("session-a");
+    unsafe_locator.native_locator = Some("/synthetic/session-a/updates.jsonl\ninvalid".into());
+    let mut overlong_locator = grok_locator("session-a");
+    overlong_locator.native_locator = Some(format!("/{}", "a".repeat(4097)));
+    let mut outside_grok_root = grok_locator("session-a");
+    outside_grok_root.native_locator = Some("/synthetic/not-grok/session-a/updates.jsonl".into());
+
+    for base in [unsafe_locator, overlong_locator, outside_grok_root] {
+        let correlated = correlate_terminal_locator(
+            &harness,
+            base.clone(),
+            &[terminal.clone(), process.clone()],
+        );
+        assert_ne!(correlated.terminal, Some(TerminalKind::MacosTerminal));
+        assert_eq!(correlated.tty, None);
+    }
+}
+
+#[test]
+fn grok_fallback_clears_stale_exact_terminal_selectors() {
+    let harness = cookbench_core::domain::HarnessId::Other("grok_cli".into());
+    let mut base = grok_locator("session-a");
+    base.process_id = Some(999);
+    base.parent_process_id = Some(998);
+    base.process_started_at_ms = Some(123);
+    base.terminal = Some(TerminalKind::MacosTerminal);
+    base.tty = Some("/dev/ttys099".into());
+    base.tmux_pane = Some("%99".into());
+    base.terminal_pane_id = Some("99".into());
+    let correlated = correlate_terminal_locator(
+        &harness,
+        base,
+        &[
+            ObservedProcess::new(10, 1, None, "Terminal", None),
+            grok_process(30, "ttys020").with_grok_session_proof("session-a", true, 2),
+        ],
+    );
+
+    assert_eq!(
+        correlated.host_application,
+        Some(HostApplication::MacosTerminal)
+    );
+    assert_eq!(correlated.process_id, None);
+    assert_eq!(correlated.parent_process_id, None);
+    assert_eq!(correlated.process_started_at_ms, None);
+    assert_eq!(correlated.terminal, None);
+    assert_eq!(correlated.tty, None);
+    assert_eq!(correlated.tmux_pane, None);
+    assert_eq!(correlated.terminal_pane_id, None);
+    assert!(!matches!(
+        actions_for(&correlated).first(),
+        Some(JumpAction::ExactTerminalTab { .. } | JumpAction::ExactPane { .. })
+    ));
+}
+
 #[test]
 fn permission_denial_continues_to_project_directory() {
     let mut executor = RecordingExecutor::with_outcomes([

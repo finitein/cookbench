@@ -6,6 +6,9 @@ cannot be run on the release host remain pending.
 
 ## Required Automated Commands
 
+The [2026-09-08 macOS main record](macos-main-2026-09-08.md) documents the local
+Grok Build adaptation, dense-Bar regressions, and remaining native/test gaps.
+
 ```bash
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings

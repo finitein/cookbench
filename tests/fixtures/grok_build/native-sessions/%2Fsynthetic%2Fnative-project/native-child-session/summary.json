@@ -1,0 +1,8 @@
+{
+  "info": {
+    "id": "native-child-session",
+    "cwd": "/synthetic/native-project"
+  },
+  "generated_title": "Native subagent fixture",
+  "session_kind": "subagent"
+}

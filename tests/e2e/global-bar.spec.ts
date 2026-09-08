@@ -62,6 +62,53 @@ test("dense harness activity becomes named wrapping benches without scroll conta
   }
 });
 
+test("forty synthetic sessions survive Full-Minimal-Full without clipped bench content", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(process.env.COOKBENCH_E2E_URL ?? "http://127.0.0.1:1420");
+  const driver = await e2eDriver(page);
+  const stoves = Array.from({ length: 40 }, (_, index) => stoveFixture(index));
+  await driver.replaceSnapshot({ stoves, attentionOrder: stoves.map((stove) => stove.id), globalBarMode: "full" });
+
+  const fullBar = page.getByLabel(/Cookbench global bar with 40 stoves/);
+  await expect(fullBar.getByTestId("stove")).toHaveCount(40);
+  await expect(fullBar.locator(".global-bar__item")).toHaveCount(40);
+
+  await driver.setGlobalBarMode("minimal");
+  const minimalBar = page.getByTestId("minimal-global-bar");
+  await expect(minimalBar.getByTestId("stove")).toHaveCount(1);
+
+  // This is the width requested by the native Full-Bar sizing path when the
+  // initial narrow layout cannot fit within an 800px-high work area.
+  await page.setViewportSize({ width: 800, height: 844 });
+  await minimalBar.getByRole("button", { name: "Use full Bar" }).click();
+  await expect(fullBar.getByTestId("stove")).toHaveCount(40);
+  const clippedBenches = await fullBar.locator(".global-bar__bench-stoves").evaluateAll((benches) =>
+    benches.filter((bench) => bench.scrollWidth > bench.clientWidth || bench.scrollHeight > bench.clientHeight).length,
+  );
+  expect(clippedBenches).toBe(0);
+  const bounds = await fullBar.evaluate((bar) => {
+    const barBox = bar.getBoundingClientRect();
+    return [...bar.querySelectorAll<HTMLElement>(".global-bar__item")].map((item) => {
+      const box = item.getBoundingClientRect();
+      return {
+        insideBar: box.left >= barBox.left && box.right <= barBox.right && box.top >= barBox.top && box.bottom <= barBox.bottom,
+        insideViewport: box.left >= 0 && box.right <= window.innerWidth && box.top >= 0 && box.bottom <= window.innerHeight,
+      };
+    });
+  });
+  expect(bounds).toHaveLength(40);
+  expect(bounds.every((item) => item.insideBar && item.insideViewport)).toBe(true);
+  if (process.env.COOKBENCH_CAPTURE_EVIDENCE === "1") {
+    await page.mouse.move(0, 843);
+    await expect(page.getByRole("tooltip")).toHaveCount(0);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({
+      path: "docs/verification/evidence/e2e-forty-full-minimal-full.png",
+      fullPage: true,
+    });
+  }
+});
+
 test("hovered Stove details stay inside the rendered Bar and close when the pointer leaves", async ({ page }) => {
   await page.goto(process.env.COOKBENCH_E2E_URL ?? "http://127.0.0.1:1420");
   const driver = await e2eDriver(page);

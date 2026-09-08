@@ -6,7 +6,7 @@ start, stop, approve, or control those agents.
 
 ## One-command Install
 
-Every release publishes small first-party bootstrap scripts beside
+Complete binary releases publish small first-party bootstrap scripts beside
 `release-manifest.json` and `SHA256SUMS`. The scripts select the matching
 platform package, verify its SHA-256 digest, and only then install it.
 
@@ -25,12 +25,18 @@ irm https://github.com/finitein/cookbench/releases/latest/download/install.ps1 |
 Preview releases are intentionally opt-in. Pin the tag instead of silently
 following the newest preview:
 
+The examples below deliberately select v0.4.2, the previous complete binary
+release. The locally published v0.4.3 preview provides source and an unsigned
+macOS Apple-silicon App ZIP, not the bootstrap scripts or Windows/Linux/Intel
+Mac packages. Use its release-page App ZIP and SHA-256 checksums on Apple
+silicon, or build the tagged source on other platforms.
+
 ```bash
-curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.4.1/install.sh | COOKBENCH_VERSION=v0.4.1 COOKBENCH_ALLOW_PRERELEASE=1 bash
+curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.4.2/install.sh | COOKBENCH_VERSION=v0.4.2 COOKBENCH_ALLOW_PRERELEASE=1 bash
 ```
 
 ```powershell
-$env:COOKBENCH_VERSION='v0.4.1'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.4.1/install.ps1 | iex
+$env:COOKBENCH_VERSION='v0.4.2'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.4.2/install.ps1 | iex
 ```
 
 Use `--dry-run` on macOS/Linux or set `COOKBENCH_DRY_RUN=1` on any platform to

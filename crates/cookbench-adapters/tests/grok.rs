@@ -1,4 +1,8 @@
-use std::path::PathBuf;
+use std::{
+    fs,
+    path::PathBuf,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 use cookbench_adapters::{
     grok::{discover_sessions, parse_record, session_from_path, GrokAdapter},
@@ -8,6 +12,24 @@ use cookbench_core::domain::{EventKind, HostIdentity};
 
 fn fixture_sessions() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/grok_build/sessions")
+}
+
+fn native_fixture_sessions() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/grok_build/native-sessions")
+}
+
+fn temporary_summary(name: &str, summary: &str) -> PathBuf {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    let directory = std::env::temp_dir().join(format!(
+        "cookbench-grok-summary-{name}-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
+    fs::create_dir_all(&directory).expect("create temporary fixture directory");
+    let path = directory.join("summary.json");
+    fs::write(&path, summary).expect("write temporary summary fixture");
+    path
 }
 
 #[test]
@@ -77,4 +99,70 @@ async fn adapter_discover_exposes_grok_build_identity() {
         sessions[0].harness,
         cookbench_core::domain::HarnessId::Other("grok_cli".into())
     );
+}
+
+#[test]
+fn discovers_native_parent_summary_and_ignores_subagents() {
+    let source = HostSource::local(HostIdentity::local("fixture-host"));
+    let sessions = discover_sessions(&native_fixture_sessions(), &source).expect("discover");
+
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].native_session_id, "native-parent-session");
+    assert_eq!(
+        sessions[0]
+            .project
+            .as_ref()
+            .map(|project| project.canonical_root.as_str()),
+        Some("/synthetic/native-project")
+    );
+    assert!(sessions[0].locator.value.ends_with("updates.jsonl"));
+}
+
+#[test]
+fn parses_acp_params_envelope_without_retaining_content() {
+    let events = parse_record(
+        r#"{"timestamp":1700000000000,"method":"_x.ai/session/update","params":{"sessionId":"synthetic-session","update":{"sessionUpdate":"tool_call_update","status":"completed","content":"must-not-be-read"}}}"#,
+        8,
+    );
+
+    assert_eq!(events.len(), 1);
+    assert!(matches!(
+        events[0].kind,
+        EventKind::ToolCompleted { succeeded: true }
+    ));
+}
+
+#[test]
+fn ignores_non_acp_envelopes_and_subagent_events() {
+    for line in [
+        r#"{"method":"other/update","params":{"update":{"sessionUpdate":"tool_call","status":"pending"}}}"#,
+        r#"{"method":"session/update","params":{"update":{"sessionUpdate":"subagent_spawned"}}}"#,
+        r#"{"method":"session/update","params":{"update":{"sessionUpdate":"subagent_finished"}}}"#,
+    ] {
+        assert!(
+            parse_record(line, 1).is_empty(),
+            "unexpected event for {line}"
+        );
+    }
+}
+
+#[test]
+fn rejects_conflicting_summary_ids_and_oversized_metadata() {
+    let source = HostSource::local(HostIdentity::local("fixture-host"));
+    let conflicting = temporary_summary(
+        "conflicting-ids",
+        r#"{"info":{"id":"native-id","session_id":"legacy-id","cwd":"/synthetic/project"}}"#,
+    );
+    assert!(session_from_path(&conflicting, &source).is_err());
+    fs::remove_dir_all(conflicting.parent().expect("fixture parent")).expect("remove fixture");
+
+    let oversized = temporary_summary(
+        "oversized",
+        &format!(
+            r#"{{"info":{{"id":"native-id","cwd":"/synthetic/project"}},"title":"{}"}}"#,
+            "x".repeat(64 * 1024)
+        ),
+    );
+    assert!(session_from_path(&oversized, &source).is_err());
+    fs::remove_dir_all(oversized.parent().expect("fixture parent")).expect("remove fixture");
 }

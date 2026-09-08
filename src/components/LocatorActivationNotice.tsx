@@ -23,6 +23,14 @@ export function LocatorActivationNotice({ result }: { result: LocatorActivationR
     return <output role="status" aria-live="polite">{t("locator.opening")}</output>;
   }
 
+  if (result.status === "visibleFallback" && result.target === "applicationWindow") {
+    return <output role="status" aria-live="polite">{t("locator.applicationWindowFallback")}</output>;
+  }
+
+  if (result.status === "visibleFallback" && result.target === "projectDirectory") {
+    return <output role="status" aria-live="polite">{t("locator.projectDirectoryFallback")}</output>;
+  }
+
   if (result.status === "visibleFallback" && result.resumeSessionId) {
     return (
       <output role="status" aria-live="polite">

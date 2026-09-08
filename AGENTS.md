@@ -95,6 +95,36 @@ the Agent's conversation.
 7. Add synthetic fixtures, redaction coverage, lifecycle tests, return tests,
    compatibility documentation, and explicit known gaps.
 
+## Adapting a User Host
+
+An Agent may adapt Cookbench for a user's actual Harness, such as Cline or
+ZCode, when this repository has not recorded native evidence for that user's
+platform. Treat the work as a host-specific adaptation, not a new platform-wide
+support claim.
+
+1. Identify the actual Harness version, platform, terminal or IDE, and requested
+   observation or return behavior.
+2. Inspect only the minimum read-only metadata needed to establish a native root,
+   identity, lifecycle, and locator. Never place a real Session, private path,
+   ID, command, tool input/output, or credential in source, tests, fixtures,
+   diagnostics, or logs.
+3. Reuse the adapter catalog, reducers, locator rules, and Hook-ownership
+   patterns. Add metadata-only synthetic fixtures and failure regressions before
+   relying on a live session.
+4. Within the user's authorized local target, make low-risk edits, run focused
+   tests, build, and verify without asking for confirmation at each step. Leave
+   a clear revert path and clean Hook uninstall.
+5. Obtain explicit authorization before credential, permission, security,
+   destructive, or production changes. Preserve all Hook configuration
+   Cookbench does not own.
+6. Native Sessions remain authoritative and Cookbench remains observational: do
+   not start a Harness, send a prompt, approve work, or add remote control.
+   Emit an exact return only after unique correlation and verification; otherwise
+   provide a guarded fallback.
+7. Record the exact host scope, run `./scripts/verify.sh`, and list remaining
+   manual native gaps. Do not generalize one host result to another terminal,
+   platform, or Harness version.
+
 ## Development Workflow
 
 Keep changes scoped, reversible, and consistent with the existing codebase.

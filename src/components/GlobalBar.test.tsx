@@ -213,7 +213,7 @@ describe("GlobalBar", () => {
     expect(ring).toHaveAccessibleName();
   });
 
-  it.each([1, 6, 10, 20, 30])("keeps all %i fixture burners in the layout", (count) => {
+  it.each([1, 6, 10, 20, 30, 40])("keeps all %i fixture burners in the layout", (count) => {
     render(<GlobalBar stoves={globalBarFixture(count)} />);
 
     expect(screen.getAllByTestId("stove")).toHaveLength(count);

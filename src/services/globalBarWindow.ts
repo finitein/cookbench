@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 export type GlobalBarSize = { width: number; height: number };
+export type GlobalBarWorkArea = { width: number; height: number };
 export type GlobalBarResizeDirection =
   | "East"
   | "North"
@@ -353,6 +354,11 @@ export function setGlobalBarMinimumSize(
   });
 }
 
+/** The current monitor work area, in logical pixels, from the native shell. */
+export function getGlobalBarWorkArea() {
+  return invoke<GlobalBarWorkArea>("get_global_bar_work_area");
+}
+
 /** Measures only visible content, never the native window-filling Bar itself. */
 export function intrinsicGlobalBarMinimumHeight(bar: HTMLElement): number {
   const barTop = bar.getBoundingClientRect().top;
@@ -391,6 +397,71 @@ export function intrinsicGlobalBarMinimumWidth(bar: HTMLElement): number {
   // Full benches stretch with the window; do not treat that as a content floor.
   // Preferred Full width comes from remembered size (see preferredWidthForGlobalBarMode).
   return MINIMAL_GLOBAL_BAR_COMPACT_WIDTH;
+}
+
+/**
+ * Find the narrowest Full width at or above the user's preferred width that
+ * lets wrapped benches fit inside the current monitor work area. Re-evaluating
+ * from the user width prevents a fit-induced resize feedback loop.
+ */
+export function preferredFullWidthForGlobalBarWorkArea(
+  bar: HTMLElement,
+  workArea: GlobalBarWorkArea,
+  preferredWidth = Math.ceil(bar.getBoundingClientRect().width),
+): number | undefined {
+  const maximumWidth = Math.floor(workArea.width);
+  const maximumHeight = Math.floor(workArea.height);
+  const currentWidth = Math.ceil(bar.getBoundingClientRect().width);
+  const baselineWidth = Math.max(MINIMAL_GLOBAL_BAR_COMPACT_WIDTH, Math.ceil(preferredWidth));
+  const currentHeight = intrinsicGlobalBarMinimumHeight(bar);
+  if (!Number.isFinite(maximumWidth) || !Number.isFinite(maximumHeight) || maximumWidth < baselineWidth) return undefined;
+
+  const metrics = [...bar.querySelectorAll<HTMLElement>(".global-bar__bench")].flatMap((bench) => {
+    const grid = bench.querySelector<HTMLElement>(".global-bar__bench-stoves");
+    const item = grid?.querySelector<HTMLElement>(".global-bar__item");
+    if (!grid || !item) return [];
+    const gridBox = grid.getBoundingClientRect();
+    const itemBox = item.getBoundingClientRect();
+    const benchBox = bench.getBoundingClientRect();
+    const style = getComputedStyle(grid);
+    const columnGap = Number.parseFloat(style.columnGap) || 0;
+    const rowGap = Number.parseFloat(style.rowGap) || 0;
+    const itemWidth = itemBox.width;
+    const itemHeight = itemBox.height;
+    if (gridBox.width <= 0 || gridBox.height <= 0 || itemWidth <= 0 || itemHeight <= 0) return [];
+    return [{
+      count: grid.querySelectorAll(".global-bar__item").length,
+      width: gridBox.width,
+      itemWidth,
+      itemHeight,
+      columnGap,
+      rowGap,
+      overhead: Math.max(0, benchBox.height - gridBox.height),
+      benchHeight: benchBox.height,
+    }];
+  });
+  if (metrics.length === 0) return undefined;
+
+  const staticHeight = Math.max(0, currentHeight - metrics.reduce((sum, metric) => sum + metric.benchHeight, 0));
+  const candidates = new Set<number>([baselineWidth, maximumWidth]);
+  for (const metric of metrics) {
+    const maxColumns = Math.max(1, Math.floor((metric.width + (maximumWidth - currentWidth) + metric.columnGap) / (metric.itemWidth + metric.columnGap)));
+    for (let columns = 1; columns <= maxColumns; columns += 1) {
+      candidates.add(Math.ceil(currentWidth + columns * (metric.itemWidth + metric.columnGap) - metric.columnGap - metric.width));
+    }
+  }
+
+  for (const width of [...candidates].filter((value) => value >= baselineWidth && value <= maximumWidth).sort((left, right) => left - right)) {
+    const projectedHeight = staticHeight + metrics.reduce((sum, metric) => {
+      const columns = Math.max(1, Math.floor((metric.width + (width - currentWidth) + metric.columnGap) / (metric.itemWidth + metric.columnGap)));
+      const rows = Math.ceil(metric.count / columns);
+      const gridHeight = rows * metric.itemHeight + Math.max(0, rows - 1) * metric.rowGap;
+      return sum + metric.overhead + gridHeight;
+    }, 0);
+    if (projectedHeight <= maximumHeight) return width;
+  }
+
+  return maximumWidth;
 }
 
 export function recordGlobalBarPosition(x: number, y: number) {

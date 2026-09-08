@@ -42,6 +42,16 @@ describe("LocatorActivationNotice", () => {
     expect(screen.getByRole("status")).not.toHaveTextContent("could not open");
   });
 
+  it("does not claim an application window request located a session", () => {
+    render(<LocatorActivationNotice result={{ target: "applicationWindow", status: "visibleFallback", resumeSessionId: null }} />);
+    expect(screen.getByRole("status")).toHaveTextContent("Requested the host application; the exact session was not located.");
+  });
+
+  it("does not claim a project directory request located a session", () => {
+    render(<LocatorActivationNotice result={{ target: "projectDirectory", status: "visibleFallback", resumeSessionId: null }} />);
+    expect(screen.getByRole("status")).toHaveTextContent("Requested the project directory; the exact session was not located.");
+  });
+
   it("does not imply an unavailable locator was focused", () => {
     render(
       <LocatorActivationNotice

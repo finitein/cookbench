@@ -100,19 +100,23 @@ Stove 的数量偏好（默认 3 个）不会丢失，待独立验证安全后�
 
 ## 一行命令安装
 
-Cookbench v0.4.1 是未签名预览版。第一方安装脚本先下载
-`release-manifest.json`，为当前机器选择原生包，校验 SHA-256，确认无误后才安装。
+最新预览版为 [v0.4.3](https://github.com/finitein/cookbench/releases/tag/v0.4.3)，
+由本机发布，不使用 GitHub Actions。本次提供源码和未签名的 macOS Apple silicon App ZIP；
+暂不包含 Windows/Linux v0.4.3 安装包及 Intel Mac 包，这些平台可构建该标签的源码。
+
+下方命令有意保留 **v0.4.2**，它是上一版完整的跨平台二进制发布。第一方脚本根据 manifest
+选择原生包并校验 SHA-256。Apple silicon 用户安装 v0.4.3，请使用发布页的 App ZIP 和校验文件。
 
 macOS 通用版或图形化 Ubuntu/Linux x86_64：
 
 ```bash
-curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.4.1/install.sh | COOKBENCH_VERSION=v0.4.1 COOKBENCH_ALLOW_PRERELEASE=1 bash
+curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.4.2/install.sh | COOKBENCH_VERSION=v0.4.2 COOKBENCH_ALLOW_PRERELEASE=1 bash
 ```
 
 Windows x64 PowerShell：
 
 ```powershell
-$env:COOKBENCH_VERSION='v0.4.1'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.4.1/install.ps1 | iex
+$env:COOKBENCH_VERSION='v0.4.2'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.4.2/install.ps1 | iex
 ```
 
 macOS/Linux 可使用 `--dry-run`，所有平台都可以设置 `COOKBENCH_DRY_RUN=1`，只检查
@@ -130,7 +134,7 @@ macOS/Linux 可使用 `--dry-run`，所有平台都可以设置 `COOKBENCH_DRY_R
 4. 点击 Stove，在可用时返回已验证的终端/IDE 目标，或使用受保护的 Codex Desktop
    任务导航及明确标注的应用/项目降级目标。
 5. 在 Settings 中调整语言、Full 或 Minimal、顶端吸附、悬浮详情、两天新鲜度、Archive、
-   声音、系统横幅、Bar 闪烁与桌面提醒。v0.4.1 会保留但暂时隐藏已停用的 macOS 状态栏
+   声音、系统横幅、Bar 闪烁与桌面提醒。v0.4.2 会保留但暂时隐藏已停用的 macOS 状态栏
    Stove 数量偏好。
 
 本地通知默认只开启声音。Cooked Stove 可以持续闪烁，直到你点击它进行确认。
@@ -139,18 +143,37 @@ macOS/Linux 可使用 `--dry-run`，所有平台都可以设置 `COOKBENCH_DRY_R
 ## 27 个 Harness Profile，以及诚实的能力分级
 
 如果不说明观察了什么、如何判断生命周期、能否验证返回目标，“支持”二字就没有
-多少意义。Cookbench 会公开这些差异，而不是把所有集成都涂成绿色。
+多少意义。Cookbench 会公开这些差异，而不是把所有集成都涂成绿色。下表的级别是
+**协议能力**，并不承诺 27 个 Profile 都已在每种宿主机、操作系统、Harness 版本和终端上实机运行。
 
 | 级别 | 包含的工具 | 能力合同 |
 | --- | --- | --- |
 | **Full（14）** | Codex、Claude Code、Pi、Gemini CLI、Qwen Code、Kimi Code CLI、Qoder、ZCode、Factory Droid、CodeBuddy、Cursor、GitHub Copilot CLI、OpenCode、Cline | 具备结构化身份与生命周期合同；只有定位器唯一且已验证时才精准返回 |
-| **Standard（12）** | Trae、Grok CLI、Goose、Aider、Kiro、Amazon Q Developer、Roo Code、Continue、Amp、Mistral Vibe、Crush、OpenHands CLI | 可结构化观察，并提供受保护的应用、项目、IDE 或终端返回 |
+| **Standard（12）** | Trae、Grok Build、Goose、Aider、Kiro、Amazon Q Developer、Roo Code、Continue、Amp、Mistral Vibe、Crush、OpenHands CLI | 可结构化观察，并提供受保护的应用、项目、IDE 或终端返回 |
 | **Experimental（1）** | 腾讯 WorkBuddy | 在公开的结构化身份与生命周期合同出现前仅检测 presence |
 
 Cookbench 可以自动预览、安装、修复和卸载自己在 Codex、Claude Code、Pi、
 Kimi Code、ZCode 中的 Hook，并保留 Harness 的其他配置。其他结构化 Profile
 会在 Hook Health 中如实显示为手动接入，不会伪造绿色健康状态。内部 subagent 的
 启动和结束事件会被忽略，避免父 Session 的工作进程挤满整个 Bar。
+
+请将能力表按四个独立维度理解：
+
+| 维度 | 证明什么 | 到哪里查看 |
+| --- | --- | --- |
+| 级别 | catalog 的观察与返回合同 | 本表和兼容性矩阵 |
+| Hook 配置 | Cookbench 能否只自动管理自己的配置项，还是需要手动配置 | 本机的 Hook Health |
+| 本机就绪 | 当前机器是否发现可用的原生目录和生命周期信号 | 本机的 Sources 与 Hook Health |
+| 验证证据 | 合成 fixture 是否覆盖 parser，或记录的原生运行是否覆盖某条具体宿主机路径 | 测试和发布核对表 |
+
+例如，当前 `main` 已包含从本机观察到的 Grok Build 原生元数据目录发现并解析生命周期的实现。它仍属于
+**Standard**：只有唯一关联且完成宿主机侧验证后，才可精准返回。某个 macOS 终端上的 fixture
+或成功运行，不能证明 Windows、Linux 或其他终端上的这条返回路径。
+[发布核对表](docs/verification/release-checklist.md)记录了原生证据和仍需人工验证的缺口。
+本次范围与结果见 [macOS 主分支验证记录](docs/verification/macos-main-2026-09-08.md)。
+
+Grok Build 的终端关联目前检查标准 `.grok/sessions` 布局。自定义 `GROK_HOME` 目录可以被发现，
+但返回仍保守降级。一个进程打开多个会话、进程探测不完整或身份关联不唯一时，也不会声称精准返回。
 
 完整信息见[兼容性矩阵](docs/harness-compatibility.md)与
 [Hook 集成合同](docs/integrations/hooks.md)。
@@ -253,6 +276,25 @@ Adapter 增加的是归一化观察合同，而不是 Agent 对话的私人副�
 5. 只有完成关联与验证后才能输出精准 locator。
 6. 增加合成的、仅含元数据的 fixture、脱敏测试、状态测试和已知缺口文档。
 7. 可选 Hook 安装必须由 Cookbench 自己拥有、可逆，并与 Harness 的其他配置隔离。
+
+### 在用户宿主机内自行适配
+
+当 catalog 尚未记录用户所在平台的原生证据时，Agent 可以为用户实际使用的 Harness（包括
+Cline 或 ZCode）适配 Cookbench。但这只能作为某台宿主机上的贡献，不能变成新的跨平台支持承诺：
+
+1. 先识别用户实际使用的 Harness、版本、平台、终端或 IDE，以及所需的观察或返回行为。
+2. 只读调查建立原生目录、身份、生命周期和 locator 合同所需的最小元数据。绝不把真实
+   Session、私有路径、ID、命令、工具 I/O 或凭据写入仓库、fixture、日志或诊断。
+3. 复用 adapter catalog、reducer、locator 规则和 Hook 所有权模式；先增加仅含元数据的合成
+   fixture 与失败回归，再依赖真实 Session。
+4. 在用户授权的目标范围内，可自行完成低风险本地修改、定向测试、构建和验证，无须逐步确认；
+   同时保留清晰的回滚或 Hook 卸载路径。
+5. 涉及凭据、权限、安全、破坏性操作或生产环境变更时，必须取得明确授权；保留 Cookbench
+   不拥有的所有 Hook 配置项。
+6. 原生 Session 始终是真源，Cookbench 只能观察：不得启动 Harness、发送 prompt、批准操作或
+   增加远程控制。只有唯一关联且验证成功才输出精准返回，否则提供受保护的 fallback。
+7. 记录精确的宿主机范围，运行 `./scripts/verify.sh`，并列出人工原生验证缺口；不得把单机
+   结果泛化为整个操作系统平台的承诺。
 
 从 [AGENTS.md](AGENTS.md)、[兼容性矩阵](docs/harness-compatibility.md)、
 [Hook 规则](docs/integrations/hooks.md)、[安全边界](docs/security.md)与

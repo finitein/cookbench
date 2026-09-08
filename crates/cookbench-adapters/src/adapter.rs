@@ -10,7 +10,6 @@ use tokio_util::sync::CancellationToken;
 
 use crate::AdapterCapabilities;
 
-
 /// True for host-native absolute paths and POSIX absolute paths (`/...`).
 ///
 /// Session metadata (and synthetic fixtures) often carry Unix-style roots even

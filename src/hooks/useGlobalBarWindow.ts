@@ -2,9 +2,9 @@ import { useEffect } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   attachGlobalBarDragHandle, attachGlobalBarResizeHandle, createGlobalBarDockController,
-  createGlobalBarDockTransport, prepareNativeGlobalBarDocument, intrinsicGlobalBarMinimumHeight,
+  createGlobalBarDockTransport, getGlobalBarWorkArea, prepareNativeGlobalBarDocument, intrinsicGlobalBarMinimumHeight,
   intrinsicGlobalBarMinimumWidth, globalBarMinimumRequestKey, preferredHeightForGlobalBarMode,
-  preferredWidthForGlobalBarMode, recordGlobalBarSize, setGlobalBarMinimumSize,
+  preferredFullWidthForGlobalBarWorkArea, preferredWidthForGlobalBarMode, recordGlobalBarSize, setGlobalBarMinimumSize,
 } from "../services/globalBarWindow";
 
 /** Keeps native Global Bar actions tied to local pointer, focus, and resize gestures. */
@@ -16,6 +16,7 @@ export function useGlobalBarWindow() {
     let disposed = false;
     let lastMinimumRequest: string | undefined;
     let updateMinimum = () => {};
+    let refreshWorkArea = () => {};
     let wasCollapsed = false;
     const dock = createGlobalBarDockController(createGlobalBarDockTransport(), (state) => {
       document.documentElement.dataset.cookbenchDockState = state.phase;
@@ -24,7 +25,7 @@ export function useGlobalBarWindow() {
         updateMinimum();
       }
       wasCollapsed = state.collapsed;
-    }, () => updateMinimum());
+    }, () => { updateMinimum(); refreshWorkArea(); });
     dock.setGuards({
       pointerInside: bar.matches(":hover"),
       focused: bar.contains(document.activeElement),
@@ -32,9 +33,11 @@ export function useGlobalBarWindow() {
     });
     let stopDock = () => {};
     void dock.initialize().then((unlisten) => { if (disposed) unlisten(); else stopDock = unlisten; });
-    const detach = attachGlobalBarDragHandle(bar, () => dock.start());
-    const endDrag = () => dock.endDrag();
-    const endResize = () => dock.settleResize();
+    let draggingBar = false;
+    let resizingBar = false;
+    const detach = attachGlobalBarDragHandle(bar, () => { draggingBar = true; dock.start(); });
+    const endDrag = () => { dock.endDrag(); if (draggingBar) refreshWorkArea(); draggingBar = false; };
+    const endResize = () => { dock.settleResize(); if (resizingBar) refreshWorkArea(); resizingBar = false; };
     window.addEventListener("pointerup", endDrag);
     window.addEventListener("pointercancel", endDrag);
     window.addEventListener("pointerup", endResize);
@@ -53,13 +56,31 @@ export function useGlobalBarWindow() {
     let lastKnownWidth: number | undefined;
     let lastKnownHeight: number | undefined;
     let lastChromeMode: "full" | "minimal" | undefined;
+    let workArea: { width: number; height: number } | undefined;
+    let workAreaRequest: Promise<void> | undefined;
+    let workAreaDirty = false;
     const chromeMode = (): "full" | "minimal" => (
       bar.classList.contains("global-bar--minimal") ? "minimal" : "full"
     );
+    refreshWorkArea = () => {
+      workAreaDirty = true;
+      if (workAreaRequest) return;
+      workAreaDirty = false;
+      workAreaRequest = getGlobalBarWorkArea().then((next) => {
+        if (disposed || (workArea?.width === next.width && workArea?.height === next.height)) return;
+        workArea = next;
+        lastMinimumRequest = undefined;
+        updateMinimum();
+      }).catch(() => undefined).finally(() => {
+        workAreaRequest = undefined;
+        if (!disposed && workAreaDirty) refreshWorkArea();
+      });
+    };
     const resizeHandles = ["North", "South", "East", "West", "NorthEast", "NorthWest", "SouthEast", "SouthWest"] as const;
     const resizeCleanups = resizeHandles.map((direction) => {
       const handle = document.createElement("div"); handle.className = "global-bar__resize-handle"; bar.append(handle);
       const detachResize = attachGlobalBarResizeHandle(handle, direction, () => {
+        resizingBar = true;
         dock.startResize();
       }, () => dock.settleResize());
       return () => { detachResize(); handle.remove(); };
@@ -69,6 +90,7 @@ export function useGlobalBarWindow() {
     const persistNativeSize = () => {
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
+        if (disposed) return;
         if (dock.state().collapsed) return;
         // A resize event is not release evidence. Keep its guard active until
         // the local pointer lifecycle ends, then refresh through the settled
@@ -98,6 +120,7 @@ export function useGlobalBarWindow() {
     updateMinimum = () => {
       if (minimumTimer) clearTimeout(minimumTimer);
       minimumTimer = setTimeout(() => {
+        if (disposed) return;
         if (dock.state().collapsed) return;
         const mode = chromeMode();
         if (lastChromeMode != null && lastChromeMode !== mode) {
@@ -109,24 +132,53 @@ export function useGlobalBarWindow() {
         const minimum = { width: 280, height: intrinsicGlobalBarMinimumHeight(bar) };
         const contentWidth = intrinsicGlobalBarMinimumWidth(bar);
         const preferredHeight = preferredHeightForGlobalBarMode(mode, minimum.height, fullPreferredHeight);
-        const preferredWidth = preferredWidthForGlobalBarMode(mode, contentWidth, fullPreferredWidth);
+        const rememberedWidth = preferredWidthForGlobalBarMode(mode, contentWidth, fullPreferredWidth);
+        const widerFullWidth = mode === "full" && workArea
+          ? preferredFullWidthForGlobalBarWorkArea(bar, workArea, rememberedWidth)
+          : undefined;
+        const preferredWidth = widerFullWidth == null
+          ? rememberedWidth
+          : Math.max(rememberedWidth ?? 0, widerFullWidth);
         const request = globalBarMinimumRequestKey(minimum, preferredHeight, preferredWidth);
         if (request === lastMinimumRequest) return;
         lastMinimumRequest = request;
         suppressResizeUntil = Date.now() + 500;
         void setGlobalBarMinimumSize(minimum, preferredHeight, preferredWidth).then(() => {
+          if (disposed) return;
           if (dock.state().docked) dock.refresh();
         }).catch(() => {
+          if (disposed) return;
           if (lastMinimumRequest === request) lastMinimumRequest = undefined;
         });
       }, 60);
     };
     const observer = new ResizeObserver(updateMinimum);
-    [".global-bar__brand", ".global-bar__benches", ".global-bar__minimal", ".stove-priority-menu"].forEach((selector) => {
-      const element = bar.querySelector<HTMLElement>(selector); if (element) observer.observe(element);
+    const observed = new Set<HTMLElement>();
+    const observeCurrentContent = () => {
+      const elements = [".global-bar__brand", ".global-bar__benches", ".global-bar__minimal", ".stove-priority-menu"].flatMap((selector) => {
+        const element = bar.querySelector<HTMLElement>(selector);
+        return element ? [element] : [];
+      });
+      for (const element of observed) {
+        if (!elements.includes(element)) {
+          observer.unobserve(element);
+          observed.delete(element);
+        }
+      }
+      elements.forEach((element) => {
+        if (!observed.has(element)) {
+          observed.add(element);
+          observer.observe(element);
+        }
+      });
+    };
+    observeCurrentContent();
+    const mutations = new MutationObserver(() => {
+      observeCurrentContent();
+      updateMinimum();
     });
-    const mutations = new MutationObserver(updateMinimum);
     mutations.observe(bar, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
+    refreshWorkArea();
     void Promise.all([getCurrentWindow().outerSize(), getCurrentWindow().scaleFactor()]).then(([size, scaleFactor]) => {
       const restoredHeight = size.height / scaleFactor;
       const restoredWidth = size.width / scaleFactor;

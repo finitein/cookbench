@@ -20,7 +20,7 @@ export function DetachedStoveWindow({ stove, onActivate, activeAlertStoveId }: D
     });
     let disposed = false;
     let stop: (() => void) | undefined;
-    let retry: ReturnType<typeof setTimeout> | undefined;
+    let retry: number | undefined;
     try {
       const applySize = () => {
         void applyDetachedWindowSize().catch(() => {

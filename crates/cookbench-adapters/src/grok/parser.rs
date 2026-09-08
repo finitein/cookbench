@@ -1,6 +1,7 @@
 //! Allowlisted ACP sessionUpdate → Cookbench lifecycle mapping for Grok Build.
 //!
-//! Grok Build persists flattened `updates.jsonl` records. Cookbench reads only
+//! Grok Build persists ACP `session/update` envelopes (and older flattened
+//! records). Cookbench reads only
 //! bounded lifecycle fields (`sessionUpdate`, `status`, `state`, `stopReason`,
 //! and plan entry statuses). Message text, tool arguments, and thoughts are
 //! never retained.
@@ -29,10 +30,25 @@ pub fn parse_record(line: &str, sequence: u64) -> Vec<StoveEvent> {
     let Some(object) = value.as_object() else {
         return Vec::new();
     };
-    let update = object
-        .get("update")
-        .and_then(Value::as_object)
-        .unwrap_or(object);
+    let update = match object.get("method") {
+        Some(Value::String(method))
+            if matches!(method.as_str(), "session/update" | "_x.ai/session/update") =>
+        {
+            object
+                .get("params")
+                .and_then(Value::as_object)
+                .and_then(|params| params.get("update"))
+                .and_then(Value::as_object)
+        }
+        Some(_) => None,
+        None => object
+            .get("update")
+            .and_then(Value::as_object)
+            .or(Some(object)),
+    };
+    let Some(update) = update else {
+        return Vec::new();
+    };
     let Some(session_update) = bounded_string(update.get("sessionUpdate"), MAX_FIELD_BYTES) else {
         return Vec::new();
     };
@@ -44,7 +60,7 @@ pub fn parse_record(line: &str, sequence: u64) -> Vec<StoveEvent> {
             .get("timestamp")
             .and_then(timestamp_ms)
             .or_else(|| update.get("timestamp").and_then(timestamp_ms))
-            .unwrap_or(sequence),
+            .unwrap_or(0),
     );
 
     match session_update.as_str() {
@@ -88,6 +104,14 @@ pub fn parse_record(line: &str, sequence: u64) -> Vec<StoveEvent> {
             }
             _ => Vec::new(),
         },
+        "turn_completed" => {
+            match bounded_string(update.get("stop_reason"), MAX_FIELD_BYTES).as_deref() {
+                Some("end_turn" | "cancelled") => {
+                    vec![StoveEvent::new(EventKind::TurnCompleted, metadata)]
+                }
+                _ => Vec::new(),
+            }
+        }
         "plan" => plan_progress(update)
             .map(|(completed, total)| {
                 StoveEvent::new(EventKind::PlanUpdated { completed, total }, metadata)
@@ -144,7 +168,13 @@ fn plan_progress(update: &serde_json::Map<String, Value>) -> Option<(u32, u32)> 
 }
 
 fn timestamp_ms(value: &Value) -> Option<u64> {
-    value.as_u64().or_else(|| value.as_str()?.parse().ok())
+    let timestamp = value.as_u64().or_else(|| value.as_str()?.parse().ok())?;
+    // Native Grok Build records use Unix seconds; older fixtures may be milliseconds.
+    if timestamp < 100_000_000_000 {
+        timestamp.checked_mul(1_000)
+    } else {
+        Some(timestamp)
+    }
 }
 
 fn bounded_string(value: Option<&Value>, limit: usize) -> Option<String> {

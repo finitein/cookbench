@@ -748,6 +748,7 @@ fn collapse_macos_window_to_trigger<R: Runtime>(
 }
 
 /// Physical pixels of a docked bar still inside the work-area top after a move.
+#[cfg(any(target_os = "linux", test))]
 pub(crate) fn collapsed_visible_strip_px(expanded_y: i32, applied_y: i32, height: u32) -> u32 {
     (i64::from(applied_y) + i64::from(height) - i64::from(expanded_y))
         .max(0)
@@ -755,6 +756,7 @@ pub(crate) fn collapsed_visible_strip_px(expanded_y: i32, applied_y: i32, height
 }
 
 /// True when a collapse move left more than the trigger strip visible (WM clamp).
+#[cfg(any(target_os = "linux", test))]
 pub(crate) fn collapsed_needs_shrink_in_place(
     expanded_y: i32,
     applied_y: i32,
@@ -1365,6 +1367,35 @@ pub fn record_global_bar_size(
     state.update_persisted_config(|config| config.layout.global_bar_size = Some(size))
 }
 
+#[derive(Clone, Copy, Debug, Serialize)]
+pub struct GlobalBarWorkAreaWire {
+    pub width: f64,
+    pub height: f64,
+}
+
+fn logical_global_bar_work_area(width: u32, height: u32, scale: f64) -> GlobalBarWorkAreaWire {
+    let scale = if scale.is_finite() && scale > 0.0 {
+        scale
+    } else {
+        1.0
+    };
+    GlobalBarWorkAreaWire {
+        width: (f64::from(width) / scale).max(1.0),
+        height: (f64::from(height) / scale).max(1.0),
+    }
+}
+
+/// Read-only bounds for fitting wrapped content on the Bar's current monitor.
+#[tauri::command]
+pub fn get_global_bar_work_area(app: AppHandle) -> Result<GlobalBarWorkAreaWire, String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "Cookbench global Bar window is unavailable".to_owned())?;
+    let area = current_global_bar_work_area(&window)?;
+    let scale = window.scale_factor().map_err(|error| error.to_string())?;
+    Ok(logical_global_bar_work_area(area.width, area.height, scale))
+}
+
 /// Raises the native lower bound as wrapped Stove content grows. Preferred
 /// height/width (when provided) resize the current window so Minimal can shrink
 /// to compact chrome and Full can restore remembered size; otherwise only an
@@ -1848,6 +1879,16 @@ mod dock_tests {
             fit_global_bar_outer_size_to_work_area(500, 400, 0, 0),
             (1, 1)
         );
+    }
+
+    #[test]
+    fn global_bar_work_area_is_reported_in_logical_pixels() {
+        let area = logical_global_bar_work_area(2560, 1440, 2.0);
+        assert_eq!((area.width, area.height), (1280.0, 720.0));
+        let invalid_scale = logical_global_bar_work_area(800, 600, f64::NAN);
+        assert_eq!((invalid_scale.width, invalid_scale.height), (800.0, 600.0));
+        let empty = logical_global_bar_work_area(0, 0, 2.0);
+        assert_eq!((empty.width, empty.height), (1.0, 1.0));
     }
 
     #[test]

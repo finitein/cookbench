@@ -5,10 +5,12 @@ import {
   createGlobalBarDockController,
   type GlobalBarDockTransport,
   globalBarMinimumRequestKey,
+  getGlobalBarWorkArea,
   intrinsicGlobalBarMinimumHeight,
   intrinsicGlobalBarMinimumWidth,
   MINIMAL_GLOBAL_BAR_COMPACT_WIDTH,
   preferredHeightForGlobalBarMode,
+  preferredFullWidthForGlobalBarWorkArea,
   preferredWidthForGlobalBarMode,
   prepareNativeGlobalBarDocument,
   recordGlobalBarPosition,
@@ -80,6 +82,12 @@ describe("global bar window sizing", () => {
       preferredHeight: 92,
       preferredWidth: 280,
     });
+  });
+
+  it("reads the current monitor work area from the native shell", async () => {
+    invoke.mockResolvedValue({ width: 1440, height: 900 });
+    await expect(getGlobalBarWorkArea()).resolves.toEqual({ width: 1440, height: 900 });
+    expect(invoke).toHaveBeenCalledWith("get_global_bar_work_area");
   });
 
   it("deduplicates unchanged native minimum-size requests", () => {
@@ -164,6 +172,77 @@ describe("global bar window sizing", () => {
     vi.spyOn(menu, "getBoundingClientRect").mockReturnValue({ bottom: 352, height: 260 } as DOMRect);
     expect(menu.getBoundingClientRect().height).toBeGreaterThan(0);
     expect(intrinsicGlobalBarMinimumHeight(bar)).toBe(363);
+  });
+
+  it("widens an overflowing Full Bar just enough to wrap dense benches within the work area", () => {
+    const bar = document.createElement("section");
+    bar.className = "global-bar";
+    const brand = document.createElement("div");
+    brand.className = "global-bar__brand";
+    const benches = document.createElement("div");
+    benches.className = "global-bar__benches";
+    bar.append(brand, benches);
+    const barRect = vi.spyOn(bar, "getBoundingClientRect").mockReturnValue({ top: 0, width: 280 } as DOMRect);
+    vi.spyOn(brand, "getBoundingClientRect").mockReturnValue({ bottom: 80 } as DOMRect);
+    const benchesRect = vi.spyOn(benches, "getBoundingClientRect").mockReturnValue({ bottom: 1851 } as DOMRect);
+    const style = vi.spyOn(window, "getComputedStyle").mockReturnValue({ columnGap: "4px", rowGap: "4px" } as CSSStyleDeclaration);
+    const resetMetrics: Array<() => void> = [];
+    for (const count of [14, 13, 13]) {
+      const bench = document.createElement("section");
+      bench.className = "global-bar__bench";
+      const grid = document.createElement("div");
+      grid.className = "global-bar__bench-stoves";
+      bench.append(grid);
+      benches.append(bench);
+      const benchRect = vi.spyOn(bench, "getBoundingClientRect").mockReturnValue({ height: 612 } as DOMRect);
+      const gridRect = vi.spyOn(grid, "getBoundingClientRect").mockReturnValue({ width: 82, height: 598 } as DOMRect);
+      resetMetrics.push(() => {
+        benchRect.mockReturnValue({ height: 196 } as DOMRect);
+        gridRect.mockReturnValue({ width: 598, height: 182 } as DOMRect);
+      });
+      for (let index = 0; index < count; index += 1) {
+        const item = document.createElement("div");
+        item.className = "global-bar__item";
+        vi.spyOn(item, "getBoundingClientRect").mockReturnValue({ width: 82, height: 82 } as DOMRect);
+        grid.append(item);
+      }
+    }
+
+    expect(preferredFullWidthForGlobalBarWorkArea(bar, { width: 1000, height: 800 })).toBe(796);
+    barRect.mockReturnValue({ top: 0, width: 796 } as DOMRect);
+    benchesRect.mockReturnValue({ bottom: 603 } as DOMRect);
+    resetMetrics.forEach((reset) => reset());
+    expect(preferredFullWidthForGlobalBarWorkArea(bar, { width: 1000, height: 800 }, 280)).toBe(796);
+    style.mockRestore();
+  });
+
+  it("uses the work-area width cap when even the widest Full Bar cannot fit", () => {
+    const bar = document.createElement("section");
+    bar.className = "global-bar";
+    const brand = document.createElement("div");
+    brand.className = "global-bar__brand";
+    const benches = document.createElement("div");
+    benches.className = "global-bar__benches";
+    const bench = document.createElement("section");
+    bench.className = "global-bar__bench";
+    const grid = document.createElement("div");
+    grid.className = "global-bar__bench-stoves";
+    for (let index = 0; index < 40; index += 1) {
+      const item = document.createElement("div");
+      item.className = "global-bar__item";
+      vi.spyOn(item, "getBoundingClientRect").mockReturnValue({ width: 82, height: 82 } as DOMRect);
+      grid.append(item);
+    }
+    bench.append(grid); benches.append(bench); bar.append(brand, benches);
+    vi.spyOn(bar, "getBoundingClientRect").mockReturnValue({ top: 0, width: 280 } as DOMRect);
+    vi.spyOn(brand, "getBoundingClientRect").mockReturnValue({ bottom: 80 } as DOMRect);
+    vi.spyOn(benches, "getBoundingClientRect").mockReturnValue({ bottom: 1000 } as DOMRect);
+    vi.spyOn(bench, "getBoundingClientRect").mockReturnValue({ height: 980 } as DOMRect);
+    vi.spyOn(grid, "getBoundingClientRect").mockReturnValue({ width: 82, height: 970 } as DOMRect);
+    const style = vi.spyOn(window, "getComputedStyle").mockReturnValue({ columnGap: "4px", rowGap: "4px" } as CSSStyleDeclaration);
+
+    expect(preferredFullWidthForGlobalBarWorkArea(bar, { width: 400, height: 300 })).toBe(400);
+    style.mockRestore();
   });
 });
 

@@ -206,6 +206,7 @@ pub fn run() {
             commands::windows::record_detached_stove_position,
             commands::windows::record_global_bar_size,
             commands::windows::set_global_bar_minimum_size,
+            commands::windows::get_global_bar_work_area,
             commands::windows::get_global_bar_dock_state,
             commands::windows::start_global_bar_drag,
             commands::windows::finish_global_bar_drag,

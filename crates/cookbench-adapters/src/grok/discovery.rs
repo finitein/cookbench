@@ -1,5 +1,6 @@
 use std::{
-    fs,
+    fs::{self, File},
+    io::Read,
     path::{Path, PathBuf},
 };
 
@@ -85,7 +86,7 @@ fn collect_summaries(
         if metadata.is_dir() {
             let summary = path.join("summary.json");
             if summary.is_file() {
-                if let Ok(session) = session_from_summary(&summary, source) {
+                if let Ok(Some(session)) = session_from_summary(&summary, source) {
                     discovered.push(session);
                 }
                 continue;
@@ -99,6 +100,7 @@ fn collect_summaries(
 #[derive(Debug, Deserialize)]
 struct SummaryFile {
     info: Option<SummaryInfo>,
+    session_kind: Option<String>,
     generated_title: Option<String>,
     #[serde(default)]
     title_is_manual: bool,
@@ -107,6 +109,7 @@ struct SummaryFile {
 
 #[derive(Debug, Deserialize)]
 struct SummaryInfo {
+    id: Option<String>,
     session_id: Option<String>,
     cwd: Option<String>,
 }
@@ -132,25 +135,23 @@ pub fn session_from_path(
     if !summary.is_file() {
         return Ok(None);
     }
-    session_from_summary(&summary, source).map(Some)
+    session_from_summary(&summary, source)
 }
 
-fn session_from_summary(path: &Path, source: &HostSource) -> Result<NativeSession, AdapterError> {
-    let bytes = fs::read(path).map_err(|error| AdapterError::Message(error.to_string()))?;
-    if bytes.len() > 64 * 1024 {
-        return Err(AdapterError::invalid_session_metadata(
-            "summary.json exceeds the bounded discovery limit",
-        ));
-    }
+fn session_from_summary(
+    path: &Path,
+    source: &HostSource,
+) -> Result<Option<NativeSession>, AdapterError> {
+    let bytes = read_bounded(path, 64 * 1024)?;
     let summary: SummaryFile = serde_json::from_slice(&bytes)
         .map_err(|_| AdapterError::invalid_session_metadata("summary.json is not valid JSON"))?;
+    if summary.session_kind.as_deref() == Some("subagent") {
+        return Ok(None);
+    }
     let info = summary
         .info
         .ok_or_else(|| AdapterError::invalid_session_metadata("summary.json is missing info"))?;
-    let native_session_id = info
-        .session_id
-        .filter(|value| !value.is_empty() && value.len() <= NativeSession::MAX_ID_BYTES)
-        .ok_or_else(|| AdapterError::invalid_session_metadata("missing session id"))?;
+    let native_session_id = select_session_id(&info)?;
     let cwd = info
         .cwd
         .filter(|value| crate::adapter::is_absolute_session_path(value) && value.len() <= 1024);
@@ -187,6 +188,37 @@ fn session_from_summary(path: &Path, source: &HostSource) -> Result<NativeSessio
         title,
         SessionLocator::new(locator_kind, locator_path.to_string_lossy())?,
     )
+    .map(Some)
+}
+
+fn read_bounded(path: &Path, limit: usize) -> Result<Vec<u8>, AdapterError> {
+    let mut bytes = Vec::with_capacity(limit.saturating_add(1));
+    File::open(path)
+        .map_err(|error| AdapterError::Message(error.to_string()))?
+        .take(u64::try_from(limit.saturating_add(1)).expect("bounded discovery limit"))
+        .read_to_end(&mut bytes)
+        .map_err(|error| AdapterError::Message(error.to_string()))?;
+    if bytes.len() > limit {
+        return Err(AdapterError::invalid_session_metadata(
+            "summary.json exceeds the bounded discovery limit",
+        ));
+    }
+    Ok(bytes)
+}
+
+fn select_session_id(info: &SummaryInfo) -> Result<String, AdapterError> {
+    let native_id = info.id.as_deref().filter(|value| !value.is_empty());
+    let legacy_id = info.session_id.as_deref().filter(|value| !value.is_empty());
+    if native_id.is_some() && legacy_id.is_some() && native_id != legacy_id {
+        return Err(AdapterError::invalid_session_metadata(
+            "summary.json has conflicting session ids",
+        ));
+    }
+    native_id
+        .or(legacy_id)
+        .filter(|value| value.len() <= NativeSession::MAX_ID_BYTES)
+        .map(str::to_owned)
+        .ok_or_else(|| AdapterError::invalid_session_metadata("missing session id"))
 }
 
 #[async_trait]

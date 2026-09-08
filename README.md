@@ -115,9 +115,15 @@ the exact [privacy](docs/privacy.md), [security](docs/security.md), and
 
 ## Install in One Command
 
-Cookbench v0.4.2 is an unsigned preview. The first-party bootstrap downloads
-`release-manifest.json`, selects the native package for this machine, verifies
-its SHA-256 digest, and only then installs it.
+The latest preview is [v0.4.3](https://github.com/finitein/cookbench/releases/tag/v0.4.3),
+published locally without GitHub Actions. It provides source and an unsigned
+macOS Apple-silicon App ZIP. Windows/Linux v0.4.3 installers and an Intel Mac
+package are not included; build the tagged source on those platforms.
+
+The commands below deliberately install **v0.4.2**, the previous complete binary
+release. The first-party bootstrap selects a native package from its manifest
+and verifies SHA-256 before installation. For v0.4.3 on Apple silicon, use the
+App ZIP and checksums on the release page instead.
 
 macOS universal or graphical Ubuntu/Linux x86_64:
 
@@ -161,12 +167,14 @@ expire after 20 seconds rather than occupying a permanent row below the Bar.
 
 "Supported" is not useful unless it says what is observed, how lifecycle is
 inferred, and whether return can be verified. Cookbench publishes those
-differences instead of painting every integration green.
+differences instead of painting every integration green. The tiers below are
+**protocol capabilities**, not a claim that every one of 27 profiles has been
+run on every host, operating system, Harness version, and terminal.
 
 | Tier | Included surfaces | Contract |
 | --- | --- | --- |
 | **Full (14)** | Codex, Claude Code, Pi, Gemini CLI, Qwen Code, Kimi Code CLI, Qoder, ZCode, Factory Droid, CodeBuddy, Cursor, GitHub Copilot CLI, OpenCode, Cline | Structured identity and lifecycle contract; exact return only with a unique verified locator |
-| **Standard (12)** | Trae, Grok CLI, Goose, Aider, Kiro, Amazon Q Developer, Roo Code, Continue, Amp, Mistral Vibe, Crush, OpenHands CLI | Structured observation with a guarded app, project, IDE, or terminal return |
+| **Standard (12)** | Trae, Grok Build, Goose, Aider, Kiro, Amazon Q Developer, Roo Code, Continue, Amp, Mistral Vibe, Crush, OpenHands CLI | Structured observation with a guarded app, project, IDE, or terminal return |
 | **Experimental (1)** | Tencent WorkBuddy | Presence-only until a public structured identity and lifecycle contract exists |
 
 Cookbench can automatically preview, install, repair, and uninstall only its
@@ -175,6 +183,28 @@ unrelated Harness configuration. Other structured profiles appear in Hook
 Health as manual rather than receiving a fake green check. Internal subagent
 start/stop events are ignored so a parent session's workers do not flood the
 Bar with duplicate Stoves.
+
+Read the capability table in four independent dimensions:
+
+| Dimension | What it proves | Where to check it |
+| --- | --- | --- |
+| Tier | The catalog's observation and return contract | This table and the compatibility matrix |
+| Hook setup | Whether Cookbench can manage only its own configuration entry automatically, or requires manual setup | Hook Health on this machine |
+| Local readiness | Whether this machine found a usable native root and lifecycle signal | Sources and Hook Health on this machine |
+| Verification evidence | Whether synthetic fixtures exercise the parser, or a recorded native run covers a specific host path | Tests and the release checklist |
+
+For example, current `main` includes Grok Build discovery and lifecycle parsing
+from its locally observed native metadata root. It remains **Standard**: exact return is
+available only after unique correlation and host-side verification. A fixture
+or a successful run on one macOS terminal does not prove that return path on
+Windows, Linux, or another terminal. The [release checklist](docs/verification/release-checklist.md)
+records the native evidence and remaining manual gaps.
+See the scoped [macOS main verification record](docs/verification/macos-main-2026-09-08.md).
+
+Grok Build terminal correlation currently checks the standard `.grok/sessions`
+layout. Custom `GROK_HOME` roots can be discovered, but return remains a guarded
+fallback. Multiple open sessions in one process, incomplete process inspection,
+or ambiguous identity also prevent an exact-return claim.
 
 See the canonical [compatibility matrix](docs/harness-compatibility.md) and
 [Hook integration contract](docs/integrations/hooks.md).
@@ -295,6 +325,35 @@ of the Agent's conversation:
    documentation for known gaps.
 7. Keep optional Hook installation owned, reversible, and isolated from the
    Harness's unrelated configuration.
+
+### Adapt a User's Host, Within Its Boundaries
+
+An Agent may adapt Cookbench for the Harnesses a user actually uses, including
+Cline or ZCode, when the catalog has not received recorded native evidence for
+that user's platform. Do this as a host-specific contribution, not as a new
+cross-platform support promise:
+
+1. Identify the user's Harness, version, platform, terminal or IDE, and the
+   requested observation or return behavior before changing anything.
+2. Inspect only the minimum read-only metadata needed to establish the native
+   root, identity, lifecycle, and locator contract. Never copy a real session,
+   private path, ID, command, tool input/output, or credential into the repo,
+   fixtures, logs, or diagnostics.
+3. Reuse the adapter catalog, reducers, locator rules, and Hook ownership
+   pattern. Add synthetic metadata-only fixtures and failure regressions before
+   relying on a live session.
+4. Within the user's authorized target, make low-risk local edits, run focused
+   tests, build, and verify without asking for confirmation at every step. Keep
+   a clear revert or Hook-uninstall path.
+5. Obtain explicit authorization before credential, permission, security,
+   destructive, or production changes. Preserve every Hook entry Cookbench
+   does not own.
+6. Keep native sessions authoritative and Cookbench observational: never start
+   a Harness, send a prompt, approve an action, or add remote control. Emit an
+   exact return only after unique correlation and verification; otherwise use a
+   guarded fallback.
+7. Record the exact host scope, run `./scripts/verify.sh`, and name manual
+   native gaps. Do not generalize one host's result into a platform-wide claim.
 
 Start with [AGENTS.md](AGENTS.md), the
 [compatibility matrix](docs/harness-compatibility.md),
