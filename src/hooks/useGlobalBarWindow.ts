@@ -43,10 +43,13 @@ export function useGlobalBarWindow() {
     window.addEventListener("pointerup", endResize);
     window.addEventListener("pointercancel", endResize);
     const enter = () => { dock.setGuards({ pointerInside: true }); if (dock.state().collapsed) dock.reveal(); };
+    // Collapse can park the strip under a stationary pointer without a fresh
+    // pointerenter. After revealArmed, a real move must expand without a click.
+    const move = () => { if (dock.state().collapsed) dock.reveal(); };
     const leave = () => dock.setGuards({ pointerInside: false });
     const focusIn = () => dock.setGuards({ focused: true });
     const focusOut = (event: FocusEvent) => { if (!bar.contains(event.relatedTarget as Node | null)) dock.setGuards({ focused: false }); };
-    bar.addEventListener("pointerenter", enter); bar.addEventListener("pointerleave", leave);
+    bar.addEventListener("pointerenter", enter); bar.addEventListener("pointermove", move); bar.addEventListener("pointerleave", leave);
     bar.addEventListener("focusin", focusIn); bar.addEventListener("focusout", focusOut);
     const menuObserver = new MutationObserver(() => dock.setGuards({ menuOpen: bar.dataset.menuOpen === "true" }));
     menuObserver.observe(bar, { attributes: true, attributeFilter: ["data-menu-open"] });
@@ -198,7 +201,7 @@ export function useGlobalBarWindow() {
       menuObserver.disconnect(); observer.disconnect(); mutations.disconnect(); detach(); resizeCleanups.forEach((cleanup) => cleanup());
       window.removeEventListener("pointerup", endDrag); window.removeEventListener("pointercancel", endDrag);
       window.removeEventListener("pointerup", endResize); window.removeEventListener("pointercancel", endResize);
-      bar.removeEventListener("pointerenter", enter); bar.removeEventListener("pointerleave", leave);
+      bar.removeEventListener("pointerenter", enter); bar.removeEventListener("pointermove", move); bar.removeEventListener("pointerleave", leave);
       bar.removeEventListener("focusin", focusIn); bar.removeEventListener("focusout", focusOut);
     };
   }, []);

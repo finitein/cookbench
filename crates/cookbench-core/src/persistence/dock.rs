@@ -13,7 +13,12 @@ use super::{
 
 pub const TOP_DOCK_THRESHOLD_LOGICAL_PX: u32 = 12;
 pub const TOP_UNDOCK_THRESHOLD_LOGICAL_PX: u32 = 24;
+/// Painted reveal indicator at the work-area top (logical pixels).
 pub const TOP_DOCK_TRIGGER_LOGICAL_PX: u32 = 3;
+/// Hover hit strip for the collapsed dock, including the painted trigger.
+/// Kept larger than the visual strip so OS edge hit-testing can deliver hover
+/// without requiring a click, while CSS still paints only the 3px indicator.
+pub const TOP_DOCK_HIT_LOGICAL_PX: u32 = 12;
 pub const TOP_DOCK_HIDE_DELAY_MS: u64 = 600;
 
 const RELATIVE_SCALE: u16 = 10_000;
@@ -168,7 +173,8 @@ pub fn top_dock_decision(input: TopDockInput<'_>) -> TopDockDecision {
 }
 
 /// Resolves the expanded and collapsed coordinates for a persisted dock.
-/// The collapsed location leaves exactly the scaled trigger strip visible.
+/// The collapsed location leaves the scaled hover hit strip visible; CSS paints
+/// only the thinner visual trigger inside that hit region.
 pub fn resolve_top_dock(
     dock: &GlobalBarTopDock,
     size: WindowSize,
@@ -188,7 +194,7 @@ pub fn resolve_top_dock(
     };
     let x = relative.resolve(&monitor.work_area, size).x;
     let trigger = monitor
-        .physical_threshold(TOP_DOCK_TRIGGER_LOGICAL_PX)
+        .physical_threshold(TOP_DOCK_HIT_LOGICAL_PX)
         .min(size.height) as i64;
     let collapsed_y = i64::from(monitor.work_area.y)
         .saturating_sub(i64::from(size.height))

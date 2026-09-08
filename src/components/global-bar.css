@@ -233,15 +233,36 @@
 
 .global-bar:hover > .global-bar__resize-handle { opacity: 1; }
 :root[data-cookbench-dock-state="dockedCollapsed"] .global-bar__resize-handle { display: none; }
+/* Hide chrome inside the collapsed peek/shrink strip so only the trigger reads. */
+:root[data-cookbench-dock-state="dockedCollapsed"] .global-bar > * {
+  visibility: hidden;
+}
+/* Match TOP_DOCK_HIT_LOGICAL_PX: larger near-invisible pad so edge hover hits. */
+:root[data-cookbench-dock-state="dockedCollapsed"] .global-bar::before {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 40;
+  height: 12px;
+  content: "";
+  /* Non-zero alpha keeps Windows DWM hit-testing the pad. */
+  background: rgb(49 111 152 / 1%);
+  pointer-events: auto;
+  visibility: visible;
+}
+/* Match TOP_DOCK_TRIGGER_LOGICAL_PX: painted indicator inside the hit pad. */
 :root[data-cookbench-dock-state="dockedCollapsed"] .global-bar::after {
   position: fixed;
   right: 0;
   bottom: 0;
   left: 0;
+  z-index: 41;
   height: 3px;
   content: "";
   background: rgb(49 111 152 / 18%);
   pointer-events: auto;
+  visibility: visible;
 }
 .global-bar__resize-handle[data-resize-direction="North"],
 .global-bar__resize-handle[data-resize-direction="South"] {
