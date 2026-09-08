@@ -161,7 +161,7 @@ pub fn session_from_path(
     let host = source.host().clone();
     let project = metadata
         .working_dir
-        .filter(|value| Path::new(value).is_absolute() && value.len() <= 4 * 1024)
+        .filter(|value| crate::adapter::is_absolute_session_path(value) && value.len() <= 4 * 1024)
         .map(|value| ProjectIdentity::new(host.clone(), value));
     let locator_kind = match source {
         HostSource::Local(_) => SessionLocatorKind::LocalPath,

@@ -153,7 +153,7 @@ fn session_from_summary(path: &Path, source: &HostSource) -> Result<NativeSessio
         .ok_or_else(|| AdapterError::invalid_session_metadata("missing session id"))?;
     let cwd = info
         .cwd
-        .filter(|value| Path::new(value).is_absolute() && value.len() <= 1024);
+        .filter(|value| crate::adapter::is_absolute_session_path(value) && value.len() <= 1024);
     let title = if summary.title_is_manual {
         summary.title.or(summary.generated_title)
     } else {
