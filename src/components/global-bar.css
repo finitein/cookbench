@@ -237,25 +237,24 @@
 :root[data-cookbench-dock-state="dockedCollapsed"] .global-bar > * {
   visibility: hidden;
 }
-/* Match TOP_DOCK_HIT_LOGICAL_PX: larger near-invisible pad so edge hover hits. */
+/* Full collapsed window is the hover target (not only a bottom 12px band).
+   Native strip is already TOP_DOCK_HIT_LOGICAL_PX tall; cover it entirely so
+   north-edge pixels reach the webview once drag-resize borders are detached. */
 :root[data-cookbench-dock-state="dockedCollapsed"] .global-bar::before {
   position: fixed;
-  right: 0;
-  bottom: 0;
-  left: 0;
+  inset: 0;
   z-index: 40;
-  height: 12px;
   content: "";
   /* Non-zero alpha keeps Windows DWM hit-testing the pad. */
   background: rgb(49 111 152 / 1%);
   pointer-events: auto;
   visibility: visible;
 }
-/* Match TOP_DOCK_TRIGGER_LOGICAL_PX: painted indicator inside the hit pad. */
+/* Match TOP_DOCK_TRIGGER_LOGICAL_PX: painted indicator at the screen edge (top dock). */
 :root[data-cookbench-dock-state="dockedCollapsed"] .global-bar::after {
   position: fixed;
+  top: 0;
   right: 0;
-  bottom: 0;
   left: 0;
   z-index: 41;
   height: 3px;

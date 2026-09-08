@@ -804,6 +804,24 @@ fn collapse_window_to_trigger<R: Runtime>(
     Ok(())
 }
 
+/// Undecorated + resizable Tauri windows install `TAURI_DRAG_RESIZE_BORDERS`
+/// child hit targets. On a collapsed top-dock strip (~12 logical px), those
+/// borders own the north edge (observed Windows: physical y=1–3) and steal
+/// hover from the webview—so auto-hide never expands without a click/focus.
+/// Disable edge resize while collapsed; restore when expanded geometry applies.
+pub(crate) fn dock_edge_resize_hit_targets_enabled(collapsed: bool) -> bool {
+    !collapsed
+}
+
+fn sync_dock_edge_resize_hit_targets<R: Runtime>(
+    window: &tauri::WebviewWindow<R>,
+    collapsed: bool,
+) -> Result<(), String> {
+    window
+        .set_resizable(dock_edge_resize_hit_targets_enabled(collapsed))
+        .map_err(|error| error.to_string())
+}
+
 fn move_to_dock_geometry<R: Runtime>(
     window: &tauri::WebviewWindow<R>,
     dock: &GlobalBarTopDock,
@@ -824,6 +842,11 @@ fn move_to_dock_geometry<R: Runtime>(
     } else {
         geometry.expanded_position
     };
+    // Collapse first: detach north drag-resize borders before the strip is the
+    // only hover surface. Expand last: reattach after the Bar is tall again.
+    if collapsed {
+        sync_dock_edge_resize_hit_targets(window, true)?;
+    }
     #[cfg(target_os = "macos")]
     if collapsed {
         // AppKit constrains a visible window back on-screen, so a negative-y
@@ -889,7 +912,11 @@ fn move_to_dock_geometry<R: Runtime>(
     }
     window
         .set_position(PhysicalPosition::new(position.x, position.y))
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    if !collapsed {
+        sync_dock_edge_resize_hit_targets(window, false)?;
+    }
+    Ok(())
 }
 
 fn expanded_dock_position<R: Runtime>(
@@ -918,6 +945,7 @@ fn compensate_stale_geometry<R: Runtime>(
     // its candidate, put the window at the current expanded dock instead of
     // leaving it physically hidden behind the trigger strip.
     let compensation = runtime.collapse_compensation(fallback_position);
+    let keep_visible = matches!(compensation, CollapseCompensation::KeepVisible);
     execute_geometry_compensation(
         compensation,
         || window.show().map_err(|error| error.to_string()),
@@ -925,9 +953,16 @@ fn compensate_stale_geometry<R: Runtime>(
         |position| {
             window
                 .set_position(PhysicalPosition::new(position.x, position.y))
-                .map_err(|error| error.to_string())
+                .map_err(|error| error.to_string())?;
+            // Collapse may have already detached drag-resize borders; restore
+            // them when rolling back to a freeform / undocked surface.
+            sync_dock_edge_resize_hit_targets(window, false)
         },
-    )
+    )?;
+    if keep_visible {
+        sync_dock_edge_resize_hit_targets(window, runtime.state().collapsed)?;
+    }
+    Ok(())
 }
 
 fn execute_geometry_compensation(
@@ -1954,6 +1989,13 @@ mod dock_tests {
     fn dock_trigger_height_matches_resolve_top_dock_contract() {
         assert_eq!(dock_trigger_height(-168, 0, 180), 12);
         assert_eq!(dock_trigger_height(-731, 0, 743), 12);
+    }
+
+    #[test]
+    fn collapsed_dock_disables_edge_resize_hit_targets() {
+        // Windows smoke: TAURI_DRAG_RESIZE_BORDERS owned y=1–3 of a 20px strip.
+        assert!(!dock_edge_resize_hit_targets_enabled(true));
+        assert!(dock_edge_resize_hit_targets_enabled(false));
     }
 
     #[cfg(target_os = "macos")]
