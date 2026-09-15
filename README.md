@@ -115,32 +115,29 @@ the exact [privacy](docs/privacy.md), [security](docs/security.md), and
 
 ## Install in One Command
 
-The latest preview is [v0.4.3](https://github.com/finitein/cookbench/releases/tag/v0.4.3),
-published locally without GitHub Actions. It provides source and an unsigned
-macOS Apple-silicon App ZIP. Windows/Linux v0.4.3 installers and an Intel Mac
-package are not included; build the tagged source on those platforms.
+The latest preview is [v0.4.5](https://github.com/finitein/cookbench/releases/tag/v0.4.5)
+for **Linux and Windows** (unsigned preview packages on GitHub Releases). macOS
+assets for 0.4.5 ship separately; until then, Apple silicon users can keep using
+an earlier Mac preview or build from source.
 
-The commands below deliberately install **v0.4.2**, the previous complete binary
-release. The first-party bootstrap selects a native package from its manifest
-and verifies SHA-256 before installation. For v0.4.3 on Apple silicon, use the
-App ZIP and checksums on the release page instead.
+Prefer the GitHub Releases page for v0.4.5, or pin the first-party bootstrap:
 
-macOS universal or graphical Ubuntu/Linux x86_64:
+graphical Ubuntu/Linux x86_64:
 
 ```bash
-curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.4.2/install.sh | COOKBENCH_VERSION=v0.4.2 COOKBENCH_ALLOW_PRERELEASE=1 bash
+curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.4.5/install.sh | COOKBENCH_VERSION=v0.4.5 COOKBENCH_ALLOW_PRERELEASE=1 bash
 ```
 
 Windows x64 PowerShell:
 
 ```powershell
-$env:COOKBENCH_VERSION='v0.4.2'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.4.2/install.ps1 | iex
+$env:COOKBENCH_VERSION='v0.4.5'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.4.5/install.ps1 | iex
 ```
 
-Use `--dry-run` on macOS/Linux or `COOKBENCH_DRY_RUN=1` on any platform to
-inspect artifact selection without installation. Preview packages may be
-unsigned; stable, source-build, platform-runtime, SSH, and removal details live
-in [Installing Cookbench](docs/installing.md). Cookbench is not yet published to
+Use `--dry-run` on Linux or `COOKBENCH_DRY_RUN=1` on any platform to inspect
+artifact selection without installation. Preview packages may be unsigned;
+stable, source-build, platform-runtime, SSH, and removal details live in
+[Installing Cookbench](docs/installing.md). Cookbench is not yet published to
 Homebrew, winget, or an APT repository, so the repository does not advertise
 commands that do not work yet.
 
@@ -150,14 +147,15 @@ commands that do not work yet.
 2. Leave **Session roots** empty to discover the standard native roots for
    Codex, Claude Code, and Pi. Other catalog profiles use their documented Hook,
    manual, or presence path; add absolute roots only for nonstandard layouts.
-3. Open **Settings > Sources** to inspect local and SSH discovery, then
-   **Settings > Hook Health** to see which lifecycle signals actually exist.
+3. Open **Settings → Local Sources** to inspect local discovery (and SSH Sources
+   where configured), then **Settings → Hook Health** to see which lifecycle
+   signals actually exist.
 4. Click a Stove to use a verified terminal/IDE target where available, guarded
    Codex Desktop task navigation, or an explicit application/project fallback.
 5. Tune language, Full or Minimal display, top docking, optional hover details,
    two-day freshness, Archive, sound, system banners, Bar flash, and desktop
-   attention from Settings. v0.4.2 retains but temporarily hides the suspended
-   macOS status-bar Stove count preference.
+   attention from Settings. macOS status-bar Stove count remains temporarily
+   suspended where that preference still exists.
 
 Local notifications default to sound only. A Cooked Stove may keep flashing
 until you acknowledge it by clicking that Stove. Temporary error messages

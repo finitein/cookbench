@@ -98,3 +98,30 @@
   .source-status header { display: grid; }
   .source-status__details { justify-content: flex-start; flex-wrap: wrap; }
 }
+
+.source-status__next-step {
+  margin: 10px 0 0;
+  color: #47525d;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.source-status__meta {
+  display: grid;
+  gap: 4px;
+  justify-items: end;
+}
+
+.source-status__hint {
+  margin: 0;
+  max-width: 28rem;
+  color: #687888;
+  font-size: 11px;
+  line-height: 1.35;
+  text-align: right;
+}
+
+@media (max-width: 580px) {
+  .source-status__meta { justify-items: start; }
+  .source-status__hint { text-align: left; }
+}

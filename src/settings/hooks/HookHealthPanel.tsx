@@ -4,6 +4,8 @@ import { getHookStatus, manageHook, type HookAction, type HookHealth, type HookI
 import { useI18n, type TranslationKey } from "../../i18n/i18n";
 import "./hook-health.css";
 
+const HOOK_DOCS_URL = "https://github.com/finitein/cookbench/blob/main/docs/integrations/hooks.md";
+
 const TIER_KEYS: Record<HookSupportTier, TranslationKey> = {
   full: "sources.full", standard: "sources.standard", experimental: "sources.experimental",
 };
@@ -15,6 +17,10 @@ const HEALTH_KEYS: Record<HookHealth, TranslationKey> = {
   outdated: "hooks.outdated", conflicted: "hooks.conflicted", unwritable: "hooks.unwritable",
   noRecentEvents: "hooks.noRecentEvents",
 };
+
+function looksLikePath(value: string): boolean {
+  return value.includes("/") || value.includes("\\") || value.startsWith("~");
+}
 
 export function HookHealthPanel() {
   const { t } = useI18n();
@@ -49,28 +55,44 @@ export function HookHealthPanel() {
         <p>{t("hooks.description")}</p>
       </header>
       <ul className="hook-health__list" aria-label={t("hooks.list")}>
-        {hooks.map((hook) => (
-          <li key={hook.harness} className="hook-health__item">
-            <div className="hook-health__identity">
-              <div className="hook-health__title">
-                <strong>{hook.label}</strong>
-                <span className={`hook-health__tier hook-health__tier--${hook.tier}`}>{t(TIER_KEYS[hook.tier])}</span>
-                <span className="hook-health__integration">{t(INTEGRATION_KEYS[hook.integration])}</span>
+        {hooks.map((hook) => {
+          return (
+            <li key={hook.harness} className="hook-health__item">
+              <div className="hook-health__identity">
+                <div className="hook-health__title">
+                  <strong>{hook.label}</strong>
+                  <span className={`hook-health__tier hook-health__tier--${hook.tier}`}>{t(TIER_KEYS[hook.tier])}</span>
+                  <span className="hook-health__integration">{t(INTEGRATION_KEYS[hook.integration])}</span>
+                </div>
+                <span title={hook.configDisplay}>{hook.configDisplay}</span>
               </div>
-              <span title={hook.configDisplay}>{hook.configDisplay}</span>
-            </div>
-            <div className="hook-health__detail">
-              <span className={`hook-health__state hook-health__state--${hook.health}`}>{t(HEALTH_KEYS[hook.health])}</span>
-              <span>{hook.detail}</span>
-            </div>
-            <div className="hook-health__actions" aria-label={t("hooks.actions", { name: hook.label })}>
-              {hook.canInstall ? <button type="button" onClick={() => act(hook.harness, "previewInstall")}>{t("common.preview")}</button> : null}
-              {hook.canInstall ? <button type="button" onClick={() => act(hook.harness, "install")}>{t("common.install")}</button> : null}
-              {hook.canRepair ? <button type="button" onClick={() => act(hook.harness, "repair")}>{t("common.repair")}</button> : null}
-              {hook.canUninstall ? <button type="button" onClick={() => act(hook.harness, "uninstall")}>{t("common.uninstall")}</button> : null}
-            </div>
-          </li>
-        ))}
+              <div className="hook-health__detail">
+                <span className={`hook-health__state hook-health__state--${hook.health}`}>{t(HEALTH_KEYS[hook.health])}</span>
+                <span>{hook.detail}</span>
+              </div>
+              {hook.integration === "manual" ? (
+                <div className="hook-health__manual">
+                  <p className="hook-health__manual-next">{t("hooks.manualNext")}</p>
+                  {looksLikePath(hook.configDisplay) ? (
+                    <p className="hook-health__config-path">
+                      <span>{t("hooks.configPath")}: </span>
+                      <code>{hook.configDisplay}</code>
+                    </p>
+                  ) : null}
+                  <a className="hook-health__docs" href={HOOK_DOCS_URL} target="_blank" rel="noreferrer">
+                    {t("hooks.openDocs")}
+                  </a>
+                </div>
+              ) : null}
+              <div className="hook-health__actions" aria-label={t("hooks.actions", { name: hook.label })}>
+                {hook.canInstall ? <button type="button" onClick={() => act(hook.harness, "previewInstall")}>{t("common.preview")}</button> : null}
+                {hook.canInstall ? <button type="button" onClick={() => act(hook.harness, "install")}>{t("common.install")}</button> : null}
+                {hook.canRepair ? <button type="button" onClick={() => act(hook.harness, "repair")}>{t("common.repair")}</button> : null}
+                {hook.canUninstall ? <button type="button" onClick={() => act(hook.harness, "uninstall")}>{t("common.uninstall")}</button> : null}
+              </div>
+            </li>
+          );
+        })}
       </ul>
       {preview !== null ? <pre className="hook-health__preview" aria-label={t("hooks.previewLabel")}>{preview}</pre> : null}
       <output role="status" aria-live="polite">{message ? t(message) : ""}</output>

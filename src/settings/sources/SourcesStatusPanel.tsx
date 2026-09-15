@@ -33,6 +33,7 @@ export function SourcesStatusPanel() {
         <h2 id="source-status-title">{t("sources.title")}</h2>
         <p>{t("sources.description")}</p>
       </header>
+      <p className="source-status__next-step">{t("sources.nextStep")}</p>
       <ul className="source-status__list" aria-label={t("sources.list")}>
         {sources.map((source) => (
           <li key={source.harness} className="source-status__source">
@@ -41,13 +42,20 @@ export function SourcesStatusPanel() {
               <span className={`source-status__tier source-status__tier--${source.tier}`}>{t(TIER_KEYS[source.tier])}</span>
               <span title={source.rootDisplay}>{source.rootDisplay}</span>
             </div>
-            <div className="source-status__details">
-              <span className={`source-status__health source-status__health--${source.health}`}>
-                {t(HEALTH_KEYS[source.health])}
-              </span>
-              <span>{t(OBSERVATION_KEYS[source.observation])}</span>
-              <span>{t(source.discoveredSessions === 1 ? "sources.sessionCount" : "sources.sessionCountPlural", { count: source.discoveredSessions })}</span>
-              {source.parserErrors > 0 ? <span>{t(source.parserErrors === 1 ? "sources.issueCount" : "sources.issueCountPlural", { count: source.parserErrors })}</span> : null}
+            <div className="source-status__meta">
+              <div className="source-status__details">
+                <span className={`source-status__health source-status__health--${source.health}`}>
+                  {t(HEALTH_KEYS[source.health])}
+                </span>
+                <span>{t(OBSERVATION_KEYS[source.observation])}</span>
+                <span>{t(source.discoveredSessions === 1 ? "sources.sessionCount" : "sources.sessionCountPlural", { count: source.discoveredSessions })}</span>
+                {source.parserErrors > 0 ? <span>{t(source.parserErrors === 1 ? "sources.issueCount" : "sources.issueCountPlural", { count: source.parserErrors })}</span> : null}
+              </div>
+              {source.health === "unavailable" ? (
+                <p className="source-status__hint" title={source.rootDisplay}>{t("sources.unavailableHint")}</p>
+              ) : (
+                <p className="source-status__hint">{t("sources.monitoringHint")}</p>
+              )}
             </div>
           </li>
         ))}

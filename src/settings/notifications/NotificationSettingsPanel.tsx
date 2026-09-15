@@ -20,6 +20,7 @@ import { SourcesStatusPanel } from "../sources/SourcesStatusPanel";
 import { HookHealthPanel } from "../hooks/HookHealthPanel";
 import { ArchiveSettingsPanel } from "../archive/ArchiveSettingsPanel";
 import { useI18n, type TranslationKey } from "../../i18n/i18n";
+import { consumeSettingsTab, type SettingsTabId } from "../settingsTab";
 
 const LABELS: Record<NotificationDestination, string> = {
   telegram: "Telegram",
@@ -62,7 +63,7 @@ export function NotificationSettingsPanel() {
   const { t } = useI18n();
   const eventLabel = (event: NotificationEvent) => t(EVENT_KEYS[event]);
   const channelLabel = (channel: LocalNotificationChannel) => t(CHANNEL_KEYS[channel]);
-  const [tab, setTab] = useState<"general" | "sources" | "hooks" | "notifications" | "archive">("general");
+  const [tab, setTab] = useState<SettingsTabId>(() => consumeSettingsTab() ?? "general");
   const [destinations, setDestinations] = useState<NotificationDestinationWire[]>([]);
   const [localSettings, setLocalSettings] = useState<LocalNotificationSettingsWire>(
     DEFAULT_LOCAL_NOTIFICATION_SETTINGS,

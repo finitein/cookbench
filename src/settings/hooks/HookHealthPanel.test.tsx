@@ -64,5 +64,10 @@ describe("HookHealthPanel", () => {
     expect(screen.getByText("Presence only")).toBeInTheDocument();
     expect(screen.getByText("Experimental")).toBeInTheDocument();
     expect(screen.queryAllByRole("button", { name: "Install" })).toHaveLength(1);
+    expect(screen.getByText(/Hooks are optional. Start a native session first/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open Hook docs" })).toHaveAttribute(
+      "href",
+      "https://github.com/finitein/cookbench/blob/main/docs/integrations/hooks.md",
+    );
   });
 });

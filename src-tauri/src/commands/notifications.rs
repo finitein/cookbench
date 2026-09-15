@@ -94,20 +94,52 @@ pub struct LocalNotificationInput {
     pub events: Vec<NotificationEventWire>,
 }
 
-#[tauri::command]
-pub fn open_notification_settings(app: AppHandle) -> Result<(), String> {
+/// Label for the Settings WebviewWindow. Frontend uses `label === "settings"`.
+pub const SETTINGS_WINDOW_LABEL: &str = "settings";
+
+/// Same app entry as the main window (`WebviewUrl::default()` → `index.html`).
+/// Keeping this explicit documents the Windows custom-protocol path contract.
+pub fn settings_webview_url() -> WebviewUrl {
+    WebviewUrl::App("index.html".into())
+}
+
+fn settings_window_needs_reload(url: &str) -> bool {
+    // A prior sync/event-handler create on Windows/WebView2 can leave the
+    // shell at about:blank; reopen must navigate/recreate so the panel mounts.
+    url == "about:blank" || url.starts_with("about:")
+}
+
+/// Ensure the Settings window exists and shows the shared frontend.
+///
+/// Must not run on the Windows UI/event thread while holding it: Tauri/WebView2
+/// deadlocks when `WebviewWindowBuilder::build` is called from a synchronous
+/// command or tray/event handler. Callers must use the async command or spawn
+/// a background thread (see tray Open Settings).
+pub fn ensure_settings_window(app: &AppHandle) -> Result<(), String> {
     let locale = app.state::<crate::i18n::NativeLocaleState>().current();
-    if let Some(window) = app.get_webview_window("settings") {
-        let _ = window.set_title(crate::i18n::settings_window_title(locale));
-        window
-            .set_always_on_top(true)
-            .map_err(|error| error.to_string())?;
-        window.show().map_err(|error| error.to_string())?;
-        let _ = window.set_focus();
-        return Ok(());
+    let title = crate::i18n::settings_window_title(locale);
+
+    if let Some(window) = app.get_webview_window(SETTINGS_WINDOW_LABEL) {
+        let blank = window
+            .url()
+            .map(|url| settings_window_needs_reload(url.as_str()))
+            .unwrap_or(true);
+        if blank {
+            // Destroy the blank shell so we can recreate with a real App URL.
+            window.destroy().map_err(|error| error.to_string())?;
+        } else {
+            let _ = window.set_title(title);
+            window
+                .set_always_on_top(true)
+                .map_err(|error| error.to_string())?;
+            window.show().map_err(|error| error.to_string())?;
+            let _ = window.set_focus();
+            return Ok(());
+        }
     }
-    WebviewWindowBuilder::new(&app, "settings", WebviewUrl::App("index.html".into()))
-        .title(crate::i18n::settings_window_title(locale))
+
+    WebviewWindowBuilder::new(app, SETTINGS_WINDOW_LABEL, settings_webview_url())
+        .title(title)
         .inner_size(620.0, 720.0)
         .min_inner_size(420.0, 520.0)
         .resizable(true)
@@ -115,6 +147,22 @@ pub fn open_notification_settings(app: AppHandle) -> Result<(), String> {
         .build()
         .map(|_| ())
         .map_err(|error| error.to_string())
+}
+
+/// Open Settings from the frontend. Async so Windows/WebView2 does not deadlock
+/// the way a synchronous command would when building a secondary webview.
+#[tauri::command]
+pub async fn open_notification_settings(app: AppHandle) -> Result<(), String> {
+    ensure_settings_window(&app)
+}
+
+/// Open Settings from tray/menu handlers without blocking the UI thread.
+pub fn open_settings_window_off_thread(app: AppHandle) {
+    std::thread::spawn(move || {
+        if let Err(error) = ensure_settings_window(&app) {
+            eprintln!("Cookbench failed to open Settings window: {error}");
+        }
+    });
 }
 
 #[tauri::command]
@@ -450,5 +498,38 @@ impl TryFrom<NotificationEventKind> for NotificationEventWire {
             NotificationEventKind::ConnectionRestored => Ok(Self::ConnectionRestored),
             NotificationEventKind::StoveCleared => Ok(Self::StoveCleared),
         }
+    }
+}
+
+#[cfg(test)]
+mod settings_window_tests {
+    use super::{settings_webview_url, settings_window_needs_reload, SETTINGS_WINDOW_LABEL};
+    use tauri::WebviewUrl;
+
+    #[test]
+    fn settings_label_matches_frontend_detached_window_contract() {
+        assert_eq!(SETTINGS_WINDOW_LABEL, "settings");
+    }
+
+    #[test]
+    fn settings_url_matches_default_app_entry() {
+        assert!(matches!(
+            settings_webview_url(),
+            WebviewUrl::App(path) if path.to_str() == Some("index.html")
+        ));
+        assert!(matches!(
+            WebviewUrl::default(),
+            WebviewUrl::App(path) if path.to_str() == Some("index.html")
+        ));
+    }
+
+    #[test]
+    fn blank_settings_shell_is_detected_for_reload() {
+        assert!(settings_window_needs_reload("about:blank"));
+        assert!(settings_window_needs_reload("about:srcdoc"));
+        assert!(!settings_window_needs_reload("http://tauri.localhost/"));
+        assert!(!settings_window_needs_reload(
+            "https://tauri.localhost/index.html"
+        ));
     }
 }

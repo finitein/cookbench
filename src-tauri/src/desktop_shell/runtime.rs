@@ -65,7 +65,9 @@ fn dispatch_tray_action(app: &AppHandle, id: &str) {
             let _ = hide_bar(app);
         }
         Some(TrayAction::OpenSettings) => {
-            let _ = crate::commands::notifications::open_notification_settings(app.clone());
+            // Spawn off the tray/event thread: sync WebviewWindowBuilder::build
+            // deadlocks WebView2 on Windows and can leave Settings at about:blank.
+            crate::commands::notifications::open_settings_window_off_thread(app.clone());
         }
         Some(TrayAction::Quit) => app.exit(0),
         None => (),

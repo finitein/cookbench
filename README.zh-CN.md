@@ -100,26 +100,25 @@ Stove 的数量偏好（默认 3 个）不会丢失，待独立验证安全后�
 
 ## 一行命令安装
 
-最新预览版为 [v0.4.3](https://github.com/finitein/cookbench/releases/tag/v0.4.3)，
-由本机发布，不使用 GitHub Actions。本次提供源码和未签名的 macOS Apple silicon App ZIP；
-暂不包含 Windows/Linux v0.4.3 安装包及 Intel Mac 包，这些平台可构建该标签的源码。
+最新预览版为 [v0.4.5](https://github.com/finitein/cookbench/releases/tag/v0.4.5)，
+面向 **Linux 与 Windows**（GitHub Releases 上的未签名预览包）。macOS 的 0.4.5
+制品另行发布；在此之前，Apple silicon 用户可继续使用更早的 Mac 预览或自行源码构建。
 
-下方命令有意保留 **v0.4.2**，它是上一版完整的跨平台二进制发布。第一方脚本根据 manifest
-选择原生包并校验 SHA-256。Apple silicon 用户安装 v0.4.3，请使用发布页的 App ZIP 和校验文件。
+优先从 GitHub Releases 的 v0.4.5 页面获取，或固定第一方安装脚本：
 
-macOS 通用版或图形化 Ubuntu/Linux x86_64：
+图形化 Ubuntu/Linux x86_64：
 
 ```bash
-curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.4.2/install.sh | COOKBENCH_VERSION=v0.4.2 COOKBENCH_ALLOW_PRERELEASE=1 bash
+curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.4.5/install.sh | COOKBENCH_VERSION=v0.4.5 COOKBENCH_ALLOW_PRERELEASE=1 bash
 ```
 
 Windows x64 PowerShell：
 
 ```powershell
-$env:COOKBENCH_VERSION='v0.4.2'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.4.2/install.ps1 | iex
+$env:COOKBENCH_VERSION='v0.4.5'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.4.5/install.ps1 | iex
 ```
 
-macOS/Linux 可使用 `--dry-run`，所有平台都可以设置 `COOKBENCH_DRY_RUN=1`，只检查
+Linux 可使用 `--dry-run`，所有平台都可以设置 `COOKBENCH_DRY_RUN=1`，只检查
 制品选择而不安装。预览包可能未签名；稳定版、源码构建、平台运行库、SSH 与卸载说明见
 [安装文档](docs/installing.md)。Cookbench 目前还未发布到 Homebrew、winget 或 APT
 仓库，因此 README 不会把尚不能运行的命令包装成“已支持”。
@@ -129,13 +128,12 @@ macOS/Linux 可使用 `--dry-run`，所有平台都可以设置 `COOKBENCH_DRY_R
 1. 启动 Cookbench，然后照常使用你的编程 Agent。
 2. 将 **Session roots** 留空，自动发现 Codex、Claude Code 和 Pi 的标准原生目录。
    其他 Profile 使用文档标明的 Hook、手动或 presence 路径；只有非标准布局才填写绝对路径。
-3. 打开 **Settings > Sources** 检查本地与 SSH 发现结果，再到
-   **Settings > Hook Health** 查看机器上实际存在的生命周期信号。
+3. 打开 **设置 → 本地来源** 检查本地发现结果（如已配置再看 SSH 来源），再到
+   **设置 → Hook 健康状态** 查看机器上实际存在的生命周期信号。
 4. 点击 Stove，在可用时返回已验证的终端/IDE 目标，或使用受保护的 Codex Desktop
    任务导航及明确标注的应用/项目降级目标。
 5. 在 Settings 中调整语言、Full 或 Minimal、顶端吸附、悬浮详情、两天新鲜度、Archive、
-   声音、系统横幅、Bar 闪烁与桌面提醒。v0.4.2 会保留但暂时隐藏已停用的 macOS 状态栏
-   Stove 数量偏好。
+   声音、系统横幅、Bar 闪烁与桌面提醒。macOS 状态栏 Stove 数量偏好在仍存在处保持暂时停用。
 
 本地通知默认只开启声音。Cooked Stove 可以持续闪烁，直到你点击它进行确认。
 临时报错会在 20 秒后自动消失，不会长期占据 Bar 下方的一整行。

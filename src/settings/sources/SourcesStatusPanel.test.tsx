@@ -25,14 +25,17 @@ describe("SourcesStatusPanel", () => {
     render(<SourcesStatusPanel />);
 
     expect(await screen.findByRole("heading", { name: "Local Sources" })).toBeInTheDocument();
+    expect(screen.getByText("Start a native agent session to light a Stove. Hooks are optional.")).toBeInTheDocument();
     expect(screen.getByText("Codex")).toBeInTheDocument();
-    expect(screen.getByText("Watching")).toBeInTheDocument();
+    expect(screen.getByText("Root monitored")).toBeInTheDocument();
     expect(screen.getByText("4 sessions")).toBeInTheDocument();
     expect(screen.getByText("Claude Code")).toBeInTheDocument();
     expect(screen.getByText("Needs attention")).toBeInTheDocument();
     expect(screen.getByText("2 parsing issues")).toBeInTheDocument();
     expect(screen.getByText("Pi")).toBeInTheDocument();
     expect(screen.getAllByText("Unavailable").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Root is monitored; session count is separate — zero sessions means none discovered yet.").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Root not readable yet. Start a native agent session, or confirm this path exists.").length).toBeGreaterThan(0);
     expect(screen.getByText("~/.codex/sessions")).toBeInTheDocument();
     expect(screen.getByText("~/.claude/projects")).toBeInTheDocument();
     expect(screen.getByText("Structured hook")).toBeInTheDocument();

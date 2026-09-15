@@ -25,18 +25,16 @@ irm https://github.com/finitein/cookbench/releases/latest/download/install.ps1 |
 Preview releases are intentionally opt-in. Pin the tag instead of silently
 following the newest preview:
 
-The examples below deliberately select v0.4.2, the previous complete binary
-release. The locally published v0.4.3 preview provides source and an unsigned
-macOS Apple-silicon App ZIP, not the bootstrap scripts or Windows/Linux/Intel
-Mac packages. Use its release-page App ZIP and SHA-256 checksums on Apple
-silicon, or build the tagged source on other platforms.
+The examples below target **v0.4.5** for Linux and Windows unsigned preview
+packages on GitHub Releases. macOS 0.4.5 assets follow separately; until then
+use an earlier Mac preview or build from source on Apple silicon.
 
 ```bash
-curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.4.2/install.sh | COOKBENCH_VERSION=v0.4.2 COOKBENCH_ALLOW_PRERELEASE=1 bash
+curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.4.5/install.sh | COOKBENCH_VERSION=v0.4.5 COOKBENCH_ALLOW_PRERELEASE=1 bash
 ```
 
 ```powershell
-$env:COOKBENCH_VERSION='v0.4.2'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.4.2/install.ps1 | iex
+$env:COOKBENCH_VERSION='v0.4.5'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.4.5/install.ps1 | iex
 ```
 
 Use `--dry-run` on macOS/Linux or set `COOKBENCH_DRY_RUN=1` on any platform to
