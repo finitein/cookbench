@@ -1,8 +1,8 @@
 use cookbench_core::persistence::{
     dock_threshold_physical, dock_upper_threshold_physical, resolve_top_dock, top_dock_decision,
     DockMonitorWorkArea, GlobalBarTopDock, MonitorIdentity, MonitorWorkArea, TopDockDecision,
-    TopDockInput, WindowPosition, WindowSize, TOP_DOCK_THRESHOLD_LOGICAL_PX,
-    TOP_DOCK_HIT_LOGICAL_PX, TOP_UNDOCK_THRESHOLD_LOGICAL_PX,
+    TopDockInput, WindowPosition, WindowSize, TOP_DOCK_HIT_LOGICAL_PX,
+    TOP_DOCK_THRESHOLD_LOGICAL_PX, TOP_UNDOCK_THRESHOLD_LOGICAL_PX,
 };
 
 fn monitor(id: &str, x: i32, width: u32, primary: bool, scale: f64) -> DockMonitorWorkArea {
@@ -186,7 +186,10 @@ fn collapsed_position_never_leaves_more_than_the_window_height_visible() {
         );
         let resolved = resolve_top_dock(&dock, size, &monitors).unwrap();
         let visible = i64::from(resolved.collapsed_position.y) + i64::from(height) + 120;
-        assert_eq!(visible, i64::from(height.min(dock_threshold_physical(TOP_DOCK_HIT_LOGICAL_PX, 2.0))));
+        assert_eq!(
+            visible,
+            i64::from(height.min(dock_threshold_physical(TOP_DOCK_HIT_LOGICAL_PX, 2.0)))
+        );
         assert!(resolved.collapsed_position.y <= -120);
     }
 }
