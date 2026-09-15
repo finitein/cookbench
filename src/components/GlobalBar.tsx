@@ -7,6 +7,7 @@ import { StoveTooltip } from "./StoveTooltip";
 import { StovePriorityMenu } from "./StovePriorityMenu";
 import { LOCAL_ALERT_TEST_STOVE_ID } from "../services/localAlerts";
 import { useI18n } from "../i18n/i18n";
+import { requestSettingsTab } from "../settings/settingsTab";
 import "./global-bar.css";
 
 export type GlobalBarProps = {
@@ -153,7 +154,21 @@ export function GlobalBar({
         </div>
       ) : <div className="global-bar__benches" data-layout={layout.grouped ? "grouped" : "mixed"}>
         {stoves.length === 0 ? (
-          <p className="global-bar__empty-hint">{t("bar.emptyHint")}</p>
+          <div className="global-bar__empty">
+            <p className="global-bar__empty-hint">{t("bar.emptyHint")}</p>
+            {onOpenSettings ? (
+              <button
+                className="global-bar__empty-cta"
+                type="button"
+                onClick={() => {
+                  requestSettingsTab("sources");
+                  onOpenSettings();
+                }}
+              >
+                {t("bar.emptyCta")}
+              </button>
+            ) : null}
+          </div>
         ) : null}
         {layout.benches.map((bench) => (
           <section className="global-bar__bench" data-harness={bench.id} key={bench.id} aria-label={bench.id === "all" ? t("bar.stoves") : bench.label}>

@@ -8,7 +8,7 @@ import { GlobalBar } from "./GlobalBar";
 import { LOCAL_ALERT_TEST_STOVE_ID } from "../services/localAlerts";
 
 describe("GlobalBar", () => {
-  it("keeps the empty state as a compact branded bar with a watching hint", () => {
+  it("keeps the empty state as a compact branded bar with a clear empty hint", () => {
     render(<GlobalBar stoves={[]} />);
 
     const bar = screen.getByRole("region", { name: "Cookbench global bar with 0 stoves" });
@@ -17,7 +17,26 @@ describe("GlobalBar", () => {
       "src",
       expect.stringContaining("cookbench-mark"),
     );
-    expect(screen.getByText("Watching for native sessions")).toBeInTheDocument();
+    expect(screen.getByText("No sessions to show yet")).toBeInTheDocument();
+  });
+
+  it("offers an empty-state CTA that deep-links Settings to Local Sources", () => {
+    const onOpenSettings = vi.fn();
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    render(<GlobalBar stoves={[]} onOpenSettings={onOpenSettings} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Check sources & hooks" }));
+    expect(setItem).toHaveBeenCalledWith("cookbench.settings.initialTab", "sources");
+    expect(onOpenSettings).toHaveBeenCalledOnce();
+    setItem.mockRestore();
+  });
+
+  it("exposes Settings in empty and minimal modes", () => {
+    const onOpenSettings = vi.fn();
+    const view = render(<GlobalBar stoves={[]} onOpenSettings={onOpenSettings} />);
+    expect(screen.getByRole("button", { name: /Open Cookbench settings/i })).toBeInTheDocument();
+    view.rerender(<GlobalBar stoves={[]} mode="minimal" onOpenSettings={onOpenSettings} />);
+    expect(screen.getByRole("button", { name: /Open Cookbench settings/i })).toBeInTheDocument();
   });
 
   it("renders every stove at the same time and preserves the session count", () => {
