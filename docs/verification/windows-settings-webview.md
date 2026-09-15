@@ -33,3 +33,12 @@ command, and the tray Open Settings path called the same builder from a
    reopen should recreate and load the frontend.
 
 Unit regression: `cargo test --lib settings_window_tests` in `src-tauri`.
+
+## Smoke result (2026-09-16, leau7600x)
+
+- Branch commit: `1d96600`
+- Built: `pnpm tauri build --no-bundle` → `target/release/cookbench-desktop.exe`
+- Launched with `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9333`
+- CDP invoke `open_notification_settings` from main → second page at `http://tauri.localhost/`
+- Settings DOM showed tabs including **本地来源** (not white/`about:blank`)
+- Status: **PASS**
