@@ -25,16 +25,19 @@ irm https://github.com/finitein/cookbench/releases/latest/download/install.ps1 |
 Preview releases are intentionally opt-in. Pin the tag instead of silently
 following the newest preview:
 
-The examples below target **v0.4.5** for Linux and Windows unsigned preview
-packages on GitHub Releases. macOS 0.4.5 assets follow separately; until then
-use an earlier Mac preview or build from source on Apple silicon.
+> **Hard fact:** Preview **v0.4.6** is **Linux + Windows only**. There is **no
+> macOS asset on this tag**. Use the **v0.4.4** (or earlier) Mac preview until a
+> later tag ships a Mac package, or build from source on Apple silicon.
+
+The examples below target **v0.4.6** for Linux and Windows unsigned preview
+packages on GitHub Releases.
 
 ```bash
-curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.4.5/install.sh | COOKBENCH_VERSION=v0.4.5 COOKBENCH_ALLOW_PRERELEASE=1 bash
+curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.4.6/install.sh | COOKBENCH_VERSION=v0.4.6 COOKBENCH_ALLOW_PRERELEASE=1 bash
 ```
 
 ```powershell
-$env:COOKBENCH_VERSION='v0.4.5'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.4.5/install.ps1 | iex
+$env:COOKBENCH_VERSION='v0.4.6'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.4.6/install.ps1 | iex
 ```
 
 Use `--dry-run` on macOS/Linux or set `COOKBENCH_DRY_RUN=1` on any platform to
@@ -63,7 +66,12 @@ artifact and compare its SHA-256 value with the attached `SHA256SUMS` file.
 
 ## macOS
 
-Install the signed universal DMG and move Cookbench to Applications. Basic Stove presentation does not require
+> **This preview tag (v0.4.6) has no macOS package.** Install from the **v0.4.4**
+> (or earlier) Mac preview release, or build from source, until a later tag
+> publishes a Mac asset.
+
+When a Mac package is available: install the signed universal DMG and move
+Cookbench to Applications. Basic Stove presentation does not require
 Accessibility permission. macOS may separately ask for notification permission
 and Keychain access when those optional features are enabled.
 

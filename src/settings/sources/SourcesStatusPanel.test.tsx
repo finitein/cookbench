@@ -26,8 +26,13 @@ describe("SourcesStatusPanel", () => {
 
     expect(await screen.findByRole("heading", { name: "Local Sources" })).toBeInTheDocument();
     expect(screen.getByText("Start a native agent session to light a Stove. Hooks are optional.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Monitored roots" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Unavailable" })).toBeInTheDocument();
     expect(screen.getByText("Codex")).toBeInTheDocument();
     expect(screen.getByText("Root monitored")).toBeInTheDocument();
+    const labels = screen.getAllByRole("listitem").map((item) => item.querySelector("strong")?.textContent).filter(Boolean);
+    expect(labels.indexOf("Codex")).toBeLessThan(labels.indexOf("Pi"));
+    expect(labels.indexOf("Claude Code")).toBeLessThan(labels.indexOf("Qwen Code"));
     expect(screen.getByText("4 sessions")).toBeInTheDocument();
     expect(screen.getByText("Claude Code")).toBeInTheDocument();
     expect(screen.getByText("Needs attention")).toBeInTheDocument();

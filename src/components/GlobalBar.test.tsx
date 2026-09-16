@@ -25,7 +25,7 @@ describe("GlobalBar", () => {
     const setItem = vi.spyOn(Storage.prototype, "setItem");
     render(<GlobalBar stoves={[]} onOpenSettings={onOpenSettings} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Check sources & hooks" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open Local Sources" }));
     expect(setItem).toHaveBeenCalledWith("cookbench.settings.initialTab", "sources");
     expect(onOpenSettings).toHaveBeenCalledOnce();
     setItem.mockRestore();
@@ -70,6 +70,7 @@ describe("GlobalBar", () => {
     render(<GlobalBar stoves={[]} mode="minimal" />);
     expect(screen.queryByTestId("stove")).not.toBeInTheDocument();
     expect(document.querySelector(".global-bar__minimal-mark")).toBeInTheDocument();
+    expect(screen.getByText("No sessions — next steps")).toBeInTheDocument();
   });
 
   it("expands from the named empty minimal mark", () => {
@@ -77,6 +78,22 @@ describe("GlobalBar", () => {
     render(<GlobalBar stoves={[]} mode="minimal" onModeChange={onModeChange} />);
     fireEvent.click(screen.getByRole("button", { name: "Use full Bar" }));
     expect(onModeChange).toHaveBeenCalledWith("full");
+  });
+
+  it("offers a minimal empty CTA that deep-links Settings to Local Sources", () => {
+    const onOpenSettings = vi.fn();
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    render(<GlobalBar stoves={[]} mode="minimal" onOpenSettings={onOpenSettings} />);
+    fireEvent.click(screen.getByRole("button", { name: "Open Local Sources" }));
+    expect(setItem).toHaveBeenCalledWith("cookbench.settings.initialTab", "sources");
+    expect(onOpenSettings).toHaveBeenCalledOnce();
+    setItem.mockRestore();
+  });
+
+  it("shows a visible Settings label on the Full settings control", () => {
+    render(<GlobalBar stoves={[]} onOpenSettings={vi.fn()} />);
+    const settings = screen.getByRole("button", { name: /Open Cookbench settings/i });
+    expect(settings).toHaveTextContent("Settings");
   });
 
   it("opens the ordered priority menu from context menu or keyboard trigger", () => {

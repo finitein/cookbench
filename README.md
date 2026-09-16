@@ -115,23 +115,26 @@ the exact [privacy](docs/privacy.md), [security](docs/security.md), and
 
 ## Install in One Command
 
-The latest preview is [v0.4.5](https://github.com/finitein/cookbench/releases/tag/v0.4.5)
-for **Linux and Windows** (unsigned preview packages on GitHub Releases). macOS
-assets for 0.4.5 ship separately; until then, Apple silicon users can keep using
-an earlier Mac preview or build from source.
+> **Hard fact:** Preview **v0.4.6** ships **Linux and Windows only**. There is
+> **no macOS asset on this tag**. Mac users should keep using the **v0.4.4** (or
+> earlier) Mac preview until a later tag publishes a Mac package, or build from
+> source.
 
-Prefer the GitHub Releases page for v0.4.5, or pin the first-party bootstrap:
+The latest preview is [v0.4.6](https://github.com/finitein/cookbench/releases/tag/v0.4.6)
+for **Linux and Windows** (unsigned preview packages on GitHub Releases).
+
+Prefer the GitHub Releases page for v0.4.6, or pin the first-party bootstrap:
 
 graphical Ubuntu/Linux x86_64:
 
 ```bash
-curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.4.5/install.sh | COOKBENCH_VERSION=v0.4.5 COOKBENCH_ALLOW_PRERELEASE=1 bash
+curl -fsSL https://github.com/finitein/cookbench/releases/download/v0.4.6/install.sh | COOKBENCH_VERSION=v0.4.6 COOKBENCH_ALLOW_PRERELEASE=1 bash
 ```
 
 Windows x64 PowerShell:
 
 ```powershell
-$env:COOKBENCH_VERSION='v0.4.5'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.4.5/install.ps1 | iex
+$env:COOKBENCH_VERSION='v0.4.6'; $env:COOKBENCH_ALLOW_PRERELEASE='1'; irm https://github.com/finitein/cookbench/releases/download/v0.4.6/install.ps1 | iex
 ```
 
 Use `--dry-run` on Linux or `COOKBENCH_DRY_RUN=1` on any platform to inspect
@@ -143,19 +146,21 @@ commands that do not work yet.
 
 ## Start Cooking
 
-1. Launch Cookbench, then use your coding agents normally.
-2. Leave **Session roots** empty to discover the standard native roots for
-   Codex, Claude Code, and Pi. Other catalog profiles use their documented Hook,
-   manual, or presence path; add absolute roots only for nonstandard layouts.
-3. Open **Settings → Local Sources** to inspect local discovery (and SSH Sources
-   where configured), then **Settings → Hook Health** to see which lifecycle
-   signals actually exist.
-4. Click a Stove to use a verified terminal/IDE target where available, guarded
+1. Launch Cookbench on Linux or Windows with the v0.4.6 preview.
+2. **Produce a native agent session first** (Codex, Claude Code, Pi, or another
+   supported harness writing its usual session files). That is how a Stove
+   appears — Cookbench only observes; it does not start agents.
+3. Leave **Session roots** empty to discover the standard native roots for
+   Codex, Claude Code, and Pi. Add absolute roots only for nonstandard layouts.
+4. If the Bar is still empty, use **Open Local Sources** (Full empty CTA or
+   Minimal mini CTA) → **Settings → Local Sources** to confirm discovery; then
+   check **Settings → Hook Health** (hooks are optional).
+5. Click a Stove to use a verified terminal/IDE target where available, guarded
    Codex Desktop task navigation, or an explicit application/project fallback.
-5. Tune language, Full or Minimal display, top docking, optional hover details,
+6. Tune language, Full or Minimal display, top docking, optional hover details,
    two-day freshness, Archive, sound, system banners, Bar flash, and desktop
-   attention from Settings. macOS status-bar Stove count remains temporarily
-   suspended where that preference still exists.
+   attention from Settings. Minimal hides the full empty checklist until you
+   expand or use the mini Local Sources button.
 
 Local notifications default to sound only. A Cooked Stove may keep flashing
 until you acknowledge it by clicking that Stove. Temporary error messages

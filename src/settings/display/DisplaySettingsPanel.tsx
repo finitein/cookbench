@@ -155,6 +155,7 @@ export function DisplaySettingsPanel() {
               </label>
             ))}
           </div>
+          <p className="display-settings__mode-note">{t("display.modeMinimalNote")}</p>
         </fieldset>
       </section>
       {settings?.macStatusAvailable ? (

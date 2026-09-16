@@ -37,3 +37,10 @@
   .display-settings__bars li { align-items: flex-start; }
   .display-settings__bars span { white-space: normal; overflow-wrap: anywhere; }
 }
+
+.display-settings__mode-note {
+  margin: 8px 0 0;
+  color: #687888;
+  font-size: 11px;
+  line-height: 1.4;
+}
