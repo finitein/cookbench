@@ -32,7 +32,7 @@ function usableBarWidth(): number {
   // The logo rail and the Bar padding do not participate in Stove rows. JSDOM
   // reports a zero-sized document, so retain the desktop's normal initial size.
   const viewportWidth = document.documentElement.clientWidth || window.innerWidth || 900;
-  return Math.max(86, viewportWidth - 82);
+  return Math.max(86, viewportWidth - 102);
 }
 
 function useBenchCapacity(): number {
@@ -121,7 +121,8 @@ export function GlobalBar({
             title={t("bar.settings")}
             onClick={onOpenSettings}
           >
-            <span aria-hidden="true"><i /><i /><i /></span>
+            <span className="global-bar__settings-icon" aria-hidden="true"><i /><i /><i /></span>
+            <span className="global-bar__settings-label">{t("bar.settings")}</span>
           </button>
         ) : null}
       </div>
@@ -147,7 +148,32 @@ export function GlobalBar({
                 ? (visible, value) => setTooltipStoveId((current) => visible ? value.id : current === value.id ? null : current)
                 : undefined}
             />
-          </div> : <button className="global-bar__minimal-empty" type="button" onClick={() => onModeChange?.("full")} aria-label={t("bar.expand")} title={t("bar.expand")}><img className="global-bar__minimal-mark" src={mark} alt="" /></button>}
+          </div> : (
+            <div className="global-bar__minimal-empty-panel">
+              <p className="global-bar__empty-hint">{t("bar.emptyHintMinimal")}</p>
+              {onOpenSettings ? (
+                <button
+                  className="global-bar__empty-cta global-bar__empty-cta--mini"
+                  type="button"
+                  onClick={() => {
+                    requestSettingsTab("sources");
+                    onOpenSettings();
+                  }}
+                >
+                  {t("bar.emptyCta")}
+                </button>
+              ) : null}
+              <button
+                className="global-bar__minimal-empty"
+                type="button"
+                onClick={() => onModeChange?.("full")}
+                aria-label={t("bar.expand")}
+                title={t("bar.expand")}
+              >
+                <img className="global-bar__minimal-mark" src={mark} alt="" />
+              </button>
+            </div>
+          )}
           {primaryStove ? <button className="global-bar__mode-toggle" type="button" onClick={() => onModeChange?.("full")} aria-label={t("bar.expand")} title={t("bar.expand")}><span aria-hidden="true">+</span></button> : null}
           {primaryStove ? <button ref={priorityTriggerRef} className="global-bar__priority-trigger" type="button" onClick={(event) => openPriorityMenu(event.currentTarget)} aria-label={t("bar.priorityList")} title={t("bar.priorityList")} aria-haspopup="menu" aria-expanded={priorityMenuOpen}><span aria-hidden="true">...</span></button> : null}
           {priorityMenuOpen ? <StovePriorityMenu stoves={stoves} onActivate={onActivateStove} onClose={closePriorityMenu} /> : null}
